@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { supabase } from "@/lib/supabase";
+import { RealtimeChannel } from "@supabase/supabase-js";
 import {
   CheckInProfile,
   GuardianWithUser,
@@ -13,6 +14,7 @@ interface GuardiansState {
   watchedProfiles: WatchedProfile[];
   isLoading: boolean;
   error: string | null;
+  invitesChannel: RealtimeChannel | null;
 
   fetchMyGuardians: (profileId: string) => Promise<void>;
   fetchPendingInvites: (userId: string) => Promise<void>;
@@ -21,6 +23,8 @@ interface GuardiansState {
   acceptInvite: (inviteId: string) => Promise<boolean>;
   declineInvite: (inviteId: string) => Promise<boolean>;
   removeGuardian: (guardianId: string) => Promise<boolean>;
+  subscribeToInvites: (userId: string) => void;
+  unsubscribeFromInvites: () => void;
   clearError: () => void;
 }
 
@@ -30,6 +34,7 @@ export const useGuardiansStore = create<GuardiansState>((set, get) => ({
   watchedProfiles: [],
   isLoading: false,
   error: null,
+  invitesChannel: null,
 
   fetchMyGuardians: async (profileId: string) => {
     try {
@@ -237,6 +242,55 @@ export const useGuardiansStore = create<GuardiansState>((set, get) => ({
         isLoading: false,
       });
       return false;
+    }
+  },
+
+  subscribeToInvites: (userId: string) => {
+    // Unsubscribe from existing channel if any
+    const existingChannel = get().invitesChannel;
+    if (existingChannel) {
+      supabase.removeChannel(existingChannel);
+    }
+
+    const channel = supabase
+      .channel(`invites:${userId}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "guardian_invites",
+          filter: `invitee_id=eq.${userId}`,
+        },
+        async (payload) => {
+          // Fetch the full invite with relations
+          const { data, error } = await supabase
+            .from("guardian_invites")
+            .select(`
+              *,
+              inviter:users!guardian_invites_inviter_id_fkey (id, email, name, avatar_url),
+              check_in_profile:check_in_profiles!guardian_invites_check_in_profile_id_fkey (id, name)
+            `)
+            .eq("id", payload.new.id)
+            .single();
+
+          if (!error && data) {
+            set((state) => ({
+              pendingInvites: [...state.pendingInvites, data],
+            }));
+          }
+        }
+      )
+      .subscribe();
+
+    set({ invitesChannel: channel });
+  },
+
+  unsubscribeFromInvites: () => {
+    const channel = get().invitesChannel;
+    if (channel) {
+      supabase.removeChannel(channel);
+      set({ invitesChannel: null });
     }
   },
 

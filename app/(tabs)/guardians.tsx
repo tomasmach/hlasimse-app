@@ -24,6 +24,8 @@ export default function GuardiansScreen() {
     acceptInvite,
     declineInvite,
     removeGuardian,
+    subscribeToInvites,
+    unsubscribeFromInvites,
   } = useGuardiansStore();
 
   const [isModalVisible, setIsModalVisible] = useState(false);
@@ -42,6 +44,17 @@ export default function GuardiansScreen() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Subscribe to real-time invite updates
+  useEffect(() => {
+    if (user?.id) {
+      subscribeToInvites(user.id);
+    }
+
+    return () => {
+      unsubscribeFromInvites();
+    };
+  }, [user?.id]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
