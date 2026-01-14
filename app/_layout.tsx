@@ -1,5 +1,5 @@
 import "../global.css";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { View, ActivityIndicator } from "react-native";
@@ -14,6 +14,7 @@ function useProtectedRoute(
 ) {
   const segments = useSegments();
   const router = useRouter();
+  const hasNavigated = useRef(false);
 
   useEffect(() => {
     // Wait for both auth and onboarding status to be loaded
@@ -21,15 +22,16 @@ function useProtectedRoute(
 
     const inAuthGroup = segments[0] === "(auth)";
     const inOnboardingGroup = segments[0] === "(onboarding)";
+    const inTabsGroup = segments[0] === "(tabs)";
 
     // First-time user (hasn't seen onboarding) -> onboarding
-    if (!hasSeenOnboarding && !inOnboardingGroup) {
+    if (hasSeenOnboarding === false && !inOnboardingGroup) {
       router.replace("/(onboarding)");
       return;
     }
 
     // Has seen onboarding but not logged in -> auth
-    if (hasSeenOnboarding && !user && !inAuthGroup) {
+    if (hasSeenOnboarding === true && !user && !inAuthGroup && !inOnboardingGroup) {
       router.replace("/(auth)/login");
       return;
     }
@@ -39,7 +41,7 @@ function useProtectedRoute(
       router.replace("/(tabs)");
       return;
     }
-  }, [user, segments, isAuthLoading, hasSeenOnboarding, isOnboardingLoading]);
+  }, [user, isAuthLoading, hasSeenOnboarding, isOnboardingLoading]);
 }
 
 export default function RootLayout() {
@@ -50,10 +52,10 @@ export default function RootLayout() {
     checkOnboardingStatus,
   } = useOnboardingStore();
 
-  // Check onboarding status on mount
+  // Check onboarding status on mount only
   useEffect(() => {
     checkOnboardingStatus();
-  }, [checkOnboardingStatus]);
+  }, []);
 
   useProtectedRoute(user, isAuthLoading, hasSeenOnboarding, isOnboardingLoading);
 
