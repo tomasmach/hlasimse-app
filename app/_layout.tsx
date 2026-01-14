@@ -1,33 +1,69 @@
 import "../global.css";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { View, ActivityIndicator } from "react-native";
 import { useAuth } from "@/hooks/useAuth";
+import { useOnboardingStore } from "@/stores/onboarding";
 
-function useProtectedRoute(user: any, isLoading: boolean) {
+function useProtectedRoute(
+  user: any,
+  isAuthLoading: boolean,
+  hasSeenOnboarding: boolean | null,
+  isOnboardingLoading: boolean
+) {
   const segments = useSegments();
   const router = useRouter();
+  const hasNavigated = useRef(false);
 
   useEffect(() => {
-    if (isLoading) return;
+    // Wait for both auth and onboarding status to be loaded
+    if (isAuthLoading || isOnboardingLoading) return;
 
     const inAuthGroup = segments[0] === "(auth)";
+    const inOnboardingGroup = segments[0] === "(onboarding)";
+    const inTabsGroup = segments[0] === "(tabs)";
 
-    if (!user && !inAuthGroup) {
-      router.replace("/(auth)/login");
-    } else if (user && inAuthGroup) {
+    // PRIORITY 1: Logged in user should always go to tabs
+    if (user && !inTabsGroup) {
       router.replace("/(tabs)");
+      return;
     }
-  }, [user, segments, isLoading]);
+
+    // PRIORITY 2: Not logged in - check onboarding
+    if (!user) {
+      // First-time user (hasn't seen onboarding) -> onboarding
+      if (hasSeenOnboarding === false && !inOnboardingGroup) {
+        router.replace("/(onboarding)");
+        return;
+      }
+
+      // Has seen onboarding but not logged in -> auth
+      if (hasSeenOnboarding === true && !inAuthGroup) {
+        router.replace("/(auth)/login");
+        return;
+      }
+    }
+  }, [user, isAuthLoading, hasSeenOnboarding, isOnboardingLoading]);
 }
 
 export default function RootLayout() {
-  const { user, isLoading } = useAuth();
+  const { user, isLoading: isAuthLoading } = useAuth();
+  const {
+    hasSeenOnboarding,
+    isLoading: isOnboardingLoading,
+    checkOnboardingStatus,
+  } = useOnboardingStore();
 
-  useProtectedRoute(user, isLoading);
+  // Check onboarding status on mount only
+  useEffect(() => {
+    checkOnboardingStatus();
+  }, []);
 
-  if (isLoading) {
+  useProtectedRoute(user, isAuthLoading, hasSeenOnboarding, isOnboardingLoading);
+
+  // Show loading while either auth or onboarding is loading
+  if (isAuthLoading || isOnboardingLoading) {
     return (
       <View className="flex-1 bg-cream items-center justify-center">
         <ActivityIndicator size="large" color="#FF6B5B" />
@@ -39,6 +75,7 @@ export default function RootLayout() {
     <>
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="(onboarding)" />
         <Stack.Screen name="(auth)" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="+not-found" />
