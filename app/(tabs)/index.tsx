@@ -8,7 +8,7 @@ import { useCountdown } from "@/hooks/useCountdown";
 
 export default function CheckInScreen() {
   const { user } = useAuth();
-  const { profile, isLoading, fetchProfile, checkIn } = useCheckInStore();
+  const { profile, isLoading, hasFetched, fetchProfile, checkIn } = useCheckInStore();
   const countdown = useCountdown(profile?.next_deadline ?? null);
 
   const [isCheckingIn, setIsCheckingIn] = useState(false);
@@ -29,12 +29,12 @@ export default function CheckInScreen() {
   }, [user?.id]);
 
   // Redirect to profile-setup if no profile exists after loading
-  // But only if user is actually logged in
+  // But only if user is actually logged in and we've finished fetching
   useEffect(() => {
-    if (user && !isLoading && profile === null) {
+    if (user && hasFetched && profile === null) {
       router.replace("/(tabs)/profile-setup");
     }
-  }, [user, isLoading, profile]);
+  }, [user, hasFetched, profile]);
 
   // Cleanup timeouts and animations on unmount
   useEffect(() => {
@@ -126,7 +126,7 @@ export default function CheckInScreen() {
   };
 
   // Show loading state while fetching profile
-  if (isLoading && !profile) {
+  if (!hasFetched || (isLoading && !profile)) {
     return (
       <SafeAreaView className="flex-1 bg-cream items-center justify-center">
         <ActivityIndicator size="large" color="#FF6B5B" />

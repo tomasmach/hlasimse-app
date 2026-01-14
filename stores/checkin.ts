@@ -5,6 +5,7 @@ import { CheckInProfile } from "@/types/database";
 interface CheckInState {
   profile: CheckInProfile | null;
   isLoading: boolean;
+  hasFetched: boolean;
   error: string | null;
   fetchProfile: (userId: string) => Promise<void>;
   createProfile: (userId: string, name: string) => Promise<CheckInProfile | null>;
@@ -15,6 +16,7 @@ interface CheckInState {
 export const useCheckInStore = create<CheckInState>((set, get) => ({
   profile: null,
   isLoading: false,
+  hasFetched: false,
   error: null,
 
   fetchProfile: async (userId: string) => {
@@ -30,18 +32,19 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
       if (error) {
         // PGRST116 means no rows found - user has no profile yet
         if (error.code === "PGRST116") {
-          set({ profile: null, isLoading: false });
+          set({ profile: null, isLoading: false, hasFetched: true });
           return;
         }
         throw error;
       }
 
-      set({ profile: data, isLoading: false });
+      set({ profile: data, isLoading: false, hasFetched: true });
     } catch (error) {
       console.error("Error fetching check-in profile:", error);
       set({
         error: error instanceof Error ? error.message : "Failed to fetch profile",
         isLoading: false,
+        hasFetched: true,
       });
     }
   },
@@ -156,6 +159,6 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
   },
 
   clearProfile: () => {
-    set({ profile: null, isLoading: false, error: null });
+    set({ profile: null, isLoading: false, hasFetched: false, error: null });
   },
 }));
