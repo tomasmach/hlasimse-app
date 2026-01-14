@@ -47,6 +47,14 @@ export default function TabLayout() {
           ),
         }}
       />
+      <Tabs.Screen
+        name="profile-setup"
+        options={{
+          title: "Nastavení profilu",
+          href: null,
+          headerShown: false,
+        }}
+      />
     </Tabs>
   );
 }
