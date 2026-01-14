@@ -9,6 +9,7 @@ interface WatchedProfileCardProps {
 export function WatchedProfileCard({ profile }: WatchedProfileCardProps) {
   const countdown = useCountdown(profile.next_deadline);
   const hasAlert = profile.has_active_alert;
+  const safeInitial = profile.name.length > 0 ? profile.name[0].toUpperCase() : "?";
 
   const openMap = () => {
     if (profile.last_known_lat && profile.last_known_lng) {
@@ -25,7 +26,7 @@ export function WatchedProfileCard({ profile }: WatchedProfileCardProps) {
             hasAlert ? "bg-coral/20" : "bg-success/20"
           }`}>
             <Text className={hasAlert ? "text-coral text-lg" : "text-success text-lg"}>
-              {profile.name[0].toUpperCase()}
+              {safeInitial}
             </Text>
           </View>
           <View className="flex-1">
