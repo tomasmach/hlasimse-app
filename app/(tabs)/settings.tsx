@@ -108,6 +108,9 @@ export default function SettingsScreen() {
               await AsyncStorage.removeItem("@hlasimse/has_seen_onboarding");
               clearProfile();
 
+              // Delete auth account
+              await supabase.rpc("delete_current_user");
+
               // Sign out (this will trigger navigation to onboarding)
               await supabase.auth.signOut();
             } catch (error) {
