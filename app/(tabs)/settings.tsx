@@ -1,6 +1,5 @@
 import { View, Text, TouchableOpacity, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnboardingStore } from "@/stores/onboarding";
@@ -8,7 +7,7 @@ import { useCheckInStore } from "@/stores/checkin";
 
 export default function SettingsScreen() {
   const { user } = useAuth();
-  const { checkOnboardingStatus } = useOnboardingStore();
+  const { resetOnboarding } = useOnboardingStore();
   const { clearProfile } = useCheckInStore();
 
   const handleLogout = () => {
@@ -27,16 +26,15 @@ export default function SettingsScreen() {
   const handleResetOnboarding = () => {
     Alert.alert(
       "Reset Onboarding",
-      "Vymaže lokální onboarding status. Aplikace se restartuje na onboarding obrazovku.",
+      "Vymaže onboarding status a odhlásí tě. Uvidíš onboarding jako při prvním spuštění.",
       [
         { text: "Zrušit", style: "cancel" },
         {
           text: "Reset",
           style: "destructive",
           onPress: async () => {
-            await AsyncStorage.removeItem("@hlasimse/has_seen_onboarding");
-            await checkOnboardingStatus();
-            Alert.alert("Hotovo", "Restart aplikaci pro fresh start.");
+            await resetOnboarding();
+            await supabase.auth.signOut();
           },
         },
       ]
@@ -105,14 +103,15 @@ export default function SettingsScreen() {
                 .eq("user_id", user.id);
 
               // Clear local state
-              await AsyncStorage.removeItem("@hlasimse/has_seen_onboarding");
               clearProfile();
+              await resetOnboarding();
 
-              // Update onboarding store to reflect cleared state
-              await checkOnboardingStatus();
-
-              // Delete auth account
-              await supabase.rpc("delete_current_user");
+              // Delete auth account (if function exists)
+              try {
+                await supabase.rpc("delete_current_user");
+              } catch {
+                // Function may not exist yet, continue anyway
+              }
 
               // Sign out (this will trigger navigation to onboarding)
               await supabase.auth.signOut();

@@ -8,6 +8,7 @@ interface OnboardingState {
   isLoading: boolean;
   checkOnboardingStatus: () => Promise<void>;
   completeOnboarding: () => Promise<void>;
+  resetOnboarding: () => Promise<void>;
 }
 
 export const useOnboardingStore = create<OnboardingState>((set) => ({
@@ -29,6 +30,14 @@ export const useOnboardingStore = create<OnboardingState>((set) => ({
       set({ hasSeenOnboarding: true });
     } catch (error) {
       console.error("Error saving onboarding status:", error);
+    }
+  },
+  resetOnboarding: async () => {
+    try {
+      await AsyncStorage.removeItem(STORAGE_KEY);
+      set({ hasSeenOnboarding: false, isLoading: false });
+    } catch (error) {
+      console.error("Error resetting onboarding:", error);
     }
   },
 }));
