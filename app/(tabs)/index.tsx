@@ -17,6 +17,9 @@ export default function CheckInScreen() {
 
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const toastOpacity = useRef(new Animated.Value(0)).current;
+  const successTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const hideToastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const toastAnimRef = useRef<Animated.CompositeAnimation | null>(null);
 
   // Fetch profile on mount (only if user is logged in)
   useEffect(() => {
@@ -32,6 +35,21 @@ export default function CheckInScreen() {
       router.replace("/(tabs)/profile-setup");
     }
   }, [user, isLoading, profile]);
+
+  // Cleanup timeouts and animations on unmount
+  useEffect(() => {
+    return () => {
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
+      }
+      if (hideToastTimeoutRef.current) {
+        clearTimeout(hideToastTimeoutRef.current);
+      }
+      if (toastAnimRef.current) {
+        toastAnimRef.current.stop();
+      }
+    };
+  }, []);
 
   // Don't render anything if user is not logged in (root layout will redirect)
   if (!user) {
@@ -68,6 +86,17 @@ export default function CheckInScreen() {
       setShowSuccess(true);
       setShowToast(true);
 
+      // Clear any existing timeouts and animations
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
+      }
+      if (hideToastTimeoutRef.current) {
+        clearTimeout(hideToastTimeoutRef.current);
+      }
+      if (toastAnimRef.current) {
+        toastAnimRef.current.stop();
+      }
+
       // Animate toast in
       Animated.timing(toastOpacity, {
         toValue: 1,
@@ -76,17 +105,18 @@ export default function CheckInScreen() {
       }).start();
 
       // Hide success checkmark after brief delay
-      setTimeout(() => {
+      successTimeoutRef.current = setTimeout(() => {
         setShowSuccess(false);
       }, 1500);
 
       // Hide toast after 3 seconds
-      setTimeout(() => {
-        Animated.timing(toastOpacity, {
+      hideToastTimeoutRef.current = setTimeout(() => {
+        toastAnimRef.current = Animated.timing(toastOpacity, {
           toValue: 0,
           duration: 300,
           useNativeDriver: true,
-        }).start(() => {
+        });
+        toastAnimRef.current.start(() => {
           setShowToast(false);
         });
       }, 3000);
