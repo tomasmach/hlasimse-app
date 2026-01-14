@@ -18,7 +18,7 @@ export default function CheckInScreen() {
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const toastOpacity = useRef(new Animated.Value(0)).current;
 
-  // Fetch profile on mount
+  // Fetch profile on mount (only if user is logged in)
   useEffect(() => {
     if (user?.id) {
       fetchProfile(user.id);
@@ -26,11 +26,21 @@ export default function CheckInScreen() {
   }, [user?.id]);
 
   // Redirect to profile-setup if no profile exists after loading
+  // But only if user is actually logged in
   useEffect(() => {
-    if (!isLoading && user && profile === null) {
+    if (user && !isLoading && profile === null) {
       router.replace("/(tabs)/profile-setup");
     }
-  }, [isLoading, user, profile]);
+  }, [user, isLoading, profile]);
+
+  // Don't render anything if user is not logged in (root layout will redirect)
+  if (!user) {
+    return (
+      <SafeAreaView className="flex-1 bg-cream items-center justify-center">
+        <ActivityIndicator size="large" color="#FF6B5B" />
+      </SafeAreaView>
+    );
+  }
 
   const handlePressIn = () => {
     Animated.spring(scaleAnim, {

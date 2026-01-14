@@ -27,6 +27,15 @@ export default function ProfileSetupScreen() {
     }
   }, [user]);
 
+  // Don't render if user is not logged in (root layout will redirect)
+  if (!user) {
+    return (
+      <View className="flex-1 bg-cream items-center justify-center">
+        <ActivityIndicator size="large" color="#FF6B5B" />
+      </View>
+    );
+  }
+
   const handleSubmit = async () => {
     setError(null);
 
