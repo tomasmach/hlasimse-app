@@ -24,22 +24,25 @@ function useProtectedRoute(
     const inOnboardingGroup = segments[0] === "(onboarding)";
     const inTabsGroup = segments[0] === "(tabs)";
 
-    // First-time user (hasn't seen onboarding) -> onboarding
-    if (hasSeenOnboarding === false && !inOnboardingGroup) {
-      router.replace("/(onboarding)");
-      return;
-    }
-
-    // Has seen onboarding but not logged in -> auth
-    if (hasSeenOnboarding === true && !user && !inAuthGroup && !inOnboardingGroup) {
-      router.replace("/(auth)/login");
-      return;
-    }
-
-    // Logged in user accessing onboarding or auth -> redirect to tabs
-    if (user && (inAuthGroup || inOnboardingGroup)) {
+    // PRIORITY 1: Logged in user should always go to tabs
+    if (user && !inTabsGroup) {
       router.replace("/(tabs)");
       return;
+    }
+
+    // PRIORITY 2: Not logged in - check onboarding
+    if (!user) {
+      // First-time user (hasn't seen onboarding) -> onboarding
+      if (hasSeenOnboarding === false && !inOnboardingGroup) {
+        router.replace("/(onboarding)");
+        return;
+      }
+
+      // Has seen onboarding but not logged in -> auth
+      if (hasSeenOnboarding === true && !inAuthGroup) {
+        router.replace("/(auth)/login");
+        return;
+      }
     }
   }, [user, isAuthLoading, hasSeenOnboarding, isOnboardingLoading]);
 }
