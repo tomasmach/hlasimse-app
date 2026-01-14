@@ -21,6 +21,18 @@ function calculateTimeRemaining(deadline: string | null): CountdownResult {
 
   const now = Date.now();
   const deadlineTime = new Date(deadline).getTime();
+
+  // Validate that deadlineTime is not NaN (malformed date string)
+  if (Number.isNaN(deadlineTime)) {
+    return {
+      hours: 0,
+      minutes: 0,
+      seconds: 0,
+      isExpired: true,
+      formatted: "00:00:00",
+    };
+  }
+
   const diff = deadlineTime - now;
 
   if (diff <= 0) {
