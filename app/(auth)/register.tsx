@@ -1,0 +1,195 @@
+import { useState } from "react";
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  ActivityIndicator,
+} from "react-native";
+import { Link } from "expo-router";
+import { supabase } from "@/lib/supabase";
+
+export default function RegisterScreen() {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState(false);
+
+  const validateForm = (): string | null => {
+    if (!name.trim()) {
+      return "Vyplňte prosím své jméno.";
+    }
+    if (!email.trim()) {
+      return "Vyplňte prosím e-mail.";
+    }
+    if (!password) {
+      return "Vyplňte prosím heslo.";
+    }
+    if (password.length < 6) {
+      return "Heslo musí mít alespoň 6 znaků.";
+    }
+    if (password !== confirmPassword) {
+      return "Hesla se neshodují.";
+    }
+    return null;
+  };
+
+  const handleRegister = async () => {
+    const validationError = validateForm();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    const { error: signUpError } = await supabase.auth.signUp({
+      email: email.trim(),
+      password,
+      options: {
+        data: {
+          name: name.trim(),
+        },
+      },
+    });
+
+    setLoading(false);
+
+    if (signUpError) {
+      if (signUpError.message.includes("already registered")) {
+        setError("Tento e-mail je již zaregistrován.");
+      } else if (signUpError.message.includes("invalid email")) {
+        setError("Neplatný formát e-mailu.");
+      } else {
+        setError("Registrace se nezdařila. Zkuste to prosím znovu.");
+      }
+      return;
+    }
+
+    setSuccess(true);
+  };
+
+  if (success) {
+    return (
+      <View className="flex-1 bg-cream justify-center px-6">
+        <View className="bg-success/10 border border-success rounded-xl p-6 items-center">
+          <Text className="text-charcoal text-xl font-bold mb-3">
+            Registrace úspěšná!
+          </Text>
+          <Text className="text-muted text-center mb-4">
+            Na váš e-mail jsme odeslali potvrzovací odkaz. Klikněte na něj pro
+            aktivaci účtu.
+          </Text>
+          <Link href="/(auth)/login" asChild>
+            <TouchableOpacity className="bg-coral rounded-xl py-3 px-6">
+              <Text className="text-white font-semibold">
+                Zpět na přihlášení
+              </Text>
+            </TouchableOpacity>
+          </Link>
+        </View>
+      </View>
+    );
+  }
+
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      className="flex-1 bg-cream"
+    >
+      <ScrollView
+        contentContainerClassName="flex-grow justify-center px-6 py-12"
+        keyboardShouldPersistTaps="handled"
+      >
+        <View className="items-center mb-12">
+          <Text className="text-4xl font-bold text-charcoal">Registrace</Text>
+          <Text className="text-muted mt-2">Vytvořte si nový účet</Text>
+        </View>
+
+        {error && (
+          <View className="bg-coral/10 border border-coral rounded-xl p-3 mb-6">
+            <Text className="text-coral text-center">{error}</Text>
+          </View>
+        )}
+
+        <View className="gap-4 mb-6">
+          <TextInput
+            className="bg-white border border-sand rounded-xl px-4 py-3 text-charcoal"
+            placeholder="Jméno"
+            placeholderTextColor="#8B7F7A"
+            value={name}
+            onChangeText={setName}
+            autoCapitalize="words"
+            autoComplete="name"
+            editable={!loading}
+          />
+
+          <TextInput
+            className="bg-white border border-sand rounded-xl px-4 py-3 text-charcoal"
+            placeholder="E-mail"
+            placeholderTextColor="#8B7F7A"
+            value={email}
+            onChangeText={setEmail}
+            keyboardType="email-address"
+            autoCapitalize="none"
+            autoComplete="email"
+            editable={!loading}
+          />
+
+          <TextInput
+            className="bg-white border border-sand rounded-xl px-4 py-3 text-charcoal"
+            placeholder="Heslo (min. 6 znaků)"
+            placeholderTextColor="#8B7F7A"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoComplete="new-password"
+            editable={!loading}
+          />
+
+          <TextInput
+            className="bg-white border border-sand rounded-xl px-4 py-3 text-charcoal"
+            placeholder="Potvrzení hesla"
+            placeholderTextColor="#8B7F7A"
+            value={confirmPassword}
+            onChangeText={setConfirmPassword}
+            secureTextEntry
+            autoComplete="new-password"
+            editable={!loading}
+          />
+        </View>
+
+        <TouchableOpacity
+          className="bg-coral rounded-xl py-4 items-center mb-8"
+          onPress={handleRegister}
+          disabled={loading}
+          activeOpacity={0.8}
+        >
+          {loading ? (
+            <ActivityIndicator color="#FFFFFF" />
+          ) : (
+            <Text className="text-white font-semibold text-lg">
+              Registrovat
+            </Text>
+          )}
+        </TouchableOpacity>
+
+        <View className="flex-row justify-center">
+          <Text className="text-muted">Máte již účet? </Text>
+          <Link href="/(auth)/login" asChild>
+            <TouchableOpacity disabled={loading}>
+              <Text className="text-coral font-semibold">Přihlásit se</Text>
+            </TouchableOpacity>
+          </Link>
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
+  );
+}
