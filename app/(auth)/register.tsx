@@ -51,7 +51,7 @@ export default function RegisterScreen() {
     setError(null);
 
     try {
-      const { error: signUpError } = await supabase.auth.signUp({
+      const { data, error: signUpError } = await supabase.auth.signUp({
         email: email.trim(),
         password,
         options: {
@@ -62,13 +62,18 @@ export default function RegisterScreen() {
       });
 
       if (signUpError) {
-        if (signUpError.message.includes("already registered")) {
-          setError("Tento e-mail je již zaregistrován.");
-        } else if (signUpError.message.includes("invalid email")) {
+        if (signUpError.message.includes("invalid email")) {
           setError("Neplatný formát e-mailu.");
         } else {
           setError("Registrace se nezdařila. Zkuste to prosím znovu.");
         }
+        return;
+      }
+
+      // When email confirmations are enabled, Supabase returns an obfuscated user
+      // with empty identities array instead of an error for existing emails
+      if (data.user?.identities?.length === 0) {
+        setError("Tento e-mail je již zaregistrován.");
         return;
       }
 
