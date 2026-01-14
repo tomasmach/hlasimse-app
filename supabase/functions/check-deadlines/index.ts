@@ -127,9 +127,10 @@ Deno.serve(async (req: Request) => {
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
     console.error("Error in check-deadlines function:", error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: msg }),
       {
         status: 500,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
