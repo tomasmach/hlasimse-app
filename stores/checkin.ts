@@ -50,6 +50,18 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
     try {
       set({ isLoading: true, error: null });
 
+      // Check if profile already exists (defense in depth)
+      const { data: existingProfile } = await supabase
+        .from("check_in_profiles")
+        .select("*")
+        .eq("owner_id", userId)
+        .maybeSingle();
+
+      if (existingProfile) {
+        set({ profile: existingProfile, isLoading: false });
+        return existingProfile;
+      }
+
       const now = new Date();
       const nextDeadline = new Date(now.getTime() + 24 * 60 * 60 * 1000);
 
@@ -67,6 +79,20 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
         .single();
 
       if (error) {
+        // Handle unique violation (23505) - profile was created between check and insert
+        if (error.code === "23505") {
+          // Fetch the existing profile
+          const { data: existing } = await supabase
+            .from("check_in_profiles")
+            .select("*")
+            .eq("owner_id", userId)
+            .single();
+
+          if (existing) {
+            set({ profile: existing, isLoading: false });
+            return existing;
+          }
+        }
         throw error;
       }
 
