@@ -57,7 +57,7 @@ export function WatchedProfileCard({ profile }: WatchedProfileCardProps) {
           className="mt-3 py-2 rounded-xl bg-coral/10"
         >
           <Text className="text-coral text-center font-medium">
-            📍 Zobrazit posledni polohu
+            📍 Zobrazit poslední polohu
           </Text>
         </Pressable>
       )}
