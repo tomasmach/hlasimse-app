@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "hlasimse-temp",
-    "slug": "hlasimse-temp",
+    "name": "Hlásím se",
+    "slug": "hlasimse",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "hlasimsetemp",
+    "scheme": "hlasimse",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "splash": {
