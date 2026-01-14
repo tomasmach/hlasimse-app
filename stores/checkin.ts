@@ -124,30 +124,23 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
         now.getTime() + profile.interval_hours * 60 * 60 * 1000
       );
 
-      // Insert check-in record
-      const { error: checkInError } = await supabase.from("check_ins").insert({
-        check_in_profile_id: profile.id,
-        checked_in_at: now.toISOString(),
-        was_offline: false,
+      // Use atomic RPC to perform both check-in insert and profile update in a transaction
+      const { data, error } = await supabase.rpc("atomic_check_in", {
+        p_profile_id: profile.id,
+        p_checked_in_at: now.toISOString(),
+        p_next_deadline: nextDeadline.toISOString(),
+        p_was_offline: false,
       });
 
-      if (checkInError) {
-        throw checkInError;
+      if (error) {
+        throw error;
       }
 
-      // Update profile with new deadline
-      const { data: updatedProfile, error: updateError } = await supabase
-        .from("check_in_profiles")
-        .update({
-          last_check_in_at: now.toISOString(),
-          next_deadline: nextDeadline.toISOString(),
-        })
-        .eq("id", profile.id)
-        .select()
-        .single();
+      // RPC returns array with single updated profile
+      const updatedProfile = Array.isArray(data) ? data[0] : data;
 
-      if (updateError) {
-        throw updateError;
+      if (!updatedProfile) {
+        throw new Error("No profile returned from check-in");
       }
 
       set({ profile: updatedProfile, isLoading: false });

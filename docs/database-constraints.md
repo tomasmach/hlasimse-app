@@ -1,4 +1,4 @@
-# Database Constraints
+# Database Requirements
 
 ## Required Constraints
 
@@ -20,3 +20,18 @@
 3. Returns existing profile when duplicate is detected
 
 This ensures the app works correctly both with and without the DB constraint, but the constraint is recommended to prevent race conditions.
+
+## Required Functions
+
+### atomic_check_in RPC
+
+**Purpose:** Performs check-in and profile update atomically in a single transaction to prevent inconsistent state.
+
+**Migration:** See `docs/migrations/atomic_check_in.sql`
+
+**Why Required:**
+- Ensures check-in record insertion and profile update happen together or not at all
+- Prevents inconsistent state where a check-in is recorded but the profile deadline isn't updated (or vice versa)
+- Uses PostgreSQL transactions to guarantee atomicity
+
+**Used by:** `stores/checkin.ts` checkIn() function
