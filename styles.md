@@ -167,7 +167,7 @@ animation: subtle-pulse 2s infinite;
 
 ```css
 transition: all 0.3s ease;      /* Obecné */
-transition: colors 0.2s;        /* Barvy */
+transition: color 0.2s;         /* Barvy */
 transition: transform 0.1s;     /* Scale efekty */
 ```
 
