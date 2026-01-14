@@ -9,20 +9,23 @@ interface InviteCardProps {
 }
 
 export function InviteCard({ invite, onAccept, onDecline, isLoading }: InviteCardProps) {
+  const inviterName = invite.inviter?.name || invite.inviter?.email || "Neznámý";
+  const safeInitial = inviterName.length > 0 ? inviterName[0].toUpperCase() : "?";
+
   return (
     <View className="bg-white rounded-2xl p-4 mb-3">
       <View className="flex-row items-center mb-3">
         <View className="w-10 h-10 rounded-full bg-peach/30 items-center justify-center mr-3">
           <Text className="text-coral text-lg">
-            {(invite.inviter.name || invite.inviter.email || "?")[0].toUpperCase()}
+            {safeInitial}
           </Text>
         </View>
         <View className="flex-1">
           <Text className="text-charcoal font-medium">
-            {invite.inviter.name || invite.inviter.email}
+            {inviterName}
           </Text>
           <Text className="text-muted text-sm">
-            Chce tě jako strážce pro "{invite.check_in_profile.name}"
+            Chce tě jako strážce pro "{invite.check_in_profile?.name || "profil"}"
           </Text>
         </View>
       </View>
