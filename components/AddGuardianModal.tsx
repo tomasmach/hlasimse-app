@@ -37,15 +37,19 @@ export function AddGuardianModal({ visible, onClose, onSubmit }: AddGuardianModa
     setIsLoading(true);
     setError(null);
 
-    const result = await onSubmit(email.trim().toLowerCase());
+    try {
+      const result = await onSubmit(email.trim().toLowerCase());
 
-    setIsLoading(false);
-
-    if (result.success) {
-      setEmail("");
-      onClose();
-    } else {
-      setError(result.error || "Nepodařilo se odeslat pozvánku");
+      if (result.success) {
+        setEmail("");
+        onClose();
+      } else {
+        setError(result.error || "Nepodařilo se odeslat pozvánku");
+      }
+    } catch (error) {
+      setError(error instanceof Error ? error.message : "Došlo k neočekávané chybě");
+    } finally {
+      setIsLoading(false);
     }
   };
 
