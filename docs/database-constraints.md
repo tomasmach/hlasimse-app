@@ -4,22 +4,25 @@
 
 ### check_in_profiles Table
 
-**UNIQUE Constraint on owner_id:**
-- A UNIQUE constraint should be added to the `owner_id` column in the `check_in_profiles` table
-- This prevents duplicate profiles for the same user at the database level
-- SQL to add constraint:
-  ```sql
-  ALTER TABLE check_in_profiles
-  ADD CONSTRAINT check_in_profiles_owner_id_key
-  UNIQUE (owner_id);
-  ```
+**UNIQUE Constraint on owner_id:** ✅ APPLIED
+- Constraint `check_in_profiles_owner_id_key` on `owner_id` column
+- Prevents duplicate profiles for the same user at the database level
+- Enables race-condition handling via PostgreSQL error code 23505
 
-**Note:** The application code in `stores/checkin.ts` already handles:
+**Migration:** `docs/migrations/check_in_profiles_owner_id_unique.sql`
+
+```sql
+ALTER TABLE check_in_profiles
+ADD CONSTRAINT check_in_profiles_owner_id_key
+UNIQUE (owner_id);
+```
+
+**Application handling** (in `stores/checkin.ts` createProfile):
 1. Pre-check for existing profiles (defense in depth)
 2. Unique violation error handling (PostgreSQL error code 23505)
 3. Returns existing profile when duplicate is detected
 
-This ensures the app works correctly both with and without the DB constraint, but the constraint is recommended to prevent race conditions.
+Concurrent inserts will now correctly trigger the 23505 unique-violation error, which the catch block handles by fetching and returning the existing profile.
 
 ## Required Functions
 
