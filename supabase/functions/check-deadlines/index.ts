@@ -76,14 +76,14 @@ Deno.serve(async (req: Request) => {
 
     for (const profile of expiredProfiles) {
       // Check if there's already an active alert for this profile
-      const { data: existingAlert } = await supabase
+      const { data: existingAlerts } = await supabase
         .from("alerts")
         .select("id")
         .eq("check_in_profile_id", profile.id)
         .is("resolved_at", null)
-        .single();
+        .limit(1);
 
-      if (existingAlert) {
+      if (existingAlerts?.length > 0) {
         // Already has an active alert, skip
         continue;
       }
