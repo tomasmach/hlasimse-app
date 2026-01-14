@@ -35,7 +35,7 @@ export function WatchedProfileCard({ profile }: WatchedProfileCardProps) {
               <Text className="text-coral text-sm font-medium">Neohlasil/a se!</Text>
             ) : (
               <Text className="text-muted text-sm">
-                {countdown.isExpired ? "Cas vypršel" : countdown.formatted}
+                {countdown.isExpired ? "Čas vypršel" : countdown.formatted}
               </Text>
             )}
           </View>
