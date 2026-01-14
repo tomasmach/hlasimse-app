@@ -170,34 +170,69 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
       });
       return { success: true, offline: false };
     } catch (error) {
-      console.error("Check-in failed, saving offline:", error);
+      console.error("Check-in failed:", error);
 
-      // Save to offline queue
-      await addToQueue({
-        profileId: profile.id,
-        checkedInAt: now.toISOString(),
-        nextDeadline: nextDeadline.toISOString(),
-        lat: coords?.lat ?? null,
-        lng: coords?.lng ?? null,
-      });
+      // Determine if this is a network error (should queue) vs server error (should not queue)
+      const isNetworkError =
+        error instanceof TypeError ||
+        (error instanceof Error &&
+          (error.message.includes("fetch") ||
+            error.message.includes("network") ||
+            error.message.includes("Network"))) ||
+        (typeof error === "object" &&
+          error !== null &&
+          "message" in error &&
+          typeof (error as { message: unknown }).message === "string" &&
+          ((error as { message: string }).message.includes("fetch") ||
+            (error as { message: string }).message.includes("network") ||
+            (error as { message: string }).message.includes("Network")));
 
-      // Optimistically update local state
+      // Check if it's a Supabase/server error (has error code)
+      const isServerError =
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        typeof (error as { code: unknown }).code === "string";
+
+      if (isNetworkError && !isServerError) {
+        // Network error - queue for offline sync
+        await addToQueue({
+          profileId: profile.id,
+          checkedInAt: now.toISOString(),
+          nextDeadline: nextDeadline.toISOString(),
+          lat: coords?.lat ?? null,
+          lng: coords?.lng ?? null,
+        });
+
+        // Optimistically update local state
+        set({
+          profile: {
+            ...profile,
+            last_check_in_at: now.toISOString(),
+            next_deadline: nextDeadline.toISOString(),
+            last_known_lat: coords?.lat ?? profile.last_known_lat,
+            last_known_lng: coords?.lng ?? profile.last_known_lng,
+          },
+          isLoading: false,
+          lastCheckInWasOffline: true,
+          error: null,
+        });
+
+        get().refreshPendingCount();
+
+        return { success: true, offline: true };
+      }
+
+      // Server or validation error - do not queue, report failure
       set({
-        profile: {
-          ...profile,
-          last_check_in_at: now.toISOString(),
-          next_deadline: nextDeadline.toISOString(),
-          last_known_lat: coords?.lat ?? profile.last_known_lat,
-          last_known_lng: coords?.lng ?? profile.last_known_lng,
-        },
         isLoading: false,
-        lastCheckInWasOffline: true,
-        error: null,
+        error:
+          error instanceof Error
+            ? error.message
+            : "Check-in failed. Please try again.",
       });
 
-      get().refreshPendingCount();
-
-      return { success: true, offline: true };
+      return { success: false, offline: false };
     }
   },
 
@@ -223,6 +258,20 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
         synced++;
       } catch (error) {
         console.error("Failed to sync pending check-in:", error);
+
+        // Check if this is a server error (has error code) - these won't succeed on retry
+        const isServerError =
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          typeof (error as { code: unknown }).code === "string";
+
+        if (isServerError) {
+          // Remove from queue - retrying won't help
+          console.warn("Removing non-retriable check-in from queue:", pending.id);
+          await removeFromQueue(pending.id);
+        }
+
         failed++;
       }
     }
