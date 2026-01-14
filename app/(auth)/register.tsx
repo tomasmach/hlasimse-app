@@ -50,30 +50,35 @@ export default function RegisterScreen() {
     setLoading(true);
     setError(null);
 
-    const { error: signUpError } = await supabase.auth.signUp({
-      email: email.trim(),
-      password,
-      options: {
-        data: {
-          name: name.trim(),
+    try {
+      const { error: signUpError } = await supabase.auth.signUp({
+        email: email.trim(),
+        password,
+        options: {
+          data: {
+            name: name.trim(),
+          },
         },
-      },
-    });
+      });
 
-    setLoading(false);
-
-    if (signUpError) {
-      if (signUpError.message.includes("already registered")) {
-        setError("Tento e-mail je již zaregistrován.");
-      } else if (signUpError.message.includes("invalid email")) {
-        setError("Neplatný formát e-mailu.");
-      } else {
-        setError("Registrace se nezdařila. Zkuste to prosím znovu.");
+      if (signUpError) {
+        if (signUpError.message.includes("already registered")) {
+          setError("Tento e-mail je již zaregistrován.");
+        } else if (signUpError.message.includes("invalid email")) {
+          setError("Neplatný formát e-mailu.");
+        } else {
+          setError("Registrace se nezdařila. Zkuste to prosím znovu.");
+        }
+        return;
       }
-      return;
-    }
 
-    setSuccess(true);
+      setSuccess(true);
+    } catch (err) {
+      console.error("Registration error:", err);
+      setError("Nastala neočekávaná chyba. Zkuste to prosím znovu.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (success) {

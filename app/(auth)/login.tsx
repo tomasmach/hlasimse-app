@@ -27,25 +27,30 @@ export default function LoginScreen() {
     setLoading(true);
     setError(null);
 
-    const { error: signInError } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
+    try {
+      const { error: signInError } = await supabase.auth.signInWithPassword({
+        email: email.trim(),
+        password,
+      });
 
-    setLoading(false);
-
-    if (signInError) {
-      if (signInError.message.includes("Invalid login credentials")) {
-        setError("Nesprávný e-mail nebo heslo.");
-      } else if (signInError.message.includes("Email not confirmed")) {
-        setError("E-mail nebyl potvrzen. Zkontrolujte svou schránku.");
-      } else {
-        setError("Přihlášení se nezdařilo. Zkuste to prosím znovu.");
+      if (signInError) {
+        if (signInError.message.includes("Invalid login credentials")) {
+          setError("Nesprávný e-mail nebo heslo.");
+        } else if (signInError.message.includes("Email not confirmed")) {
+          setError("E-mail nebyl potvrzen. Zkontrolujte svou schránku.");
+        } else {
+          setError("Přihlášení se nezdařilo. Zkuste to prosím znovu.");
+        }
+        return;
       }
-      return;
-    }
 
-    router.replace("/(tabs)");
+      router.replace("/(tabs)");
+    } catch (err) {
+      console.error("Login error:", err);
+      setError("Nastala neočekávaná chyba. Zkuste to prosím znovu.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
