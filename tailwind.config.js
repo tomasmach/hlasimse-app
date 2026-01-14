@@ -23,10 +23,6 @@ module.exports = {
         muted: "#8B7F7A",
         success: "#4ADE80",
       },
-      fontFamily: {
-        display: ["Lora"],
-        body: ["Instrument Sans"],
-      },
       borderRadius: {
         "4xl": "2rem",
         "5xl": "2.5rem",
