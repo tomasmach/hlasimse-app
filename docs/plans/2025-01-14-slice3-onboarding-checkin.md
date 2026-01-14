@@ -431,6 +431,32 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
   },
 
   createProfile: async (userId: string, name: string) => {
+    // Input validation constants
+    const MIN_NAME_LENGTH = 2;
+    const MAX_NAME_LENGTH = 100;
+
+    // Trim the incoming name
+    const trimmedName = name.trim();
+
+    // Validate name length
+    if (trimmedName.length < MIN_NAME_LENGTH) {
+      set({ error: "Jméno musí mít alespoň 2 znaky.", isLoading: false });
+      return null;
+    }
+
+    if (trimmedName.length > MAX_NAME_LENGTH) {
+      set({ error: "Jméno je příliš dlouhé (max 100 znaků).", isLoading: false });
+      return null;
+    }
+
+    // Validate against disallowed characters (control chars, only whitespace)
+    // Allow letters, numbers, spaces, and common punctuation
+    const nameRegex = /^[\p{L}\p{N}\s.,'-]+$/u;
+    if (!nameRegex.test(trimmedName)) {
+      set({ error: "Jméno obsahuje nepovolené znaky.", isLoading: false });
+      return null;
+    }
+
     set({ isLoading: true, error: null });
     try {
       const now = new Date();
@@ -440,7 +466,7 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
         .from("check_in_profiles")
         .insert({
           owner_id: userId,
-          name,
+          name: trimmedName,
           interval_hours: 24,
           next_deadline: nextDeadline.toISOString(),
           is_active: true,
