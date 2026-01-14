@@ -46,16 +46,77 @@ export default function SettingsScreen() {
   const handleDevReset = () => {
     Alert.alert(
       "DEV Reset (úplný fresh start)",
-      "Vymaže onboarding status + odhlásí tě. Aplikace půjde do onboarding screenu jako při prvním spuštění.",
+      "Vymaže všechna data + účet + odhlásí tě. Aplikace půjde do onboarding screenu jako při prvním spuštění.",
       [
         { text: "Zrušit", style: "cancel" },
         {
           text: "Reset All",
           style: "destructive",
           onPress: async () => {
-            await AsyncStorage.removeItem("@hlasimse/has_seen_onboarding");
-            clearProfile();
-            await supabase.auth.signOut();
+            if (!user?.id) return;
+
+            try {
+              // Delete all user data
+              // 1. Check-ins (must delete first due to FK)
+              const { data: profiles } = await supabase
+                .from("check_in_profiles")
+                .select("id")
+                .eq("user_id", user.id);
+
+              if (profiles && profiles.length > 0) {
+                const profileIds = profiles.map((p) => p.id);
+                await supabase
+                  .from("check_ins")
+                  .delete()
+                  .in("profile_id", profileIds);
+              }
+
+              // 2. Alerts (via guardians FK)
+              const { data: guardians } = await supabase
+                .from("guardians")
+                .select("id")
+                .eq("user_id", user.id);
+
+              if (guardians && guardians.length > 0) {
+                const guardianIds = guardians.map((g) => g.id);
+                await supabase
+                  .from("alerts")
+                  .delete()
+                  .in("guardian_id", guardianIds);
+              }
+
+              // 3. Guardians (both as user and as guardian)
+              await supabase.from("guardians").delete().eq("user_id", user.id);
+              await supabase
+                .from("guardians")
+                .delete()
+                .eq("guardian_user_id", user.id);
+
+              // 4. Push tokens
+              await supabase
+                .from("push_tokens")
+                .delete()
+                .eq("user_id", user.id);
+
+              // 5. Check-in profiles
+              await supabase
+                .from("check_in_profiles")
+                .delete()
+                .eq("user_id", user.id);
+
+              // Clear local state
+              await AsyncStorage.removeItem("@hlasimse/has_seen_onboarding");
+              clearProfile();
+
+              // Sign out (this will trigger navigation to onboarding)
+              await supabase.auth.signOut();
+            } catch (error) {
+              console.error("Error during dev reset:", error);
+              Alert.alert(
+                "Chyba",
+                "Nepodařilo se smazat data. Zkuste to prosím znovu."
+              );
+            }
           },
         },
       ]
