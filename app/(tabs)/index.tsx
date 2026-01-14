@@ -80,9 +80,9 @@ export default function CheckInScreen() {
     if (isCheckingIn) return;
 
     setIsCheckingIn(true);
-    const success = await checkIn();
+    const result = await checkIn();
 
-    if (success) {
+    if (result.success) {
       setShowSuccess(true);
       setShowToast(true);
 
