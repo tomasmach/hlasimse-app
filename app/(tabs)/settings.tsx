@@ -69,18 +69,18 @@ export default function SettingsScreen() {
                   .in("check_in_profile_id", profileIds);
               }
 
-              // 2. Alerts (via guardians FK)
+              // 2. Alerts (via check_in_profile FK)
               const { data: guardians } = await supabase
                 .from("guardians")
-                .select("id")
+                .select("check_in_profile_id")
                 .eq("user_id", user.id);
 
               if (guardians && guardians.length > 0) {
-                const guardianIds = guardians.map((g) => g.id);
+                const profileIds = guardians.map((g) => g.check_in_profile_id);
                 await supabase
                   .from("alerts")
                   .delete()
-                  .in("guardian_id", guardianIds);
+                  .in("check_in_profile_id", profileIds);
               }
 
               // 3. Guardians (both as user and as guardian)
