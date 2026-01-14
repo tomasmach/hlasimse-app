@@ -4,8 +4,12 @@
 -- Enable pg_cron extension (if not already enabled)
 CREATE EXTENSION IF NOT EXISTS pg_cron;
 
+-- Enable pg_net extension (required for net.http_post)
+CREATE EXTENSION IF NOT EXISTS pg_net;
+
 -- Grant usage to postgres user
 GRANT USAGE ON SCHEMA cron TO postgres;
+GRANT USAGE ON SCHEMA net TO postgres;
 
 -- Create cron job to call Edge Function every 5 minutes
 SELECT cron.schedule(

@@ -43,8 +43,8 @@ BEGIN
   SET
     last_check_in_at = p_checked_in_at,
     next_deadline = p_next_deadline,
-    last_known_lat = COALESCE(p_lat, last_known_lat),
-    last_known_lng = COALESCE(p_lng, last_known_lng),
+    last_known_lat = COALESCE(p_lat, check_in_profiles.last_known_lat),
+    last_known_lng = COALESCE(p_lng, check_in_profiles.last_known_lng),
     updated_at = NOW()
   WHERE check_in_profiles.id = p_profile_id
   RETURNING
