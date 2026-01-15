@@ -98,18 +98,17 @@ export function Paywall({ visible, onClose, onSuccess }: PaywallProps) {
 
         {/* Package options */}
         <View className="gap-3 mb-6">
-          {annualPkg && (
+          {annualPkg?.product && (
             <PackageOption
-              title="500 Kč / rok"
-              subtitle="(2 měsíce zdarma)"
+              title={annualPkg.product.priceString}
               selected={selectedPackage?.identifier === annualPkg.identifier}
               recommended
               onSelect={() => setSelectedPackage(annualPkg)}
             />
           )}
-          {monthlyPkg && (
+          {monthlyPkg?.product && (
             <PackageOption
-              title="50 Kč / měsíc"
+              title={monthlyPkg.product.priceString}
               selected={selectedPackage?.identifier === monthlyPkg.identifier}
               onSelect={() => setSelectedPackage(monthlyPkg)}
             />

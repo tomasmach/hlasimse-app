@@ -14,17 +14,18 @@ export function SuccessOverlay({
   onDismiss,
   intervalHours = 24,
 }: SuccessOverlayProps) {
-  const scale = useRef(new Animated.Value(0)).current;
-  const opacity = useRef(new Animated.Value(0)).current;
+  // Create stable Animated.Value refs that persist across renders
+  const scaleRef = useRef(new Animated.Value(0));
+  const opacityRef = useRef(new Animated.Value(0));
 
   const handleDismiss = useCallback(() => {
     Animated.parallel([
-      Animated.timing(opacity, {
+      Animated.timing(opacityRef.current, {
         toValue: 0,
         duration: 200,
         useNativeDriver: true,
       }),
-      Animated.timing(scale, {
+      Animated.timing(scaleRef.current, {
         toValue: 0,
         duration: 200,
         useNativeDriver: true,
@@ -32,23 +33,23 @@ export function SuccessOverlay({
     ]).start(() => {
       onDismiss();
     });
-  }, [opacity, scale, onDismiss]);
+  }, [onDismiss]);
 
   useEffect(() => {
     if (visible) {
       // Reset values before animating in
-      scale.setValue(0);
-      opacity.setValue(0);
+      scaleRef.current.setValue(0);
+      opacityRef.current.setValue(0);
 
       // Animate in
       Animated.parallel([
-        Animated.spring(scale, {
+        Animated.spring(scaleRef.current, {
           toValue: 1,
           tension: 50,
           friction: 7,
           useNativeDriver: true,
         }),
-        Animated.timing(opacity, {
+        Animated.timing(opacityRef.current, {
           toValue: 1,
           duration: 200,
           useNativeDriver: true,
@@ -82,9 +83,9 @@ export function SuccessOverlay({
     <Pressable onPress={handleDismiss} className="absolute inset-0 z-50">
       <Animated.View
         className="flex-1 bg-white items-center justify-center"
-        style={{ opacity }}
+        style={{ opacity: opacityRef.current }}
       >
-        <Animated.View style={{ transform: [{ scale }] }}>
+        <Animated.View style={{ transform: [{ scale: scaleRef.current }] }}>
           <View className="w-24 h-24 rounded-full bg-success/20 items-center justify-center mb-6">
             <Ionicons name="checkmark" size={48} color="#4ADE80" />
           </View>

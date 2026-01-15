@@ -74,8 +74,14 @@ export const usePremiumStore = create<PremiumState>((set, get) => ({
       set({ isPremium, customerInfo });
       return isPremium;
     } catch (error) {
-      const purchaseError = error as PurchasesError;
-      if (!purchaseError.userCancelled) {
+      // Safe type guard: check if error is an object with userCancelled property
+      const isUserCancelled = typeof error === 'object' &&
+                              error !== null &&
+                              'userCancelled' in error &&
+                              (error as PurchasesError).userCancelled === true;
+
+      // Only log errors that aren't user cancellations
+      if (!isUserCancelled) {
         console.error('Purchase failed:', error);
       }
       return false;

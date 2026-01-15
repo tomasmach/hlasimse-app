@@ -29,15 +29,15 @@ export default function IntervalPickerScreen() {
     setError('');
     setLoadingHours(hours);
     try {
-      const { error } = await supabase
+      const { error: supabaseError } = await supabase
         .from("check_in_profiles")
         .update({ interval_hours: hours })
         .eq("id", profile.id);
 
-      if (error) throw error;
+      if (supabaseError) throw supabaseError;
 
-      setSelectedHours(hours);
       await fetchProfile(user.id);
+      setSelectedHours(hours);
     } catch (err) {
       console.error("Failed to update interval:", err);
       setError("Nepodařilo se uložit. Zkuste to znovu.");
