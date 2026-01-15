@@ -1,3 +1,4 @@
+// stores/checkin.ts
 import { create } from "zustand";
 import { supabase } from "@/lib/supabase";
 import { CheckInProfile } from "@/types/database";
@@ -236,6 +237,56 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
 
       return { success: false, offline: false };
     }
+  },
+
+  syncPendingCheckIns: async () => {
+    const queue = await getQueue();
+    let synced = 0;
+    let failed = 0;
+
+    for (const pending of queue) {
+      try {
+        const { error } = await supabase.rpc("atomic_check_in", {
+          p_profile_id: pending.profileId,
+          p_checked_in_at: pending.checkedInAt,
+          p_next_deadline: pending.nextDeadline,
+          p_was_offline: true,
+          p_lat: pending.lat,
+          p_lng: pending.lng,
+        });
+
+        if (error) throw error;
+
+        await removeFromQueue(pending.id);
+        synced++;
+      } catch (error) {
+        console.error("Failed to sync pending check-in:", error);
+
+        // Check if this is a server error (has error code) - these won't succeed on retry
+        const isServerError =
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          typeof (error as { code: unknown }).code === "string";
+
+        if (isServerError) {
+          // Remove from queue - retrying won't help
+          console.warn("Removing non-retriable check-in from queue:", pending.id);
+          await removeFromQueue(pending.id);
+        }
+
+        failed++;
+      }
+    }
+
+    get().refreshPendingCount();
+
+    return { synced, failed };
+  },
+
+  refreshPendingCount: async () => {
+    const count = await getQueueCount();
+    set({ pendingCount: count });
   },
 
   syncPendingCheckIns: async () => {

@@ -165,7 +165,6 @@ export default function CheckInScreen() {
     );
   }
 
-  // Don't render if redirecting to profile setup
   if (!profile) {
     return (
       <SafeAreaView className="flex-1 bg-cream items-center justify-center">
