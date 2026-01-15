@@ -16,6 +16,7 @@ import { useLocation } from "@/hooks/useLocation";
 import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { LocationBanner } from "@/components/LocationBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
+import { SuccessOverlay } from "@/components/SuccessOverlay";
 
 export default function CheckInScreen() {
   const { user } = useAuth();
@@ -34,10 +35,11 @@ export default function CheckInScreen() {
   const { isConnected } = useNetworkStatus();
 
   const [isCheckingIn, setIsCheckingIn] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showOfflineToast, setShowOfflineToast] = useState(false);
+  const [showErrorToast, setShowErrorToast] = useState(false);
   const [showToast, setShowToast] = useState(false);
+  const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
 
   const scaleAnim = useRef(new Animated.Value(1)).current;
   const toastOpacity = useRef(new Animated.Value(0)).current;
@@ -100,9 +102,10 @@ export default function CheckInScreen() {
     }).start();
   };
 
-  const showToastMessage = (isOffline: boolean) => {
+  const showToastMessage = (type: "offline" | "error") => {
     setShowToast(true);
-    setShowOfflineToast(isOffline);
+    setShowOfflineToast(type === "offline");
+    setShowErrorToast(type === "error");
 
     if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
     if (hideToastTimeoutRef.current) clearTimeout(hideToastTimeoutRef.current);
@@ -127,6 +130,7 @@ export default function CheckInScreen() {
       toastAnimRef.current.start(() => {
         setShowToast(false);
         setShowOfflineToast(false);
+        setShowErrorToast(false);
       });
     }, 3000);
   };
@@ -143,17 +147,23 @@ export default function CheckInScreen() {
 
     if (result.success) {
       setShowSuccess(true);
-      showToastMessage(result.offline);
+      if (result.offline) {
+        // Show toast for offline check-ins
+        showToastMessage("offline");
+      } else {
+        // Show full-screen success overlay for online check-ins
+        setShowSuccessOverlay(true);
+      }
+    } else {
+      // Show error toast for failed check-ins
+      showToastMessage("error");
     }
 
     setIsCheckingIn(false);
   };
 
   const handleSync = async () => {
-    if (isSyncing) return;
-    setIsSyncing(true);
     await syncPendingCheckIns();
-    setIsSyncing(false);
   };
 
   // Show loading state while fetching profile
@@ -184,13 +194,19 @@ export default function CheckInScreen() {
   };
 
   const getToastMessage = () => {
+    if (showErrorToast) {
+      return "Nepodařilo se odeslat. Zkuste to znovu.";
+    }
     if (showOfflineToast) {
-      return "Uloženo, odešleme až budete online";
+      return "Máme to! Pošleme hned, až bude signál.";
     }
     return "Hlášení úspěšně odesláno!";
   };
 
   const getToastStyle = () => {
+    if (showErrorToast) {
+      return "bg-coral/20 border-coral";
+    }
     if (showOfflineToast) {
       return "bg-sand border-muted/30";
     }
@@ -198,6 +214,9 @@ export default function CheckInScreen() {
   };
 
   const getToastTextStyle = () => {
+    if (showErrorToast) {
+      return "text-coral";
+    }
     if (showOfflineToast) {
       return "text-charcoal";
     }
@@ -215,11 +234,7 @@ export default function CheckInScreen() {
           {permissionStatus === "denied" && (
             <LocationBanner onRequestPermission={requestPermission} />
           )}
-          <OfflineBanner
-            pendingCount={pendingCount}
-            onSync={handleSync}
-            isSyncing={isSyncing}
-          />
+          <OfflineBanner pendingCount={pendingCount} />
         </View>
 
         {/* Main content */}
@@ -275,7 +290,7 @@ export default function CheckInScreen() {
         </View>
       </ScrollView>
 
-      {/* Toast */}
+      {/* Toast for offline check-ins */}
       {showToast && (
         <Animated.View
           style={{
@@ -293,6 +308,13 @@ export default function CheckInScreen() {
           </View>
         </Animated.View>
       )}
+
+      {/* Success overlay for online check-ins */}
+      <SuccessOverlay
+        visible={showSuccessOverlay}
+        onDismiss={() => setShowSuccessOverlay(false)}
+        intervalHours={profile?.interval_hours || 24}
+      />
     </SafeAreaView>
   );
 }
