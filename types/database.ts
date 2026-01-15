@@ -61,3 +61,27 @@ export interface PushToken {
   created_at: string;
   updated_at: string;
 }
+
+export interface GuardianInvite {
+  id: string;
+  check_in_profile_id: string;
+  inviter_id: string;
+  invitee_id: string;
+  status: "pending" | "accepted" | "declined";
+  created_at: string;
+  responded_at: string | null;
+}
+
+// Rozšířené typy pro UI
+export interface GuardianWithUser extends Guardian {
+  user: Pick<User, "id" | "email" | "name" | "avatar_url">;
+}
+
+export interface InviteWithInviter extends GuardianInvite {
+  inviter: Pick<User, "id" | "email" | "name" | "avatar_url">;
+  check_in_profile: Pick<CheckInProfile, "id" | "name">;
+}
+
+export interface WatchedProfile extends CheckInProfile {
+  has_active_alert: boolean;
+}

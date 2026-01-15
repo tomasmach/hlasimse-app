@@ -12,6 +12,7 @@ import {
 interface CheckInState {
   profile: CheckInProfile | null;
   isLoading: boolean;
+  hasFetched: boolean;
   error: string | null;
   pendingCount: number;
   lastCheckInWasOffline: boolean;
@@ -32,6 +33,7 @@ interface CheckInState {
 export const useCheckInStore = create<CheckInState>((set, get) => ({
   profile: null,
   isLoading: false,
+  hasFetched: false,
   error: null,
   pendingCount: 0,
   lastCheckInWasOffline: false,
@@ -48,13 +50,13 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
 
       if (error) {
         if (error.code === "PGRST116") {
-          set({ profile: null, isLoading: false });
+          set({ profile: null, isLoading: false, hasFetched: true });
           return;
         }
         throw error;
       }
 
-      set({ profile: data, isLoading: false });
+      set({ profile: data, isLoading: false, hasFetched: true });
 
       // Also refresh pending count
       get().refreshPendingCount();
@@ -64,6 +66,7 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
         error:
           error instanceof Error ? error.message : "Failed to fetch profile",
         isLoading: false,
+        hasFetched: true,
       });
     }
   },
@@ -286,10 +289,61 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
     set({ pendingCount: count });
   },
 
+  syncPendingCheckIns: async () => {
+    const queue = await getQueue();
+    let synced = 0;
+    let failed = 0;
+
+    for (const pending of queue) {
+      try {
+        const { error } = await supabase.rpc("atomic_check_in", {
+          p_profile_id: pending.profileId,
+          p_checked_in_at: pending.checkedInAt,
+          p_next_deadline: pending.nextDeadline,
+          p_was_offline: true,
+          p_lat: pending.lat,
+          p_lng: pending.lng,
+        });
+
+        if (error) throw error;
+
+        await removeFromQueue(pending.id);
+        synced++;
+      } catch (error) {
+        console.error("Failed to sync pending check-in:", error);
+
+        // Check if this is a server error (has error code) - these won't succeed on retry
+        const isServerError =
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          typeof (error as { code: unknown }).code === "string";
+
+        if (isServerError) {
+          // Remove from queue - retrying won't help
+          console.warn("Removing non-retriable check-in from queue:", pending.id);
+          await removeFromQueue(pending.id);
+        }
+
+        failed++;
+      }
+    }
+
+    get().refreshPendingCount();
+
+    return { synced, failed };
+  },
+
+  refreshPendingCount: async () => {
+    const count = await getQueueCount();
+    set({ pendingCount: count });
+  },
+
   clearProfile: () => {
     set({
       profile: null,
       isLoading: false,
+      hasFetched: false,
       error: null,
       pendingCount: 0,
       lastCheckInWasOffline: false,

@@ -22,6 +22,7 @@ export default function CheckInScreen() {
   const {
     profile,
     isLoading,
+    hasFetched,
     pendingCount,
     fetchProfile,
     checkIn,
@@ -51,12 +52,13 @@ export default function CheckInScreen() {
     }
   }, [user?.id]);
 
-  // Redirect to profile-setup if no profile exists
+  // Redirect to profile-setup if no profile exists after loading
+  // But only if user is actually logged in and we've finished fetching
   useEffect(() => {
-    if (user && !isLoading && profile === null) {
+    if (user && hasFetched && profile === null) {
       router.replace("/(tabs)/profile-setup");
     }
-  }, [user, isLoading, profile]);
+  }, [user, hasFetched, profile]);
 
   // Auto-sync when coming online
   useEffect(() => {
@@ -154,7 +156,8 @@ export default function CheckInScreen() {
     setIsSyncing(false);
   };
 
-  if (isLoading && !profile) {
+  // Show loading state while fetching profile
+  if (!hasFetched || (isLoading && !profile)) {
     return (
       <SafeAreaView className="flex-1 bg-cream items-center justify-center">
         <ActivityIndicator size="large" color="#FF6B5B" />
