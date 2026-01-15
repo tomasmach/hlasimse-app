@@ -1,5 +1,5 @@
 // components/SuccessOverlay.tsx
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import { View, Text, Pressable, Animated } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 
@@ -16,6 +16,23 @@ export function SuccessOverlay({
 }: SuccessOverlayProps) {
   const scale = useRef(new Animated.Value(0)).current;
   const opacity = useRef(new Animated.Value(0)).current;
+
+  const handleDismiss = useCallback(() => {
+    Animated.parallel([
+      Animated.timing(opacity, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(scale, {
+        toValue: 0,
+        duration: 200,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      onDismiss();
+    });
+  }, [opacity, scale, onDismiss]);
 
   useEffect(() => {
     if (visible) {
@@ -45,23 +62,13 @@ export function SuccessOverlay({
 
       return () => clearTimeout(timer);
     }
-  }, [visible]);
-
-  const handleDismiss = () => {
-    Animated.timing(opacity, {
-      toValue: 0,
-      duration: 200,
-      useNativeDriver: true,
-    }).start(() => {
-      onDismiss();
-    });
-  };
+  }, [visible, handleDismiss]);
 
   if (!visible) return null;
 
   const formatInterval = (hours: number): string => {
     if (hours >= 24) {
-      const days = hours / 24;
+      const days = Math.floor(hours / 24);
       if (days === 1) return "1 den";
       if (days >= 2 && days <= 4) return `${days} dny`;
       return `${days} dnů`;
