@@ -35,7 +35,6 @@ export default function CheckInScreen() {
   const { isConnected } = useNetworkStatus();
 
   const [isCheckingIn, setIsCheckingIn] = useState(false);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showOfflineToast, setShowOfflineToast] = useState(false);
   const [showToast, setShowToast] = useState(false);
@@ -158,10 +157,7 @@ export default function CheckInScreen() {
   };
 
   const handleSync = async () => {
-    if (isSyncing) return;
-    setIsSyncing(true);
     await syncPendingCheckIns();
-    setIsSyncing(false);
   };
 
   // Show loading state while fetching profile
@@ -193,7 +189,7 @@ export default function CheckInScreen() {
 
   const getToastMessage = () => {
     if (showOfflineToast) {
-      return "Uloženo, odešleme až budete online";
+      return "Máme to! Pošleme hned, až bude signál.";
     }
     return "Hlášení úspěšně odesláno!";
   };
@@ -223,11 +219,7 @@ export default function CheckInScreen() {
           {permissionStatus === "denied" && (
             <LocationBanner onRequestPermission={requestPermission} />
           )}
-          <OfflineBanner
-            pendingCount={pendingCount}
-            onSync={handleSync}
-            isSyncing={isSyncing}
-          />
+          <OfflineBanner pendingCount={pendingCount} />
         </View>
 
         {/* Main content */}
