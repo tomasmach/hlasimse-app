@@ -91,6 +91,7 @@ Deno.serve(async (req: Request) => {
       .eq("user_id", userId);
     if (pushTokensError) {
       console.error("Error deleting push_tokens:", pushTokensError);
+      throw new Error("Failed to delete push tokens");
     }
 
     // 2. Alerts (via check_in_profile_id)
@@ -101,6 +102,7 @@ Deno.serve(async (req: Request) => {
         .in("check_in_profile_id", profileIds);
       if (alertsError) {
         console.error("Error deleting alerts:", alertsError);
+        throw new Error("Failed to delete alerts");
       }
     }
 
@@ -112,6 +114,7 @@ Deno.serve(async (req: Request) => {
         .in("check_in_profile_id", profileIds);
       if (checkInsError) {
         console.error("Error deleting check_ins:", checkInsError);
+        throw new Error("Failed to delete check-ins");
       }
     }
 
@@ -122,44 +125,52 @@ Deno.serve(async (req: Request) => {
       .or(`inviter_id.eq.${userId},invitee_id.eq.${userId}`);
     if (invitesError) {
       console.error("Error deleting guardian_invites:", invitesError);
+      throw new Error("Failed to delete guardian invites");
     }
 
-    // 5. Guardians (as user being watched or as guardian)
-    const { error: guardiansError1 } = await supabaseAdmin
-      .from("guardians")
-      .delete()
-      .eq("user_id", userId);
-    if (guardiansError1) {
-      console.error("Error deleting guardians (user_id):", guardiansError1);
+    // 5. Guardians watching this user's profiles (via check_in_profile_id)
+    if (profileIds.length > 0) {
+      const { error: guardiansProfileError } = await supabaseAdmin
+        .from("guardians")
+        .delete()
+        .in("check_in_profile_id", profileIds);
+      if (guardiansProfileError) {
+        console.error("Error deleting guardians (check_in_profile_id):", guardiansProfileError);
+        throw new Error("Failed to delete guardians by profile");
+      }
     }
 
-    const { error: guardiansError2 } = await supabaseAdmin
+    // 6. Guardians where this user is a guardian for others
+    const { error: guardiansError } = await supabaseAdmin
       .from("guardians")
       .delete()
       .eq("guardian_user_id", userId);
-    if (guardiansError2) {
-      console.error("Error deleting guardians (guardian_user_id):", guardiansError2);
+    if (guardiansError) {
+      console.error("Error deleting guardians (guardian_user_id):", guardiansError);
+      throw new Error("Failed to delete guardian relationships");
     }
 
-    // 6. Check-in profiles
+    // 7. Check-in profiles
     const { error: profilesError } = await supabaseAdmin
       .from("check_in_profiles")
       .delete()
       .eq("owner_id", userId);
     if (profilesError) {
       console.error("Error deleting check_in_profiles:", profilesError);
+      throw new Error("Failed to delete check-in profiles");
     }
 
-    // 7. Users table (extended profile)
+    // 8. Users table (extended profile)
     const { error: usersError } = await supabaseAdmin
       .from("users")
       .delete()
       .eq("id", userId);
     if (usersError) {
       console.error("Error deleting from users:", usersError);
+      throw new Error("Failed to delete user profile");
     }
 
-    // 8. Delete the auth user
+    // 9. Delete the auth user
     const { error: deleteError } = await supabaseAdmin.auth.admin.deleteUser(
       userId
     );

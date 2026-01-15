@@ -52,11 +52,16 @@ export default function DeleteAccountScreen() {
 
       if (deleteError) throw deleteError;
 
-      // Sign out
-      await signOut();
-
-      Alert.alert("Účet smazán", "Váš účet byl úspěšně smazán.");
-      router.replace("/login");
+      // Show alert first, then sign out on OK press
+      Alert.alert("Účet smazán", "Váš účet byl úspěšně smazán.", [
+        {
+          text: "OK",
+          onPress: async () => {
+            await signOut();
+            router.replace("/login");
+          },
+        },
+      ]);
     } catch (err: any) {
       setError(err.message || "Nepodařilo se smazat účet");
     } finally {
