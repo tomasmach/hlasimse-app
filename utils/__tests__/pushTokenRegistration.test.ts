@@ -7,19 +7,32 @@ describe('pushTokenRegistration', () => {
         currentUserId: 'user-1',
         previousUserId: null,
         expoPushToken: 'test-token',
+        previousToken: null,
       });
 
       expect(result).toBe(true);
     });
 
-    it('should return false when user ID has not changed', () => {
+    it('should return false when user ID and token have not changed', () => {
       const result = shouldRegisterToken({
         currentUserId: 'user-1',
         previousUserId: 'user-1',
         expoPushToken: 'test-token',
+        previousToken: 'test-token',
       });
 
       expect(result).toBe(false);
+    });
+
+    it('should return true when token changes for same user', () => {
+      const result = shouldRegisterToken({
+        currentUserId: 'user-1',
+        previousUserId: 'user-1',
+        expoPushToken: 'new-token',
+        previousToken: 'old-token',
+      });
+
+      expect(result).toBe(true);
     });
 
     it('should return false when no user', () => {
@@ -27,6 +40,7 @@ describe('pushTokenRegistration', () => {
         currentUserId: null,
         previousUserId: null,
         expoPushToken: 'test-token',
+        previousToken: null,
       });
 
       expect(result).toBe(false);
@@ -37,6 +51,7 @@ describe('pushTokenRegistration', () => {
         currentUserId: 'user-1',
         previousUserId: null,
         expoPushToken: null,
+        previousToken: null,
       });
 
       expect(result).toBe(false);
@@ -47,6 +62,7 @@ describe('pushTokenRegistration', () => {
         currentUserId: 'user-2',
         previousUserId: 'user-1',
         expoPushToken: 'test-token',
+        previousToken: 'test-token',
       });
 
       expect(result).toBe(true);
@@ -57,6 +73,7 @@ describe('pushTokenRegistration', () => {
         currentUserId: 'user-1',
         previousUserId: null,
         expoPushToken: 'test-token',
+        previousToken: null,
       });
 
       expect(result).toBe(true);
@@ -123,6 +140,20 @@ describe('pushTokenRegistration', () => {
       tracker.update({ userId: 'user-1', expoPushToken: null });
 
       expect(mockRegisterToken).not.toHaveBeenCalled();
+    });
+
+    it('should call registerToken when token changes for same user', () => {
+      const mockRegisterToken = jest.fn();
+      const tracker = createTokenRegistrationTracker(mockRegisterToken);
+
+      // Initial login
+      tracker.update({ userId: 'user-1', expoPushToken: 'token-1' });
+      expect(mockRegisterToken).toHaveBeenCalledTimes(1);
+
+      // Token changes (e.g., app reinstall)
+      tracker.update({ userId: 'user-1', expoPushToken: 'token-2' });
+      expect(mockRegisterToken).toHaveBeenCalledTimes(2);
+      expect(mockRegisterToken).toHaveBeenNthCalledWith(2, 'user-1');
     });
   });
 });
