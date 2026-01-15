@@ -169,11 +169,20 @@ Deno.serve(async (req: Request) => {
       // Send push notifications to guardians
       if (guardianIds.length > 0) {
         // Get push tokens for all guardians
-        const { data: pushTokens } = await supabase
+        const { data: pushTokens, error } = await supabase
           .from("push_tokens")
           .select("token")
           .in("user_id", guardianIds)
           .returns<PushToken[]>();
+
+        if (error) {
+          console.error(
+            `Failed to fetch push tokens for profile ${profile.id}:`,
+            error,
+            { guardianIds }
+          );
+          continue;
+        }
 
         if (pushTokens && pushTokens.length > 0) {
           const tokens = pushTokens.map((t) => t.token);
