@@ -313,7 +313,7 @@ export default function CheckInScreen() {
       <SuccessOverlay
         visible={showSuccessOverlay}
         onDismiss={() => setShowSuccessOverlay(false)}
-        intervalHours={profile?.check_in_interval_hours || 24}
+        intervalHours={profile?.interval_hours || 24}
       />
     </SafeAreaView>
   );

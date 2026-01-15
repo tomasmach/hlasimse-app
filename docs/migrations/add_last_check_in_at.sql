@@ -7,5 +7,5 @@ UPDATE check_in_profiles p
 SET last_check_in_at = (
   SELECT MAX(created_at)
   FROM check_ins
-  WHERE profile_id = p.id
+  WHERE check_in_profile_id = p.id
 );
