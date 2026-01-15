@@ -1,0 +1,90 @@
+import { create } from 'zustand';
+import Purchases, { CustomerInfo, PurchasesPackage } from 'react-native-purchases';
+import { Platform } from 'react-native';
+
+interface PremiumState {
+  isPremium: boolean;
+  isLoading: boolean;
+  packages: PurchasesPackage[];
+  customerInfo: CustomerInfo | null;
+
+  initialize: () => Promise<void>;
+  checkPremiumStatus: () => Promise<void>;
+  fetchPackages: () => Promise<void>;
+  purchasePackage: (pkg: PurchasesPackage) => Promise<boolean>;
+  restorePurchases: () => Promise<boolean>;
+}
+
+// API keys will be configured later - use placeholders for now
+const REVENUECAT_API_KEY_IOS = process.env.EXPO_PUBLIC_REVENUECAT_IOS_KEY || 'ios_placeholder';
+const REVENUECAT_API_KEY_ANDROID = process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY || 'android_placeholder';
+const PREMIUM_ENTITLEMENT_ID = 'premium';
+
+export const usePremiumStore = create<PremiumState>((set, get) => ({
+  isPremium: false,
+  isLoading: true,
+  packages: [],
+  customerInfo: null,
+
+  initialize: async () => {
+    try {
+      const apiKey = Platform.OS === 'ios'
+        ? REVENUECAT_API_KEY_IOS
+        : REVENUECAT_API_KEY_ANDROID;
+
+      await Purchases.configure({ apiKey });
+      await get().checkPremiumStatus();
+    } catch (error) {
+      console.error('Failed to initialize RevenueCat:', error);
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  checkPremiumStatus: async () => {
+    try {
+      const customerInfo = await Purchases.getCustomerInfo();
+      const isPremium = customerInfo.entitlements.active[PREMIUM_ENTITLEMENT_ID] !== undefined;
+      set({ isPremium, customerInfo });
+    } catch (error) {
+      console.error('Failed to check premium status:', error);
+    }
+  },
+
+  fetchPackages: async () => {
+    try {
+      const offerings = await Purchases.getOfferings();
+      if (offerings.current?.availablePackages) {
+        set({ packages: offerings.current.availablePackages });
+      }
+    } catch (error) {
+      console.error('Failed to fetch packages:', error);
+    }
+  },
+
+  purchasePackage: async (pkg: PurchasesPackage) => {
+    try {
+      const { customerInfo } = await Purchases.purchasePackage(pkg);
+      const isPremium = customerInfo.entitlements.active[PREMIUM_ENTITLEMENT_ID] !== undefined;
+      set({ isPremium, customerInfo });
+      return isPremium;
+    } catch (error: any) {
+      if (!error.userCancelled) {
+        console.error('Purchase failed:', error);
+      }
+      return false;
+    }
+  },
+
+  restorePurchases: async () => {
+    try {
+      const customerInfo = await Purchases.restorePurchases();
+      const isPremium = customerInfo.entitlements.active[PREMIUM_ENTITLEMENT_ID] !== undefined;
+      set({ isPremium, customerInfo });
+      return isPremium;
+    } catch (error) {
+      console.error('Restore failed:', error);
+      return false;
+    }
+  },
+}));
