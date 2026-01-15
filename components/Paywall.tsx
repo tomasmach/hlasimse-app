@@ -1,8 +1,15 @@
 import { View, Text, Pressable, Modal, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { usePremiumStore } from '../stores/premium';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, ComponentProps } from 'react';
 import { PurchasesPackage } from 'react-native-purchases';
+
+type IoniconsName = ComponentProps<typeof Ionicons>['name'];
+
+const colors = {
+  charcoal: '#2D2926',
+  success: '#4ADE80',
+} as const;
 
 interface PaywallProps {
   visible: boolean;
@@ -14,6 +21,7 @@ export function Paywall({ visible, onClose, onSuccess }: PaywallProps) {
   const { packages, fetchPackages, purchasePackage, restorePurchases } = usePremiumStore();
   const [selectedPackage, setSelectedPackage] = useState<PurchasesPackage | null>(null);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     if (visible && packages.length === 0) {
@@ -30,21 +38,35 @@ export function Paywall({ visible, onClose, onSuccess }: PaywallProps) {
   const handlePurchase = async () => {
     if (!selectedPackage) return;
     setIsLoading(true);
-    const success = await purchasePackage(selectedPackage);
-    setIsLoading(false);
-    if (success) {
-      onSuccess?.();
-      onClose();
+    setError(null);
+    try {
+      const success = await purchasePackage(selectedPackage);
+      if (success) {
+        onSuccess?.();
+        onClose();
+      }
+    } catch (e) {
+      setError('Nákup se nezdařil. Zkuste to prosím znovu.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
   const handleRestore = async () => {
     setIsLoading(true);
-    const success = await restorePurchases();
-    setIsLoading(false);
-    if (success) {
-      onSuccess?.();
-      onClose();
+    setError(null);
+    try {
+      const success = await restorePurchases();
+      if (success) {
+        onSuccess?.();
+        onClose();
+      } else {
+        setError('Nebyl nalezen žádný předchozí nákup.');
+      }
+    } catch (e) {
+      setError('Obnovení se nezdařilo. Zkuste to prosím znovu.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -56,7 +78,7 @@ export function Paywall({ visible, onClose, onSuccess }: PaywallProps) {
       <View className="flex-1 bg-cream p-6">
         {/* Close button */}
         <Pressable onPress={onClose} className="self-end p-2">
-          <Ionicons name="close" size={28} color="#2D2926" />
+          <Ionicons name="close" size={28} color={colors.charcoal} />
         </Pressable>
 
         {/* Header */}
@@ -94,6 +116,13 @@ export function Paywall({ visible, onClose, onSuccess }: PaywallProps) {
           )}
         </View>
 
+        {/* Error message */}
+        {error && (
+          <View className="bg-red-100 rounded-xl p-3 mb-4">
+            <Text className="text-red-600 text-center text-sm">{error}</Text>
+          </View>
+        )}
+
         {/* CTA */}
         <Pressable
           onPress={handlePurchase}
@@ -118,10 +147,10 @@ export function Paywall({ visible, onClose, onSuccess }: PaywallProps) {
   );
 }
 
-function BenefitRow({ icon, text }: { icon: string; text: string }) {
+function BenefitRow({ icon, text }: { icon: IoniconsName; text: string }) {
   return (
     <View className="flex-row items-center mb-3">
-      <Ionicons name={icon as any} size={22} color="#4ADE80" />
+      <Ionicons name={icon} size={22} color={colors.success} />
       <Text className="ml-3 text-charcoal">{text}</Text>
     </View>
   );
