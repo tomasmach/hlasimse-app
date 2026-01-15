@@ -21,6 +21,9 @@ export interface UseNotificationsResult {
   notification: Notifications.Notification | null;
   requestPermissions: () => Promise<boolean>;
   registerToken: (userId: string) => Promise<void>;
+  setNotificationResponseHandler: (
+    handler: (data: Record<string, unknown>) => void
+  ) => void;
 }
 
 export function useNotifications(): UseNotificationsResult {
@@ -31,6 +34,7 @@ export function useNotifications(): UseNotificationsResult {
     useState<Notifications.Notification | null>(null);
   const notificationListener = useRef<Notifications.EventSubscription | null>(null);
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
+  const responseHandlerRef = useRef<((data: Record<string, unknown>) => void) | null>(null);
 
   useEffect(() => {
     // Check current permission status on mount
@@ -49,8 +53,9 @@ export function useNotifications(): UseNotificationsResult {
     responseListener.current = Notifications.addNotificationResponseReceivedListener(
       (response) => {
         const data = response.notification.request.content.data;
-        // Handle deep linking based on notification data
-        console.log("Notification tapped:", data);
+        if (responseHandlerRef.current) {
+          responseHandlerRef.current(data as Record<string, unknown>);
+        }
       }
     );
 
@@ -130,11 +135,18 @@ export function useNotifications(): UseNotificationsResult {
     }
   };
 
+  const setNotificationResponseHandler = (
+    handler: (data: Record<string, unknown>) => void
+  ) => {
+    responseHandlerRef.current = handler;
+  };
+
   return {
     expoPushToken,
     permissionStatus,
     notification,
     requestPermissions,
     registerToken,
+    setNotificationResponseHandler,
   };
 }

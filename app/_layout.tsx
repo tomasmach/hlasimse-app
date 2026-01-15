@@ -55,7 +55,8 @@ export default function RootLayout() {
     isLoading: isOnboardingLoading,
     checkOnboardingStatus,
   } = useOnboardingStore();
-  const { requestPermissions, registerToken, expoPushToken } = useNotifications();
+  const { requestPermissions, registerToken, expoPushToken, setNotificationResponseHandler } = useNotifications();
+  const router = useRouter();
   const hasRegisteredToken = useRef(false);
 
   // Check onboarding status on mount only
@@ -77,6 +78,16 @@ export default function RootLayout() {
       registerToken(user.id);
     }
   }, [user, expoPushToken]);
+
+  // Handle notification tap - navigate to guardians screen
+  useEffect(() => {
+    setNotificationResponseHandler((data) => {
+      if (data.type === "alert") {
+        // Navigate to guardians tab where watched profiles are shown
+        router.push("/(tabs)/guardians");
+      }
+    });
+  }, [router]);
 
   useProtectedRoute(user, isAuthLoading, hasSeenOnboarding, isOnboardingLoading);
 
