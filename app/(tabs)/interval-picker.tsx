@@ -20,12 +20,14 @@ export default function IntervalPickerScreen() {
   const [selectedHours, setSelectedHours] = useState(
     profile?.interval_hours || 24
   );
-  const [isLoading, setIsLoading] = useState(false);
+  const [loadingHours, setLoadingHours] = useState<number | null>(null);
+  const [error, setError] = useState('');
 
   const handleSelect = async (hours: number) => {
     if (hours === selectedHours || !profile?.id || !user?.id) return;
 
-    setIsLoading(true);
+    setError('');
+    setLoadingHours(hours);
     try {
       const { error } = await supabase
         .from("check_in_profiles")
@@ -38,8 +40,9 @@ export default function IntervalPickerScreen() {
       await fetchProfile(user.id);
     } catch (err) {
       console.error("Failed to update interval:", err);
+      setError("Nepodařilo se uložit. Zkuste to znovu.");
     } finally {
-      setIsLoading(false);
+      setLoadingHours(null);
     }
   };
 
@@ -67,7 +70,7 @@ export default function IntervalPickerScreen() {
             <TouchableOpacity
               key={option.hours}
               onPress={() => handleSelect(option.hours)}
-              disabled={isLoading}
+              disabled={loadingHours !== null}
               activeOpacity={0.7}
               className={`bg-white rounded-2xl p-4 flex-row items-center border-2 ${
                 selectedHours === option.hours
@@ -87,12 +90,16 @@ export default function IntervalPickerScreen() {
                 )}
               </View>
               <Text className="text-charcoal text-lg">{option.label}</Text>
-              {isLoading && selectedHours === option.hours && (
+              {loadingHours === option.hours && (
                 <ActivityIndicator className="ml-auto" color="#FF6B5B" />
               )}
             </TouchableOpacity>
           ))}
         </View>
+
+        {error && (
+          <Text className="text-accent mt-4">{error}</Text>
+        )}
       </View>
     </SafeAreaView>
   );
