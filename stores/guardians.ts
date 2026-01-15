@@ -74,7 +74,18 @@ export const useGuardiansStore = create<GuardiansState>((set, get) => ({
 
       if (error) throw error;
 
-      set({ pendingInvites: data || [] });
+      // Merge fetched invites with current ones, using id as unique key
+      // Fetched data is source of truth; keep any realtime-added invites not in fetch
+      set((state) => {
+        const fetched = data || [];
+        const fetchedIds = new Set(fetched.map((invite) => invite.id));
+        const merged = [
+          ...fetched,
+          ...state.pendingInvites.filter((invite) => !fetchedIds.has(invite.id)),
+        ];
+
+        return { pendingInvites: merged };
+      });
     } catch (error) {
       console.error("Error fetching pending invites:", error);
     }
@@ -275,9 +286,16 @@ export const useGuardiansStore = create<GuardiansState>((set, get) => ({
             .single();
 
           if (!error && data) {
-            set((state) => ({
-              pendingInvites: [...state.pendingInvites, data],
-            }));
+            set((state) => {
+              // Deduplicate by invite id - only append if not already present
+              const exists = state.pendingInvites.some((invite) => invite.id === data.id);
+              if (exists) {
+                return state;
+              }
+              return {
+                pendingInvites: [...state.pendingInvites, data],
+              };
+            });
           }
         }
       )
