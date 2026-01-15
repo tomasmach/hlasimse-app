@@ -62,6 +62,11 @@ async function sendPushNotifications(
       body: JSON.stringify(messages),
     });
 
+    if (!response.ok) {
+      console.error(`Push API returned ${response.status}: ${response.statusText}`);
+      return;
+    }
+
     const result = await response.json();
     console.log("Push notification result:", JSON.stringify(result));
   } catch (error) {
