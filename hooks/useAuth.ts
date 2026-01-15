@@ -12,12 +12,17 @@ export function useAuth() {
     try {
       // Get current user before signing out
       const {
-        data: { user },
+        data: { user: currentUser },
       } = await supabase.auth.getUser();
 
-      if (user) {
+      if (currentUser) {
         // Remove all push tokens for this user
-        await supabase.from("push_tokens").delete().eq("user_id", user.id);
+        try {
+          await supabase.from("push_tokens").delete().eq("user_id", currentUser.id);
+        } catch (tokenError) {
+          console.error("Error removing push tokens:", tokenError);
+          // Don't throw - allow sign out to continue
+        }
       }
 
       const { error } = await supabase.auth.signOut();
