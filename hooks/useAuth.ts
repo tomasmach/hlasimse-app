@@ -8,6 +8,26 @@ export function useAuth() {
     useAuthStore();
   const { clearProfile } = useCheckInStore();
 
+  const signOut = async () => {
+    try {
+      // Get current user before signing out
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (user) {
+        // Remove all push tokens for this user
+        await supabase.from("push_tokens").delete().eq("user_id", user.id);
+      }
+
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+    } catch (error) {
+      console.error("Error signing out:", error);
+      throw error;
+    }
+  };
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -30,5 +50,5 @@ export function useAuth() {
     return () => subscription.unsubscribe();
   }, []);
 
-  return { session, user, isLoading };
+  return { session, user, isLoading, signOut };
 }
