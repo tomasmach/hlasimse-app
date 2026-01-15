@@ -1,5 +1,7 @@
 # Slice 6: Notifications Implementation Plan
 
+> **STATUS:** ✅ COMPLETED (2026-01-15)
+>
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Implement push notifications for guardians when a check-in profile misses its deadline.
@@ -756,4 +758,63 @@ After completing all tasks:
 - ✅ RLS policies for push_tokens table
 
 **Total tasks:** 10
-**Key integration point:** `supabase/functions/check-deadlines/index.ts` line 115
+**Key integration point:** `supabase/functions/check-deadlines/index.ts` line 172
+
+---
+
+## Implementation Details
+
+### Git Commits (18 commits total)
+1. `feat: add expo-notifications package and configuration`
+2. `feat: add useNotifications hook for push notification handling`
+3. `feat: add unique constraint for push_tokens upsert`
+4. `feat: initialize notifications and register push token on app start`
+5. `feat: send push notifications to guardians when alert is created`
+6. `feat: add deep linking from notification tap to guardians screen`
+7. `feat: remove push tokens on user logout`
+8. `feat: add RLS policies for push_tokens table`
+9. `feat: add CREATE TABLE migration for push_tokens`
+10. `fix: reset push token registration on user logout`
+11. `docs: add slice 6 notifications plan`
+12. `fix: make push token deletion best-effort in signOut`
+13. `fix: add error handling for getExpoPushTokenAsync`
+14. `fix: add HTTP status check before JSON parsing in push API`
+15. `fix: remove duplicate index from push_tokens migration`
+16. `fix: detect token changes for same user in registration tracker`
+17. `refactor: remove redundant push_tokens deletion in dev reset`
+18. `fix: add error handling for push_tokens query in check-deadlines`
+
+### Key Files Created
+- `hooks/useNotifications.ts` - Hook for push notification handling
+- `docs/migrations/push_tokens_unique_constraint.sql` - Unique constraint
+- `docs/migrations/push_tokens_rls.sql` - RLS policies
+- `docs/migrations/push_tokens_create_table.sql` - Table creation
+
+### Key Files Modified
+- `app/_layout.tsx` - Notification initialization and deep linking
+- `app/(tabs)/guardians.tsx` - Deep link target
+- `supabase/functions/check-deadlines/index.ts` - Push notification sending
+- `hooks/useAuth.ts` - Token cleanup on logout
+- `app.json` - Notification plugin configuration
+- `package.json` - expo-notifications dependencies
+
+### Bug Fixes & Improvements
+- Error handling for `getExpoPushTokenAsync()` failures
+- HTTP status check before JSON parsing in push API
+- Duplicate index removed from migration
+- Token change detection for same user re-registrations
+- Error handling for push_tokens query with context logging
+- Best-effort token deletion (doesn't fail logout if DB error)
+
+### Testing Notes
+- Tested on physical devices (iOS/Android)
+- Push notifications working correctly
+- Deep linking to guardians screen verified
+- Token registration and cleanup verified
+- Offline/online token sync working
+
+### Next Steps
+- Monitor push notification delivery rates
+- Add analytics for notification open rates
+- Consider badge count management
+- Test notification behavior during app updates
