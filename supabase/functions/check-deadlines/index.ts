@@ -20,6 +20,60 @@ interface Guardian {
   user_id: string;
 }
 
+interface PushToken {
+  token: string;
+  platform: string;
+}
+
+interface ExpoPushMessage {
+  to: string;
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+  sound?: "default" | null;
+  badge?: number;
+  channelId?: string;
+}
+
+async function sendPushNotifications(
+  tokens: string[],
+  title: string,
+  body: string,
+  data: Record<string, unknown>
+): Promise<void> {
+  if (tokens.length === 0) return;
+
+  const messages: ExpoPushMessage[] = tokens.map((token) => ({
+    to: token,
+    title,
+    body,
+    data,
+    sound: "default",
+    channelId: "alerts",
+  }));
+
+  try {
+    const response = await fetch("https://exp.host/--/api/v2/push/send", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(messages),
+    });
+
+    if (!response.ok) {
+      console.error(`Push API returned ${response.status}: ${response.statusText}`);
+      return;
+    }
+
+    const result = await response.json();
+    console.log("Push notification result:", JSON.stringify(result));
+  } catch (error) {
+    console.error("Failed to send push notifications:", error);
+  }
+}
+
 Deno.serve(async (req: Request) => {
   // Handle CORS preflight
   if (req.method === "OPTIONS") {
@@ -112,10 +166,58 @@ Deno.serve(async (req: Request) => {
 
       alertsCreated++;
 
-      // TODO: In Slice 6, send push notifications to guardians here
-      console.log(
-        `Alert created for profile ${profile.name} (${profile.id}), guardians: ${guardianIds.join(", ")}`
-      );
+      // Send push notifications to guardians
+      if (guardianIds.length > 0) {
+        // Get push tokens for all guardians
+        const { data: pushTokens, error } = await supabase
+          .from("push_tokens")
+          .select("token")
+          .in("user_id", guardianIds)
+          .returns<PushToken[]>();
+
+        if (error) {
+          console.error(
+            `Failed to fetch push tokens for profile ${profile.id}:`,
+            error,
+            { guardianIds }
+          );
+          continue;
+        }
+
+        if (pushTokens && pushTokens.length > 0) {
+          const tokens = pushTokens.map((t) => t.token);
+          const deadlineDate = new Date(profile.next_deadline);
+          const now = new Date();
+          const minutesOverdue = Math.round(
+            (now.getTime() - deadlineDate.getTime()) / 60000
+          );
+
+          let overdueText = "";
+          if (minutesOverdue < 60) {
+            overdueText = `${minutesOverdue} min`;
+          } else {
+            const hours = Math.floor(minutesOverdue / 60);
+            overdueText = `${hours} hod`;
+          }
+
+          await sendPushNotifications(
+            tokens,
+            `⚠️ ${profile.name} se neohlásil/a!`,
+            `Po termínu: ${overdueText}`,
+            {
+              type: "alert",
+              profileId: profile.id,
+              ownerId: profile.owner_id,
+              lat: profile.last_known_lat,
+              lng: profile.last_known_lng,
+            }
+          );
+
+          console.log(
+            `Push notifications sent for profile ${profile.name} to ${tokens.length} devices`
+          );
+        }
+      }
     }
 
     return new Response(

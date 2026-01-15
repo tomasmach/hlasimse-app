@@ -6,7 +6,7 @@ import { useOnboardingStore } from "@/stores/onboarding";
 import { useCheckInStore } from "@/stores/checkin";
 
 export default function SettingsScreen() {
-  const { user } = useAuth();
+  const { user, signOut } = useAuth();
   const { resetOnboarding } = useOnboardingStore();
   const { clearProfile } = useCheckInStore();
 
@@ -17,7 +17,7 @@ export default function SettingsScreen() {
         text: "Odhlásit",
         style: "destructive",
         onPress: async () => {
-          await supabase.auth.signOut();
+          await signOut();
         },
       },
     ]);
@@ -34,7 +34,7 @@ export default function SettingsScreen() {
           style: "destructive",
           onPress: async () => {
             await resetOnboarding();
-            await supabase.auth.signOut();
+            await signOut();
           },
         },
       ]
@@ -90,13 +90,7 @@ export default function SettingsScreen() {
                 .delete()
                 .eq("guardian_user_id", user.id);
 
-              // 4. Push tokens
-              await supabase
-                .from("push_tokens")
-                .delete()
-                .eq("user_id", user.id);
-
-              // 5. Check-in profiles
+              // 4. Check-in profiles
               await supabase
                 .from("check_in_profiles")
                 .delete()
@@ -114,7 +108,7 @@ export default function SettingsScreen() {
               }
 
               // Sign out (this will trigger navigation to onboarding)
-              await supabase.auth.signOut();
+              await signOut();
             } catch (error) {
               console.error("Error during dev reset:", error);
               Alert.alert(

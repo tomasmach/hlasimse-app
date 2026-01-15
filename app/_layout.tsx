@@ -1,10 +1,12 @@
 import "../global.css";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useMemo } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { View, ActivityIndicator } from "react-native";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnboardingStore } from "@/stores/onboarding";
+import { useNotifications } from "@/hooks/useNotifications";
+import { createTokenRegistrationTracker } from "@/utils/pushTokenRegistration";
 
 function useProtectedRoute(
   user: any,
@@ -54,11 +56,45 @@ export default function RootLayout() {
     isLoading: isOnboardingLoading,
     checkOnboardingStatus,
   } = useOnboardingStore();
+  const { requestPermissions, registerToken, expoPushToken, setNotificationResponseHandler } = useNotifications();
+  const router = useRouter();
+
+  // Create token registration tracker that persists across re-renders
+  const tokenTracker = useMemo(
+    () => createTokenRegistrationTracker(registerToken),
+    [registerToken]
+  );
 
   // Check onboarding status on mount only
   useEffect(() => {
     checkOnboardingStatus();
   }, []);
+
+  // Request notification permissions when user is logged in
+  useEffect(() => {
+    if (user && !isAuthLoading) {
+      requestPermissions();
+    }
+  }, [user, isAuthLoading]);
+
+  // Register push token when available and user is logged in
+  // The tracker automatically handles logout/login cycles
+  useEffect(() => {
+    tokenTracker.update({
+      userId: user?.id ?? null,
+      expoPushToken,
+    });
+  }, [user, expoPushToken, tokenTracker]);
+
+  // Handle notification tap - navigate to guardians screen
+  useEffect(() => {
+    setNotificationResponseHandler((data) => {
+      if (data.type === "alert") {
+        // Navigate to guardians tab where watched profiles are shown
+        router.push("/(tabs)/guardians");
+      }
+    });
+  }, [router]);
 
   useProtectedRoute(user, isAuthLoading, hasSeenOnboarding, isOnboardingLoading);
 
