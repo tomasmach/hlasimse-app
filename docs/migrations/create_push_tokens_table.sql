@@ -8,6 +8,3 @@ CREATE TABLE IF NOT EXISTS push_tokens (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
-
--- Add index for faster lookups by user_id (will be added again in unique constraint migration, but safe to have early)
-CREATE INDEX IF NOT EXISTS idx_push_tokens_user_id_temp ON push_tokens(user_id);
