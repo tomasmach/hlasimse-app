@@ -23,12 +23,12 @@ export default function EditNameScreen() {
 
   const handleSave = async () => {
     if (!name.trim()) {
-      setError("Jmeno je povinne");
+      setError("Jméno je povinné");
       return;
     }
 
     if (!profile?.id || !user?.id) {
-      setError("Nepodarilo se nacist profil");
+      setError("Nepodařilo se načíst profil");
       return;
     }
 
@@ -46,7 +46,7 @@ export default function EditNameScreen() {
       await fetchProfile(user.id);
       router.back();
     } catch (err: any) {
-      setError(err.message || "Nepodarilo se ulozit");
+      setError(err.message || "Nepodařilo se uložit");
     } finally {
       setIsLoading(false);
     }
@@ -65,7 +65,7 @@ export default function EditNameScreen() {
             className="p-2"
             activeOpacity={0.7}
           >
-            <Text className="text-coral text-lg font-medium">Zpet</Text>
+            <Text className="text-coral text-lg font-medium">← Zpět</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSave}
@@ -76,7 +76,7 @@ export default function EditNameScreen() {
             {isLoading ? (
               <ActivityIndicator color="#FF6B5B" />
             ) : (
-              <Text className="text-coral text-lg font-semibold">Ulozit</Text>
+              <Text className="text-coral text-lg font-semibold">Uložit</Text>
             )}
           </TouchableOpacity>
         </View>
@@ -84,7 +84,7 @@ export default function EditNameScreen() {
         {/* Form */}
         <View className="px-6 pt-6">
           <Text className="text-lg font-semibold text-charcoal mb-2">
-            Vase jmeno
+            Vaše jméno
           </Text>
           <TextInput
             value={name}
@@ -92,7 +92,7 @@ export default function EditNameScreen() {
               setName(text);
               if (error) setError("");
             }}
-            placeholder="Zadejte jmeno"
+            placeholder="Zadejte jméno"
             placeholderTextColor="#8B7F7A"
             className="bg-white rounded-2xl px-4 py-4 text-charcoal text-lg border border-sand"
             autoFocus
@@ -101,7 +101,7 @@ export default function EditNameScreen() {
             editable={!isLoading}
           />
           {error && <Text className="text-coral mt-2">{error}</Text>}
-          <Text className="text-muted mt-4">Toto jmeno uvidi vasi strazci.</Text>
+          <Text className="text-muted mt-4">Toto jméno uvidí vaši strážci.</Text>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
