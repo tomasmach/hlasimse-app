@@ -90,13 +90,7 @@ export default function SettingsScreen() {
                 .delete()
                 .eq("guardian_user_id", user.id);
 
-              // 4. Push tokens
-              await supabase
-                .from("push_tokens")
-                .delete()
-                .eq("user_id", user.id);
-
-              // 5. Check-in profiles
+              // 4. Check-in profiles
               await supabase
                 .from("check_in_profiles")
                 .delete()
