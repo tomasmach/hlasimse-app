@@ -1,11 +1,12 @@
 import "../global.css";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useMemo } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { View, ActivityIndicator } from "react-native";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { useNotifications } from "@/hooks/useNotifications";
+import { createTokenRegistrationTracker } from "@/utils/pushTokenRegistration";
 
 function useProtectedRoute(
   user: any,
@@ -57,7 +58,12 @@ export default function RootLayout() {
   } = useOnboardingStore();
   const { requestPermissions, registerToken, expoPushToken, setNotificationResponseHandler } = useNotifications();
   const router = useRouter();
-  const hasRegisteredToken = useRef(false);
+
+  // Create token registration tracker that persists across re-renders
+  const tokenTracker = useMemo(
+    () => createTokenRegistrationTracker(registerToken),
+    [registerToken]
+  );
 
   // Check onboarding status on mount only
   useEffect(() => {
@@ -72,12 +78,13 @@ export default function RootLayout() {
   }, [user, isAuthLoading]);
 
   // Register push token when available and user is logged in
+  // The tracker automatically handles logout/login cycles
   useEffect(() => {
-    if (user && expoPushToken && !hasRegisteredToken.current) {
-      hasRegisteredToken.current = true;
-      registerToken(user.id);
-    }
-  }, [user, expoPushToken]);
+    tokenTracker.update({
+      userId: user?.id ?? null,
+      expoPushToken,
+    });
+  }, [user, expoPushToken, tokenTracker]);
 
   // Handle notification tap - navigate to guardians screen
   useEffect(() => {
