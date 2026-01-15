@@ -5,6 +5,7 @@ import { StatusBar } from "expo-status-bar";
 import { View, ActivityIndicator } from "react-native";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnboardingStore } from "@/stores/onboarding";
+import { useNotifications } from "@/hooks/useNotifications";
 
 function useProtectedRoute(
   user: any,
@@ -54,11 +55,28 @@ export default function RootLayout() {
     isLoading: isOnboardingLoading,
     checkOnboardingStatus,
   } = useOnboardingStore();
+  const { requestPermissions, registerToken, expoPushToken } = useNotifications();
+  const hasRegisteredToken = useRef(false);
 
   // Check onboarding status on mount only
   useEffect(() => {
     checkOnboardingStatus();
   }, []);
+
+  // Request notification permissions when user is logged in
+  useEffect(() => {
+    if (user && !isAuthLoading) {
+      requestPermissions();
+    }
+  }, [user, isAuthLoading]);
+
+  // Register push token when available and user is logged in
+  useEffect(() => {
+    if (user && expoPushToken && !hasRegisteredToken.current) {
+      hasRegisteredToken.current = true;
+      registerToken(user.id);
+    }
+  }, [user, expoPushToken]);
 
   useProtectedRoute(user, isAuthLoading, hasSeenOnboarding, isOnboardingLoading);
 
