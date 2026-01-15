@@ -15,13 +15,14 @@ export function WatchedProfileCard({ profile }: WatchedProfileCardProps) {
   const safeInitial = profile.name.length > 0 ? profile.name[0].toUpperCase() : "?";
 
   // Calculate time remaining for color coding
-  const deadline = profile.next_deadline ? new Date(profile.next_deadline) : null;
-  const now = new Date();
-  const timeRemaining = deadline ? deadline.getTime() - now.getTime() : 0;
+  const parsedDeadline = profile.next_deadline ? new Date(profile.next_deadline) : null;
+  const deadline = parsedDeadline && !isNaN(parsedDeadline.getTime()) ? parsedDeadline : null;
+  const now = Date.now();
+  const timeRemaining = deadline ? deadline.getTime() - now : 0;
   const hoursRemaining = timeRemaining / (1000 * 60 * 60);
 
-  const isOverdue = hasAlert || timeRemaining < 0;
-  const isApproaching = !isOverdue && hoursRemaining < 1;
+  const isOverdue = hasAlert || (deadline !== null && timeRemaining < 0);
+  const isApproaching = !isOverdue && deadline !== null && hoursRemaining < 1 && hoursRemaining >= 0;
 
   // Border colors based on status
   const borderColor = isOverdue
@@ -61,6 +62,9 @@ export function WatchedProfileCard({ profile }: WatchedProfileCardProps) {
       return "Zatím bez hlášení";
     }
     const lastCheckIn = new Date(profile.last_check_in_at);
+    if (isNaN(lastCheckIn.getTime())) {
+      return "Zatím bez hlášení";
+    }
     const distance = formatDistanceToNow(lastCheckIn, {
       locale: cs,
       addSuffix: true
