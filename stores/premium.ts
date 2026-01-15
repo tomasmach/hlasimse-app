@@ -1,10 +1,11 @@
 import { create } from 'zustand';
-import Purchases, { CustomerInfo, PurchasesPackage } from 'react-native-purchases';
+import Purchases, { CustomerInfo, PurchasesPackage, PurchasesError } from 'react-native-purchases';
 import { Platform } from 'react-native';
 
 interface PremiumState {
   isPremium: boolean;
   isLoading: boolean;
+  initError: string | null;
   packages: PurchasesPackage[];
   customerInfo: CustomerInfo | null;
 
@@ -23,11 +24,13 @@ const PREMIUM_ENTITLEMENT_ID = 'premium';
 export const usePremiumStore = create<PremiumState>((set, get) => ({
   isPremium: false,
   isLoading: true,
+  initError: null,
   packages: [],
   customerInfo: null,
 
   initialize: async () => {
     try {
+      set({ initError: null });
       const apiKey = Platform.OS === 'ios'
         ? REVENUECAT_API_KEY_IOS
         : REVENUECAT_API_KEY_ANDROID;
@@ -35,7 +38,9 @@ export const usePremiumStore = create<PremiumState>((set, get) => ({
       await Purchases.configure({ apiKey });
       await get().checkPremiumStatus();
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error';
       console.error('Failed to initialize RevenueCat:', error);
+      set({ initError: errorMessage });
     } finally {
       set({ isLoading: false });
     }
@@ -68,8 +73,9 @@ export const usePremiumStore = create<PremiumState>((set, get) => ({
       const isPremium = customerInfo.entitlements.active[PREMIUM_ENTITLEMENT_ID] !== undefined;
       set({ isPremium, customerInfo });
       return isPremium;
-    } catch (error: any) {
-      if (!error.userCancelled) {
+    } catch (error) {
+      const purchaseError = error as PurchasesError;
+      if (!purchaseError.userCancelled) {
         console.error('Purchase failed:', error);
       }
       return false;
