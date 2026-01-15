@@ -37,6 +37,7 @@ export default function CheckInScreen() {
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showOfflineToast, setShowOfflineToast] = useState(false);
+  const [showErrorToast, setShowErrorToast] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
 
@@ -101,9 +102,10 @@ export default function CheckInScreen() {
     }).start();
   };
 
-  const showToastMessage = (isOffline: boolean) => {
+  const showToastMessage = (type: "offline" | "error") => {
     setShowToast(true);
-    setShowOfflineToast(isOffline);
+    setShowOfflineToast(type === "offline");
+    setShowErrorToast(type === "error");
 
     if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
     if (hideToastTimeoutRef.current) clearTimeout(hideToastTimeoutRef.current);
@@ -128,6 +130,7 @@ export default function CheckInScreen() {
       toastAnimRef.current.start(() => {
         setShowToast(false);
         setShowOfflineToast(false);
+        setShowErrorToast(false);
       });
     }, 3000);
   };
@@ -146,11 +149,14 @@ export default function CheckInScreen() {
       setShowSuccess(true);
       if (result.offline) {
         // Show toast for offline check-ins
-        showToastMessage(true);
+        showToastMessage("offline");
       } else {
         // Show full-screen success overlay for online check-ins
         setShowSuccessOverlay(true);
       }
+    } else {
+      // Show error toast for failed check-ins
+      showToastMessage("error");
     }
 
     setIsCheckingIn(false);
@@ -188,6 +194,9 @@ export default function CheckInScreen() {
   };
 
   const getToastMessage = () => {
+    if (showErrorToast) {
+      return "Nepodařilo se odeslat. Zkuste to znovu.";
+    }
     if (showOfflineToast) {
       return "Máme to! Pošleme hned, až bude signál.";
     }
@@ -195,6 +204,9 @@ export default function CheckInScreen() {
   };
 
   const getToastStyle = () => {
+    if (showErrorToast) {
+      return "bg-coral/20 border-coral";
+    }
     if (showOfflineToast) {
       return "bg-sand border-muted/30";
     }
@@ -202,6 +214,9 @@ export default function CheckInScreen() {
   };
 
   const getToastTextStyle = () => {
+    if (showErrorToast) {
+      return "text-coral";
+    }
     if (showOfflineToast) {
       return "text-charcoal";
     }
