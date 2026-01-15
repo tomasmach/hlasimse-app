@@ -91,10 +91,24 @@ export function useNotifications(): UseNotificationsResult {
 
     // Get the push token
     const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-    const tokenData = await Notifications.getExpoPushTokenAsync({
-      projectId,
-    });
-    setExpoPushToken(tokenData.data);
+    if (!projectId) {
+      console.warn("Missing EAS projectId in app config");
+      return false;
+    }
+
+    try {
+      const tokenData = await Notifications.getExpoPushTokenAsync({
+        projectId,
+      });
+      if (!tokenData?.data) {
+        console.warn("Failed to retrieve push token data");
+        return false;
+      }
+      setExpoPushToken(tokenData.data);
+    } catch (error) {
+      console.error("Failed to get push token:", error);
+      return false;
+    }
 
     // Configure Android channel
     if (Platform.OS === "android") {
