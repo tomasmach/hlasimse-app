@@ -5,7 +5,8 @@ import { StatusBar } from "expo-status-bar";
 import { View, ActivityIndicator } from "react-native";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnboardingStore } from "@/stores/onboarding";
-import { usePremiumStore } from "@/stores/premium";
+// RevenueCat temporarily disabled
+// import { usePremiumStore } from "@/stores/premium";
 import { useNotifications } from "@/hooks/useNotifications";
 import { createTokenRegistrationTracker } from "@/utils/pushTokenRegistration";
 
@@ -58,7 +59,8 @@ export default function RootLayout() {
     checkOnboardingStatus,
   } = useOnboardingStore();
   const { requestPermissions, registerToken, expoPushToken, setNotificationResponseHandler } = useNotifications();
-  const { initialize: initializePremium } = usePremiumStore();
+  // RevenueCat temporarily disabled
+  // const { initialize: initializePremium } = usePremiumStore();
   const router = useRouter();
 
   // Create token registration tracker that persists across re-renders
@@ -72,10 +74,10 @@ export default function RootLayout() {
     checkOnboardingStatus();
   }, []);
 
-  // Initialize RevenueCat on app start
-  useEffect(() => {
-    initializePremium();
-  }, []);
+  // RevenueCat temporarily disabled
+  // useEffect(() => {
+  //   initializePremium();
+  // }, []);
 
   // Request notification permissions when user is logged in
   useEffect(() => {

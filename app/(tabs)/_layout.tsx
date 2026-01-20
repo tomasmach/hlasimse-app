@@ -55,6 +55,27 @@ export default function TabLayout() {
           headerShown: false,
         }}
       />
+      <Tabs.Screen
+        name="edit-name"
+        options={{
+          title: "Upravit jméno",
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="delete-account"
+        options={{
+          title: "Smazat účet",
+          href: null,
+        }}
+      />
+      <Tabs.Screen
+        name="interval-picker"
+        options={{
+          title: "Nastavit interval",
+          href: null,
+        }}
+      />
     </Tabs>
   );
 }

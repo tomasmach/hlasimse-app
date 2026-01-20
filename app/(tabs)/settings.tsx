@@ -1,4 +1,4 @@
-import { useState } from "react";
+// useState removed - was only used for paywallVisible (RevenueCat disabled)
 import { View, Text, TouchableOpacity, Alert, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -7,8 +7,9 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { useCheckInStore } from "@/stores/checkin";
-import { usePremiumStore } from "@/stores/premium";
-import { Paywall } from "@/components/Paywall";
+// RevenueCat temporarily disabled
+// import { usePremiumStore } from "@/stores/premium";
+// import { Paywall } from "@/components/Paywall";
 
 const colors = {
   charcoal: "#2D2926",
@@ -73,8 +74,9 @@ export default function SettingsScreen() {
   const { user, signOut } = useAuth();
   const { resetOnboarding } = useOnboardingStore();
   const { profile, clearProfile } = useCheckInStore();
-  const { isPremium } = usePremiumStore();
-  const [paywallVisible, setPaywallVisible] = useState(false);
+  // RevenueCat temporarily disabled - all features are free
+  // const { isPremium } = usePremiumStore();
+  // const [paywallVisible, setPaywallVisible] = useState(false);
 
   const handleLogout = () => {
     Alert.alert("Odhlasit se", "Opravdu se chcete odhlasit?", [
@@ -107,11 +109,8 @@ export default function SettingsScreen() {
   };
 
   const handleIntervalPress = () => {
-    if (isPremium) {
-      router.push("/interval-picker" as Href);
-    } else {
-      setPaywallVisible(true);
-    }
+    // All features are free - go directly to interval picker
+    router.push("/interval-picker" as Href);
   };
 
   const handleManageSubscription = () => {
@@ -257,53 +256,12 @@ export default function SettingsScreen() {
               label="Interval"
               value={intervalDisplay}
               onPress={handleIntervalPress}
-              rightIcon={
-                !isPremium ? (
-                  <Ionicons
-                    name="lock-closed"
-                    size={16}
-                    color={colors.muted}
-                    style={{ marginRight: 4 }}
-                  />
-                ) : undefined
-              }
               isLast
             />
           </View>
         </View>
 
-        {/* PREDPLATNE Section */}
-        <View className="mb-6">
-          <SectionHeader title="PREDPLATNE" />
-          <View className="bg-white rounded-2xl p-4">
-            <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center">
-                <Text className="text-2xl mr-2">{isPremium ? "⭐" : "🆓"}</Text>
-                <Text className="text-charcoal font-semibold text-base">
-                  Hlasim se {isPremium ? "Premium" : "Free"}
-                </Text>
-              </View>
-              <TouchableOpacity
-                className={`px-4 py-2 rounded-full ${
-                  isPremium ? "bg-sand" : "bg-coral"
-                }`}
-                onPress={
-                  isPremium
-                    ? handleManageSubscription
-                    : () => setPaywallVisible(true)
-                }
-              >
-                <Text
-                  className={`font-semibold ${
-                    isPremium ? "text-charcoal" : "text-white"
-                  }`}
-                >
-                  {isPremium ? "Spravovat" : "Upgradovat"}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
+        {/* PREDPLATNE Section - temporarily disabled, all features free */}
 
         {/* UCET Section */}
         <View className="mb-6">
@@ -357,11 +315,7 @@ export default function SettingsScreen() {
         )}
       </ScrollView>
 
-      {/* Paywall Modal */}
-      <Paywall
-        visible={paywallVisible}
-        onClose={() => setPaywallVisible(false)}
-      />
+      {/* Paywall Modal - temporarily disabled */}
     </SafeAreaView>
   );
 }
