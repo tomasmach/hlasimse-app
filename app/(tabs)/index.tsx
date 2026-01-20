@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import {
   View,
   Text,
@@ -166,6 +166,10 @@ export default function CheckInScreen() {
     await syncPendingCheckIns();
   };
 
+  const handleDismissSuccessOverlay = useCallback(() => {
+    setShowSuccessOverlay(false);
+  }, []);
+
   // Show loading state while fetching profile
   if (!hasFetched || (isLoading && !profile)) {
     return (
@@ -312,7 +316,7 @@ export default function CheckInScreen() {
       {/* Success overlay for online check-ins */}
       <SuccessOverlay
         visible={showSuccessOverlay}
-        onDismiss={() => setShowSuccessOverlay(false)}
+        onDismiss={handleDismissSuccessOverlay}
         intervalHours={profile?.interval_hours || 24}
       />
     </SafeAreaView>
