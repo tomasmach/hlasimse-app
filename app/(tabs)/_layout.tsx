@@ -1,50 +1,41 @@
 import { Tabs } from "expo-router";
-import { Ionicons } from "@expo/vector-icons";
+import { FloatingTabBar } from "@/components/navigation/FloatingTabBar";
+import { COLORS } from "@/constants/design";
 
 export default function TabLayout() {
   return (
     <Tabs
+      tabBar={(props) => <FloatingTabBar {...props} />}
       screenOptions={{
-        tabBarActiveTintColor: "#FF6B5B",
-        tabBarInactiveTintColor: "#8B7F7A",
-        tabBarStyle: {
-          backgroundColor: "#FFFFFF",
-          borderTopColor: "#F5E6DC",
-        },
         headerStyle: {
-          backgroundColor: "#FFF8F5",
+          backgroundColor: COLORS.cream.default,
         },
-        headerTintColor: "#2D2926",
+        headerTintColor: COLORS.charcoal.default,
         headerTitleStyle: {
           fontWeight: "600",
         },
+        headerShadowVisible: false,
       }}
     >
       <Tabs.Screen
         name="index"
         options={{
           title: "Hlásím se",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="hand-left" size={size} color={color} />
-          ),
+          headerShown: false,
         }}
       />
       <Tabs.Screen
         name="guardians"
         options={{
           title: "Strážci",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="people" size={size} color={color} />
-          ),
+          headerShown: false,
         }}
       />
       <Tabs.Screen
         name="settings"
         options={{
           title: "Nastavení",
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="settings" size={size} color={color} />
-          ),
+          headerShown: false,
         }}
       />
       <Tabs.Screen
