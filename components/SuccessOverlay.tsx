@@ -1,7 +1,10 @@
 // components/SuccessOverlay.tsx
 import { useEffect, useRef, useCallback } from "react";
-import { View, Text, Pressable, Animated } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+import { View, Text, Pressable, Animated, StyleSheet } from "react-native";
+import { BlurView } from "expo-blur";
+import * as Haptics from "expo-haptics";
+import { Check } from "phosphor-react-native";
+import { COLORS, ANIMATION } from "@/constants/design";
 
 interface SuccessOverlayProps {
   visible: boolean;
@@ -15,19 +18,32 @@ export function SuccessOverlay({
   intervalHours = 24,
 }: SuccessOverlayProps) {
   // Create stable Animated.Value refs that persist across renders
-  const scaleRef = useRef(new Animated.Value(0));
-  const opacityRef = useRef(new Animated.Value(0));
+  const backdropOpacity = useRef(new Animated.Value(0));
+  const circleScale = useRef(new Animated.Value(0));
+  const checkmarkScale = useRef(new Animated.Value(0));
+  const textOpacity = useRef(new Animated.Value(0));
+  const textTranslateY = useRef(new Animated.Value(20));
 
   const handleDismiss = useCallback(() => {
     Animated.parallel([
-      Animated.timing(opacityRef.current, {
+      Animated.timing(backdropOpacity.current, {
         toValue: 0,
-        duration: 200,
+        duration: ANIMATION.timing.normal,
         useNativeDriver: true,
       }),
-      Animated.timing(scaleRef.current, {
+      Animated.timing(circleScale.current, {
         toValue: 0,
-        duration: 200,
+        duration: ANIMATION.timing.normal,
+        useNativeDriver: true,
+      }),
+      Animated.timing(checkmarkScale.current, {
+        toValue: 0,
+        duration: ANIMATION.timing.normal,
+        useNativeDriver: true,
+      }),
+      Animated.timing(textOpacity.current, {
+        toValue: 0,
+        duration: ANIMATION.timing.normal,
         useNativeDriver: true,
       }),
     ]).start(() => {
@@ -38,23 +54,59 @@ export function SuccessOverlay({
   useEffect(() => {
     if (visible) {
       // Reset values before animating in
-      scaleRef.current.setValue(0);
-      opacityRef.current.setValue(0);
+      backdropOpacity.current.setValue(0);
+      circleScale.current.setValue(0);
+      checkmarkScale.current.setValue(0);
+      textOpacity.current.setValue(0);
+      textTranslateY.current.setValue(20);
 
-      // Animate in
-      Animated.parallel([
-        Animated.spring(scaleRef.current, {
+      // Trigger haptic feedback
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+
+      // Staggered animations
+      // T+0ms: Backdrop fade in
+      Animated.timing(backdropOpacity.current, {
+        toValue: 1,
+        duration: ANIMATION.timing.slow,
+        useNativeDriver: true,
+      }).start();
+
+      // T+100ms: Circle scale up (spring bouncy)
+      setTimeout(() => {
+        Animated.spring(circleScale.current, {
           toValue: 1,
-          tension: 50,
-          friction: 7,
+          damping: ANIMATION.spring.bouncy.damping,
+          stiffness: ANIMATION.spring.bouncy.stiffness,
           useNativeDriver: true,
-        }),
-        Animated.timing(opacityRef.current, {
+        }).start();
+      }, 100);
+
+      // T+300ms: Checkmark scale up (spring bouncy)
+      setTimeout(() => {
+        Animated.spring(checkmarkScale.current, {
           toValue: 1,
-          duration: 200,
+          damping: ANIMATION.spring.bouncy.damping,
+          stiffness: ANIMATION.spring.bouncy.stiffness,
           useNativeDriver: true,
-        }),
-      ]).start();
+        }).start();
+      }, 300);
+
+      // T+500ms: Text fade in + slide up
+      setTimeout(() => {
+        Animated.parallel([
+          Animated.timing(textOpacity.current, {
+            toValue: 1,
+            duration: ANIMATION.timing.slow,
+            useNativeDriver: true,
+          }),
+          Animated.spring(textTranslateY.current, {
+            toValue: 0,
+            damping: ANIMATION.spring.gentle.damping,
+            stiffness: ANIMATION.spring.gentle.stiffness,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      }, 500);
 
       // Auto-dismiss after 3 seconds
       const timer = setTimeout(() => {
@@ -80,28 +132,96 @@ export function SuccessOverlay({
   };
 
   return (
-    <Pressable onPress={handleDismiss} className="absolute inset-0 z-50">
-      <Animated.View
-        className="flex-1 bg-white items-center justify-center"
-        style={{ opacity: opacityRef.current }}
-      >
-        <Animated.View style={{ transform: [{ scale: scaleRef.current }] }}>
-          <View className="w-24 h-24 rounded-full bg-success/20 items-center justify-center mb-6">
-            <Ionicons name="checkmark" size={48} color="#4ADE80" />
+    <Pressable onPress={handleDismiss} style={styles.container}>
+      <Animated.View style={[styles.backdrop, { opacity: backdropOpacity.current }]}>
+        <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
+        <View style={styles.creamOverlay} />
+      </Animated.View>
+
+      <View style={styles.content}>
+        {/* Success Circle */}
+        <Animated.View
+          style={[
+            styles.circleContainer,
+            { transform: [{ scale: circleScale.current }] },
+          ]}
+        >
+          <View style={styles.successCircle}>
+            {/* Checkmark with separate animation */}
+            <Animated.View
+              style={{ transform: [{ scale: checkmarkScale.current }] }}
+            >
+              <Check size={56} color={COLORS.white} weight="bold" />
+            </Animated.View>
           </View>
         </Animated.View>
 
-        <Text className="text-3xl font-bold text-charcoal mb-2">
-          Vše v pořádku!
-        </Text>
-
-        <Text className="text-lg text-muted text-center">
-          Další hlášení za{"\n"}
-          <Text className="font-semibold text-charcoal">
-            {formatInterval(intervalHours)}
+        {/* Text */}
+        <Animated.View
+          style={{
+            opacity: textOpacity.current,
+            transform: [{ translateY: textTranslateY.current }],
+          }}
+        >
+          <Text style={styles.title}>Vše v pořádku!</Text>
+          <Text style={styles.subtitle}>
+            Další hlášení za{"\n"}
+            <Text style={styles.intervalText}>{formatInterval(intervalHours)}</Text>
           </Text>
-        </Text>
-      </Animated.View>
+        </Animated.View>
+      </View>
     </Pressable>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    zIndex: 50,
+  },
+  backdrop: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  creamOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: COLORS.cream.default,
+    opacity: 0.6,
+  },
+  content: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  circleContainer: {
+    marginBottom: 24,
+  },
+  successCircle: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: COLORS.success,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: "bold",
+    color: COLORS.charcoal.default,
+    marginBottom: 8,
+    textAlign: "center",
+  },
+  subtitle: {
+    fontSize: 18,
+    color: COLORS.muted,
+    textAlign: "center",
+    lineHeight: 26,
+  },
+  intervalText: {
+    fontWeight: "600",
+    color: COLORS.charcoal.default,
+  },
+});
