@@ -29,9 +29,24 @@ export default function IntervalPickerScreen() {
     setError('');
     setLoadingHours(hours);
     try {
+      // Calculate new deadline based on last check-in or current time
+      const now = new Date();
+      const baseTime = profile.last_check_in_at
+        ? new Date(profile.last_check_in_at)
+        : now;
+      let newDeadline = new Date(baseTime.getTime() + hours * 60 * 60 * 1000);
+
+      // If new deadline would be in the past, calculate from now instead
+      if (newDeadline <= now) {
+        newDeadline = new Date(now.getTime() + hours * 60 * 60 * 1000);
+      }
+
       const { error: supabaseError } = await supabase
         .from("check_in_profiles")
-        .update({ interval_hours: hours })
+        .update({
+          interval_hours: hours,
+          next_deadline: newDeadline.toISOString(),
+        })
         .eq("id", profile.id);
 
       if (supabaseError) throw supabaseError;
