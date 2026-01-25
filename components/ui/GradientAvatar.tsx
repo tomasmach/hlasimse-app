@@ -47,7 +47,7 @@ export function GradientAvatar({
       ]}
     >
       <LinearGradient
-        colors={GRADIENTS.coral as unknown as string[]}
+        colors={[...GRADIENTS.coral]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[
