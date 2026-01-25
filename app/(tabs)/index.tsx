@@ -1,14 +1,8 @@
-import { useEffect, useState, useRef, useCallback } from "react";
-import {
-  View,
-  Text,
-  Pressable,
-  Animated,
-  ActivityIndicator,
-  ScrollView,
-} from "react-native";
+import { useEffect, useState, useCallback } from "react";
+import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import Animated, { FadeIn } from "react-native-reanimated";
 import { useAuth } from "@/hooks/useAuth";
 import { useCheckInStore } from "@/stores/checkin";
 import { useCountdown } from "@/hooks/useCountdown";
@@ -17,6 +11,17 @@ import { useNetworkStatus } from "@/hooks/useNetworkStatus";
 import { LocationBanner } from "@/components/LocationBanner";
 import { OfflineBanner } from "@/components/OfflineBanner";
 import { SuccessOverlay } from "@/components/SuccessOverlay";
+import { HeroButton } from "@/components/HeroButton";
+import { Toast } from "@/components/ui";
+import { COLORS, SPACING } from "@/constants/design";
+
+// Time-based greeting helper
+const getGreeting = (): string => {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return "Dobré ráno";
+  if (hour >= 12 && hour < 18) return "Dobré odpoledne";
+  return "Dobrý večer";
+};
 
 export default function CheckInScreen() {
   const { user } = useAuth();
@@ -36,16 +41,12 @@ export default function CheckInScreen() {
 
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
-  const [showOfflineToast, setShowOfflineToast] = useState(false);
-  const [showErrorToast, setShowErrorToast] = useState(false);
-  const [showToast, setShowToast] = useState(false);
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
 
-  const scaleAnim = useRef(new Animated.Value(1)).current;
-  const toastOpacity = useRef(new Animated.Value(0)).current;
-  const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const hideToastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const toastAnimRef = useRef<Animated.CompositeAnimation | null>(null);
+  // Toast state
+  const [toastVisible, setToastVisible] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
+  const [toastType, setToastType] = useState<"success" | "info" | "warning" | "error">("info");
 
   // Fetch profile on mount
   useEffect(() => {
@@ -55,7 +56,6 @@ export default function CheckInScreen() {
   }, [user?.id]);
 
   // Redirect to profile-setup if no profile exists after loading
-  // But only if user is actually logged in and we've finished fetching
   useEffect(() => {
     if (user && hasFetched && profile === null) {
       router.replace("/(tabs)/profile-setup");
@@ -69,71 +69,33 @@ export default function CheckInScreen() {
     }
   }, [isConnected]);
 
-  // Cleanup
+  // Reset success state after a delay
   useEffect(() => {
-    return () => {
-      if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
-      if (hideToastTimeoutRef.current) clearTimeout(hideToastTimeoutRef.current);
-      if (toastAnimRef.current) toastAnimRef.current.stop();
-    };
-  }, []);
+    if (showSuccess) {
+      const timer = setTimeout(() => {
+        setShowSuccess(false);
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [showSuccess]);
 
   if (!user) {
     return (
-      <SafeAreaView className="flex-1 bg-cream items-center justify-center">
-        <ActivityIndicator size="large" color="#FF6B5B" />
+      <SafeAreaView style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.coral.default} />
       </SafeAreaView>
     );
   }
 
-  const handlePressIn = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 0.95,
-      useNativeDriver: true,
-    }).start();
+  const showToastMessage = (type: "info" | "error", message: string) => {
+    setToastType(type);
+    setToastMessage(message);
+    setToastVisible(true);
   };
 
-  const handlePressOut = () => {
-    Animated.spring(scaleAnim, {
-      toValue: 1,
-      friction: 3,
-      tension: 40,
-      useNativeDriver: true,
-    }).start();
-  };
-
-  const showToastMessage = (type: "offline" | "error") => {
-    setShowToast(true);
-    setShowOfflineToast(type === "offline");
-    setShowErrorToast(type === "error");
-
-    if (successTimeoutRef.current) clearTimeout(successTimeoutRef.current);
-    if (hideToastTimeoutRef.current) clearTimeout(hideToastTimeoutRef.current);
-    if (toastAnimRef.current) toastAnimRef.current.stop();
-
-    Animated.timing(toastOpacity, {
-      toValue: 1,
-      duration: 300,
-      useNativeDriver: true,
-    }).start();
-
-    successTimeoutRef.current = setTimeout(() => {
-      setShowSuccess(false);
-    }, 1500);
-
-    hideToastTimeoutRef.current = setTimeout(() => {
-      toastAnimRef.current = Animated.timing(toastOpacity, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true,
-      });
-      toastAnimRef.current.start(() => {
-        setShowToast(false);
-        setShowOfflineToast(false);
-        setShowErrorToast(false);
-      });
-    }, 3000);
-  };
+  const handleToastDismiss = useCallback(() => {
+    setToastVisible(false);
+  }, []);
 
   const handleCheckIn = async () => {
     if (isCheckingIn) return;
@@ -149,14 +111,14 @@ export default function CheckInScreen() {
       setShowSuccess(true);
       if (result.offline) {
         // Show toast for offline check-ins
-        showToastMessage("offline");
+        showToastMessage("info", "Máme to! Pošleme hned, až bude signál.");
       } else {
         // Show full-screen success overlay for online check-ins
         setShowSuccessOverlay(true);
       }
     } else {
       // Show error toast for failed check-ins
-      showToastMessage("error");
+      showToastMessage("error", "Nepodařilo se odeslat. Zkuste to znovu.");
     }
 
     setIsCheckingIn(false);
@@ -173,145 +135,120 @@ export default function CheckInScreen() {
   // Show loading state while fetching profile
   if (!hasFetched || (isLoading && !profile)) {
     return (
-      <SafeAreaView className="flex-1 bg-cream items-center justify-center">
-        <ActivityIndicator size="large" color="#FF6B5B" />
+      <SafeAreaView style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.coral.default} />
       </SafeAreaView>
     );
   }
 
   if (!profile) {
     return (
-      <SafeAreaView className="flex-1 bg-cream items-center justify-center">
-        <ActivityIndicator size="large" color="#FF6B5B" />
+      <SafeAreaView style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.coral.default} />
       </SafeAreaView>
     );
   }
 
-  const renderButtonContent = () => {
-    if (isCheckingIn) {
-      return <ActivityIndicator size="large" color="#FFFFFF" />;
-    }
-    if (showSuccess) {
-      return <Text className="text-white text-4xl">✓</Text>;
-    }
-    return <Text className="text-white text-xl font-bold">Hlásím se!</Text>;
-  };
-
-  const getToastMessage = () => {
-    if (showErrorToast) {
-      return "Nepodařilo se odeslat. Zkuste to znovu.";
-    }
-    if (showOfflineToast) {
-      return "Máme to! Pošleme hned, až bude signál.";
-    }
-    return "Hlášení úspěšně odesláno!";
-  };
-
-  const getToastStyle = () => {
-    if (showErrorToast) {
-      return "bg-coral/20 border-coral";
-    }
-    if (showOfflineToast) {
-      return "bg-sand border-muted/30";
-    }
-    return "bg-success/20 border-success";
-  };
-
-  const getToastTextStyle = () => {
-    if (showErrorToast) {
-      return "text-coral";
-    }
-    if (showOfflineToast) {
-      return "text-charcoal";
-    }
-    return "text-success";
-  };
+  // Parse countdown values for display
+  const countdownParts = countdown.formatted.split(":");
+  const hours = countdownParts[0] || "00";
+  const minutes = countdownParts[1] || "00";
+  const seconds = countdownParts[2] || "00";
 
   return (
-    <SafeAreaView className="flex-1 bg-cream">
-      <ScrollView
-        contentContainerStyle={{ flexGrow: 1 }}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Banners */}
-        <View className="pt-4">
-          {permissionStatus === "denied" && (
-            <LocationBanner onRequestPermission={requestPermission} />
-          )}
-          <OfflineBanner pendingCount={pendingCount} />
-        </View>
+    <SafeAreaView style={styles.container} edges={["top"]}>
+      {/* Banners */}
+      <View style={styles.bannersContainer}>
+        {permissionStatus === "denied" && (
+          <LocationBanner onRequestPermission={requestPermission} />
+        )}
+        <OfflineBanner pendingCount={pendingCount} />
+      </View>
 
-        {/* Main content */}
-        <View className="flex-1 items-center justify-center px-6">
-          <Text className="text-charcoal text-2xl font-semibold mb-4">
-            Ahoj, {profile.name}!
-          </Text>
-          <Text className="text-muted text-center mb-8">
-            {countdown.isExpired
-              ? "Zmáčkni tlačítko a dej vědět, že jsi v pořádku!"
-              : "Zmáčkni tlačítko a dej vědět, že jsi v pořádku"}
-          </Text>
+      {/* Main content */}
+      <View style={styles.mainContent}>
+        {/* Greeting */}
+        <Animated.View entering={FadeIn.duration(600)} style={styles.greetingContainer}>
+          <Text style={styles.greeting}>{getGreeting()},</Text>
+          <Text style={styles.userName}>{profile.name}!</Text>
+        </Animated.View>
 
-          <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
-            <Pressable
-              onPressIn={handlePressIn}
-              onPressOut={handlePressOut}
-              onPress={handleCheckIn}
-              disabled={isCheckingIn}
-              className="bg-coral w-48 h-48 rounded-full items-center justify-center"
-              style={{
-                shadowColor: "#FF6B5B",
-                shadowOffset: { width: 0, height: 8 },
-                shadowOpacity: 0.4,
-                shadowRadius: 16,
-                elevation: 8,
-              }}
-            >
-              {renderButtonContent()}
-            </Pressable>
-          </Animated.View>
-
-          <View className="mt-8 items-center">
-            <Text className="text-muted mb-1">
-              {countdown.isExpired ? "Čas překročen o:" : "Další hlášení za:"}
-            </Text>
-            <Text
-              className={`text-2xl font-semibold ${
-                countdown.isExpired ? "text-coral" : "text-charcoal"
-              }`}
-            >
-              {countdown.formatted}
-            </Text>
-          </View>
-
-          {/* Connection status indicator */}
-          {isConnected === false && (
-            <View className="mt-4 flex-row items-center">
-              <View className="w-2 h-2 rounded-full bg-muted mr-2" />
-              <Text className="text-muted text-sm">Offline</Text>
-            </View>
-          )}
-        </View>
-      </ScrollView>
-
-      {/* Toast for offline check-ins */}
-      {showToast && (
-        <Animated.View
-          style={{
-            opacity: toastOpacity,
-            position: "absolute",
-            bottom: 40,
-            left: 24,
-            right: 24,
-          }}
+        {/* Subtitle */}
+        <Animated.Text
+          entering={FadeIn.duration(600).delay(100)}
+          style={styles.subtitle}
         >
-          <View className={`${getToastStyle()} border rounded-2xl py-4 px-6`}>
-            <Text className={`${getToastTextStyle()} text-center font-semibold`}>
-              {getToastMessage()}
-            </Text>
+          {countdown.isExpired
+            ? "Zmáčkni tlačítko a dej vědět, že jsi v pořádku!"
+            : "Zmáčkni tlačítko a dej vědět, že jsi v pořádku"}
+        </Animated.Text>
+
+        {/* Hero Button */}
+        <Animated.View entering={FadeIn.duration(600).delay(200)} style={styles.buttonContainer}>
+          <HeroButton
+            onPress={handleCheckIn}
+            isLoading={isCheckingIn}
+            showSuccess={showSuccess}
+            disabled={isCheckingIn}
+          />
+        </Animated.View>
+
+        {/* Countdown */}
+        <Animated.View entering={FadeIn.duration(600).delay(300)} style={styles.countdownContainer}>
+          <Text style={styles.countdownLabel}>
+            {countdown.isExpired ? "Čas překročen o:" : "Další hlášení za:"}
+          </Text>
+          <View style={styles.countdownRow}>
+            {/* Hours */}
+            <View style={styles.countdownUnit}>
+              <Text style={[styles.countdownNumber, countdown.isExpired && styles.countdownExpired]}>
+                {hours}
+              </Text>
+              <Text style={styles.countdownUnitLabel}>hod</Text>
+            </View>
+
+            <Text style={[styles.countdownSeparator, countdown.isExpired && styles.countdownExpired]}>:</Text>
+
+            {/* Minutes */}
+            <View style={styles.countdownUnit}>
+              <Text style={[styles.countdownNumber, countdown.isExpired && styles.countdownExpired]}>
+                {minutes}
+              </Text>
+              <Text style={styles.countdownUnitLabel}>min</Text>
+            </View>
+
+            <Text style={[styles.countdownSeparator, countdown.isExpired && styles.countdownExpired]}>:</Text>
+
+            {/* Seconds */}
+            <View style={styles.countdownUnit}>
+              <Text style={[styles.countdownNumber, countdown.isExpired && styles.countdownExpired]}>
+                {seconds}
+              </Text>
+              <Text style={styles.countdownUnitLabel}>sek</Text>
+            </View>
           </View>
         </Animated.View>
-      )}
+
+        {/* Connection status indicator */}
+        {isConnected === false && (
+          <Animated.View entering={FadeIn.duration(300)} style={styles.offlineIndicator}>
+            <View style={styles.offlineDot} />
+            <Text style={styles.offlineText}>Offline</Text>
+          </Animated.View>
+        )}
+      </View>
+
+      {/* Bottom padding for floating tab bar */}
+      <View style={styles.bottomPadding} />
+
+      {/* Toast for offline/error states */}
+      <Toast
+        message={toastMessage}
+        type={toastType}
+        visible={toastVisible}
+        onDismiss={handleToastDismiss}
+        duration={3000}
+      />
 
       {/* Success overlay for online check-ins */}
       <SuccessOverlay
@@ -322,3 +259,111 @@ export default function CheckInScreen() {
     </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.cream.default,
+  },
+  loadingContainer: {
+    flex: 1,
+    backgroundColor: COLORS.cream.default,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  bannersContainer: {
+    paddingTop: 8,
+  },
+  mainContent: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: SPACING.page,
+  },
+  greetingContainer: {
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  greeting: {
+    fontSize: 20,
+    fontWeight: "500",
+    color: COLORS.muted,
+  },
+  userName: {
+    fontSize: 32,
+    fontWeight: "bold",
+    color: COLORS.charcoal.default,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: COLORS.muted,
+    textAlign: "center",
+    marginBottom: 40,
+    lineHeight: 24,
+  },
+  buttonContainer: {
+    marginBottom: 48,
+  },
+  countdownContainer: {
+    alignItems: "center",
+  },
+  countdownLabel: {
+    fontSize: 14,
+    fontWeight: "500",
+    color: COLORS.muted,
+    marginBottom: 12,
+    textTransform: "uppercase",
+    letterSpacing: 1,
+  },
+  countdownRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+  },
+  countdownUnit: {
+    alignItems: "center",
+    minWidth: 56,
+  },
+  countdownNumber: {
+    fontSize: 48,
+    fontWeight: "bold",
+    fontVariant: ["tabular-nums"],
+    color: COLORS.charcoal.default,
+  },
+  countdownExpired: {
+    color: COLORS.coral.default,
+  },
+  countdownUnitLabel: {
+    fontSize: 12,
+    fontWeight: "500",
+    color: COLORS.muted,
+    marginTop: -4,
+    textTransform: "uppercase",
+    letterSpacing: 0.5,
+  },
+  countdownSeparator: {
+    fontSize: 48,
+    fontWeight: "bold",
+    color: COLORS.charcoal.default,
+    marginHorizontal: 4,
+    marginTop: -2,
+  },
+  offlineIndicator: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginTop: 24,
+  },
+  offlineDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: COLORS.muted,
+    marginRight: 8,
+  },
+  offlineText: {
+    fontSize: 14,
+    color: COLORS.muted,
+  },
+  bottomPadding: {
+    height: 100,
+  },
+});
