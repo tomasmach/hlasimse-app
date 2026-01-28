@@ -1,13 +1,7 @@
 // components/DemoCheckIn.tsx
 import { useState } from "react";
 import { View, Text, StyleSheet } from "react-native";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  FadeIn,
-  FadeOut,
-} from "react-native-reanimated";
+import Animated, { FadeIn } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { Check, ArrowRight } from "phosphor-react-native";
 import { HeroButton } from "@/components/HeroButton";
@@ -24,8 +18,6 @@ export function DemoCheckIn({ onComplete, onSkip }: DemoCheckInProps) {
   const [showSuccess, setShowSuccess] = useState(false);
   const [showCTA, setShowCTA] = useState(false);
 
-  const ctaOpacity = useSharedValue(0);
-
   const handlePress = () => {
     if (hasPressed) return;
 
@@ -37,35 +29,13 @@ export function DemoCheckIn({ onComplete, onSkip }: DemoCheckInProps) {
     // After success animation, show CTA
     setTimeout(() => {
       setShowCTA(true);
-      ctaOpacity.value = withSpring(1);
     }, 1500);
   };
 
   return (
     <View style={styles.container}>
-      {!hasPressed ? (
-        // Before press
-        <Animated.View
-          entering={FadeIn.duration(300)}
-          exiting={FadeOut.duration(200)}
-          style={styles.content}
-        >
-          <Text style={styles.title}>Zkuste si to</Text>
-          <Text style={styles.subtitle}>
-            Stiskněte tlačítko a zažijte,{"\n"}jak snadné je hlásit se.
-          </Text>
-
-          <View style={styles.heroContainer}>
-            <HeroButton onPress={handlePress} showSuccess={showSuccess} />
-          </View>
-
-          <Animated.View entering={FadeIn.delay(500)} style={styles.hint}>
-            <Text style={styles.hintText}>Stiskněte tlačítko</Text>
-            <ArrowRight size={16} color={COLORS.coral.default} />
-          </Animated.View>
-        </Animated.View>
-      ) : showCTA ? (
-        // After press - show CTA
+      {showCTA ? (
+        // After animation - show CTA
         <Animated.View entering={FadeIn.duration(300)} style={styles.content}>
           <View style={styles.successCircle}>
             <Check size={48} color={COLORS.success} weight="bold" />
@@ -84,10 +54,30 @@ export function DemoCheckIn({ onComplete, onSkip }: DemoCheckInProps) {
           </View>
         </Animated.View>
       ) : (
-        // During animation
+        // Before press and during animation - keep same layout structure
         <View style={styles.content}>
+          <Animated.Text
+            style={[styles.title, hasPressed && styles.hidden]}
+          >
+            Zkuste si to
+          </Animated.Text>
+          <Animated.Text
+            style={[styles.subtitle, hasPressed && styles.hidden]}
+          >
+            Stiskněte tlačítko a zažijte,{"\n"}jak snadné je hlásit se.
+          </Animated.Text>
+
           <View style={styles.heroContainer}>
-            <HeroButton onPress={() => {}} showSuccess={showSuccess} disabled />
+            <HeroButton
+              onPress={handlePress}
+              showSuccess={showSuccess}
+              disabled={hasPressed}
+            />
+          </View>
+
+          <View style={[styles.hint, hasPressed && styles.hidden]}>
+            <Text style={styles.hintText}>Stiskněte tlačítko</Text>
+            <ArrowRight size={16} color={COLORS.coral.default} />
           </View>
         </View>
       )}
@@ -165,5 +155,8 @@ const styles = StyleSheet.create({
     color: COLORS.coral.default,
     textAlign: "center",
     fontWeight: "500",
+  },
+  hidden: {
+    opacity: 0,
   },
 });

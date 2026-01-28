@@ -79,6 +79,14 @@ export default function CheckInScreen() {
     }
   }, [showSuccess]);
 
+  const handleToastDismiss = useCallback(() => {
+    setToastVisible(false);
+  }, []);
+
+  const handleDismissSuccessOverlay = useCallback(() => {
+    setShowSuccessOverlay(false);
+  }, []);
+
   if (!user) {
     return (
       <SafeAreaView style={styles.loadingContainer}>
@@ -92,10 +100,6 @@ export default function CheckInScreen() {
     setToastMessage(message);
     setToastVisible(true);
   };
-
-  const handleToastDismiss = useCallback(() => {
-    setToastVisible(false);
-  }, []);
 
   const handleCheckIn = async () => {
     if (isCheckingIn) return;
@@ -127,10 +131,6 @@ export default function CheckInScreen() {
   const handleSync = async () => {
     await syncPendingCheckIns();
   };
-
-  const handleDismissSuccessOverlay = useCallback(() => {
-    setShowSuccessOverlay(false);
-  }, []);
 
   // Show loading state while fetching profile
   if (!hasFetched || (isLoading && !profile)) {

@@ -10,6 +10,7 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import Animated, {
+  SharedValue,
   useSharedValue,
   useAnimatedStyle,
   interpolate,
@@ -20,6 +21,50 @@ import { useOnboardingStore } from "@/stores/onboarding";
 import { DemoCheckIn } from "@/components/DemoCheckIn";
 import { GradientButton } from "@/components/ui";
 import { COLORS, GRADIENTS } from "@/constants/design";
+
+function PaginationDot({
+  index,
+  width,
+  scrollX,
+}: {
+  index: number;
+  width: number;
+  scrollX: SharedValue<number>;
+}) {
+  const inputRange = [
+    (index - 1) * width,
+    index * width,
+    (index + 1) * width,
+  ];
+
+  const dotStyle = useAnimatedStyle(() => {
+    const dotWidth = interpolate(
+      scrollX.value,
+      inputRange,
+      [8, 24, 8],
+      "clamp"
+    );
+    const opacity = interpolate(
+      scrollX.value,
+      inputRange,
+      [0.3, 1, 0.3],
+      "clamp"
+    );
+
+    return { width: dotWidth, opacity };
+  });
+
+  return (
+    <Animated.View style={[styles.dot, dotStyle]}>
+      <LinearGradient
+        colors={GRADIENTS.coral}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.dotGradient}
+      />
+    </Animated.View>
+  );
+}
 
 interface Slide {
   id: string;
@@ -65,7 +110,6 @@ export default function OnboardingScreen() {
 
     if (currentIndex < slides.length - 1) {
       flatListRef.current?.scrollToIndex({ index: currentIndex + 1 });
-      setCurrentIndex(currentIndex + 1);
     } else {
       // Show demo instead of going to login
       setShowDemo(true);
@@ -117,10 +161,15 @@ export default function OnboardingScreen() {
         pagingEnabled
         showsHorizontalScrollIndicator={false}
         bounces={false}
+        style={{ flex: 1 }}
         onScroll={(e) => {
           scrollX.value = e.nativeEvent.contentOffset.x;
         }}
         onMomentumScrollEnd={(e) => {
+          const newIndex = Math.round(e.nativeEvent.contentOffset.x / width);
+          setCurrentIndex(newIndex);
+        }}
+        onScrollEndDrag={(e) => {
           const newIndex = Math.round(e.nativeEvent.contentOffset.x / width);
           setCurrentIndex(newIndex);
         }}
@@ -130,41 +179,14 @@ export default function OnboardingScreen() {
       <View style={styles.footer}>
         {/* Pagination dots */}
         <View style={styles.pagination}>
-          {slides.map((_, index) => {
-            const inputRange = [
-              (index - 1) * width,
-              index * width,
-              (index + 1) * width,
-            ];
-
-            const dotStyle = useAnimatedStyle(() => {
-              const dotWidth = interpolate(
-                scrollX.value,
-                inputRange,
-                [8, 24, 8],
-                "clamp"
-              );
-              const opacity = interpolate(
-                scrollX.value,
-                inputRange,
-                [0.3, 1, 0.3],
-                "clamp"
-              );
-
-              return { width: dotWidth, opacity };
-            });
-
-            return (
-              <Animated.View key={index} style={[styles.dot, dotStyle]}>
-                <LinearGradient
-                  colors={GRADIENTS.coral}
-                  start={{ x: 0, y: 0 }}
-                  end={{ x: 1, y: 0 }}
-                  style={styles.dotGradient}
-                />
-              </Animated.View>
-            );
-          })}
+          {slides.map((_, index) => (
+            <PaginationDot
+              key={index}
+              index={index}
+              width={width}
+              scrollX={scrollX}
+            />
+          ))}
         </View>
 
         {/* CTA Buttons */}
