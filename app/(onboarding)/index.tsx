@@ -196,14 +196,12 @@ export default function OnboardingScreen() {
             onPress={handleNext}
           />
 
-          {!isLastSlide && (
-            <TouchableOpacity
-              style={styles.skipButton}
-              onPress={handleSkip}
-            >
-              <Text style={styles.skipText}>Přeskočit</Text>
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity
+            style={styles.skipButton}
+            onPress={handleSkip}
+          >
+            <Text style={styles.skipText}>Přeskočit</Text>
+          </TouchableOpacity>
         </View>
       </View>
     </View>
