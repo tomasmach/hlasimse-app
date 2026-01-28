@@ -57,6 +57,7 @@ function TabButton({ tab, isActive, onPress }: TabButtonProps) {
       onPress={handlePress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
+      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       style={[styles.tabButton, animatedStyle]}
     >
       <View style={[styles.iconContainer, isActive && styles.iconContainerActive]}>
@@ -127,7 +128,6 @@ const styles = StyleSheet.create({
   },
   blurContainer: {
     borderRadius: 24,
-    overflow: "hidden",
     borderWidth: 1,
     borderColor: `${COLORS.coral.light}30`,
     ...SHADOWS.floating,
