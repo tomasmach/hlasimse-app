@@ -8,6 +8,7 @@ import { GuardianCard } from "@/components/GuardianCard";
 import { InviteCard } from "@/components/InviteCard";
 import { WatchedProfileCard } from "@/components/WatchedProfileCard";
 import { AddGuardianModal } from "@/components/AddGuardianModal";
+import { EmptyState } from "@/components/EmptyState";
 
 export default function GuardiansScreen() {
   const { user } = useAuth();
@@ -109,30 +110,35 @@ export default function GuardiansScreen() {
               <ActivityIndicator color="#FF6B5B" />
             </View>
           ) : myGuardians.length === 0 ? (
-            <View className="bg-white rounded-2xl p-4">
-              <Text className="text-muted text-center">
-                Zatím nemáš žádné strážce
-              </Text>
+            <View className="bg-white rounded-2xl">
+              <EmptyState
+                emoji="👀"
+                title="Zatím nemáte žádné strážce"
+                description="Strážce dostane upozornění, když se neohlásíte včas."
+                actionLabel="+ Přidat strážce"
+                onAction={() => setIsModalVisible(true)}
+              />
             </View>
           ) : (
-            myGuardians.map((guardian) => (
-              <GuardianCard
-                key={guardian.id}
-                guardian={guardian}
-                onRemove={removeGuardian}
-                isRemoving={isLoading}
-              />
-            ))
+            <>
+              {myGuardians.map((guardian) => (
+                <GuardianCard
+                  key={guardian.id}
+                  guardian={guardian}
+                  onRemove={removeGuardian}
+                  isRemoving={isLoading}
+                />
+              ))}
+              <Pressable
+                onPress={() => setIsModalVisible(true)}
+                className="bg-coral/10 rounded-2xl p-4 mt-2"
+              >
+                <Text className="text-coral text-center font-medium">
+                  + Přidat strážce
+                </Text>
+              </Pressable>
+            </>
           )}
-
-          <Pressable
-            onPress={() => setIsModalVisible(true)}
-            className="bg-coral/10 rounded-2xl p-4 mt-2"
-          >
-            <Text className="text-coral text-center font-medium">
-              + Přidat strážce
-            </Text>
-          </Pressable>
         </View>
 
         {/* Čekající pozvánky */}
@@ -160,10 +166,12 @@ export default function GuardiansScreen() {
           </Text>
 
           {watchedProfiles.length === 0 ? (
-            <View className="bg-white rounded-2xl p-4">
-              <Text className="text-muted text-center">
-                Zatím nikoho nehlídáš
-              </Text>
+            <View className="bg-white rounded-2xl">
+              <EmptyState
+                emoji="🛡️"
+                title="Nikoho nehlídáte"
+                description="Až vás někdo pozve jako strážce, uvidíte ho zde."
+              />
             </View>
           ) : (
             watchedProfiles.map((watchedProfile) => (

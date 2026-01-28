@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "Hlásím se",
-    "slug": "hlasimse",
+    "slug": "hlasim-se",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -31,7 +31,7 @@
     },
     "web": {
       "bundler": "metro",
-      "output": "static",
+      "output": "single",
       "favicon": "./assets/images/favicon.png"
     },
     "plugins": [
@@ -47,6 +47,13 @@
     ],
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "3027c5db-2ddd-4a0a-a2e4-2c5470410438"
+      }
+    },
+    "owner": "tomasmachs-organization"
   }
 }

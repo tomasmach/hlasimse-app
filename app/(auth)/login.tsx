@@ -1,16 +1,20 @@
+// app/(auth)/login.tsx
 import { useState } from "react";
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  ActivityIndicator,
+  StyleSheet,
 } from "react-native";
 import { Link, router } from "expo-router";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import { LinearGradient } from "expo-linear-gradient";
 import { supabase } from "@/lib/supabase";
+import { AnimatedInput, GradientButton } from "@/components/ui";
+import { COLORS, GRADIENTS, SPACING } from "@/constants/design";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -56,28 +60,45 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="flex-1 bg-cream"
+      style={styles.container}
     >
       <ScrollView
-        contentContainerClassName="flex-grow justify-center px-6 py-12"
+        contentContainerStyle={styles.scrollContent}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <View className="items-center mb-12">
-          <Text className="text-4xl font-bold text-charcoal">Hlásím se</Text>
-          <Text className="text-muted mt-2">Přihlaste se ke svému účtu</Text>
-        </View>
+        {/* Header */}
+        <Animated.View
+          entering={FadeIn.delay(100)}
+          style={styles.header}
+        >
+          <Text style={styles.title}>Hlásím se</Text>
+          <LinearGradient
+            colors={GRADIENTS.coral}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.titleUnderline}
+          />
+          <Text style={styles.subtitle}>Přihlaste se ke svému účtu</Text>
+        </Animated.View>
 
+        {/* Error */}
         {error && (
-          <View className="bg-coral/10 border border-coral rounded-xl p-3 mb-6">
-            <Text className="text-coral text-center">{error}</Text>
-          </View>
+          <Animated.View
+            entering={FadeInDown}
+            style={styles.errorContainer}
+          >
+            <Text style={styles.errorText}>{error}</Text>
+          </Animated.View>
         )}
 
-        <View className="gap-4 mb-6">
-          <TextInput
-            className="bg-white border border-sand rounded-xl px-4 py-3 text-charcoal"
-            placeholder="E-mail"
-            placeholderTextColor="#8B7F7A"
+        {/* Form */}
+        <Animated.View
+          entering={FadeIn.delay(200)}
+          style={styles.form}
+        >
+          <AnimatedInput
+            label="E-mail"
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
@@ -86,46 +107,118 @@ export default function LoginScreen() {
             editable={!loading}
           />
 
-          <TextInput
-            className="bg-white border border-sand rounded-xl px-4 py-3 text-charcoal"
-            placeholder="Heslo"
-            placeholderTextColor="#8B7F7A"
+          <AnimatedInput
+            label="Heslo"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
             autoComplete="password"
             editable={!loading}
           />
-        </View>
 
-        <Link href="/(auth)/forgot-password" asChild>
-          <TouchableOpacity className="mb-6" disabled={loading}>
-            <Text className="text-coral text-right">Zapomenuté heslo?</Text>
-          </TouchableOpacity>
-        </Link>
-
-        <TouchableOpacity
-          className="bg-coral rounded-xl py-4 items-center mb-8"
-          onPress={handleLogin}
-          disabled={loading}
-          activeOpacity={0.8}
-        >
-          {loading ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text className="text-white font-semibold text-lg">Přihlásit</Text>
-          )}
-        </TouchableOpacity>
-
-        <View className="flex-row justify-center">
-          <Text className="text-muted">Nemáte účet? </Text>
-          <Link href="/(auth)/register" asChild>
-            <TouchableOpacity disabled={loading}>
-              <Text className="text-coral font-semibold">Registrovat se</Text>
+          <Link href="/(auth)/forgot-password" asChild>
+            <TouchableOpacity style={styles.forgotPassword} disabled={loading}>
+              <Text style={styles.forgotPasswordText}>Zapomenuté heslo?</Text>
             </TouchableOpacity>
           </Link>
-        </View>
+        </Animated.View>
+
+        {/* CTA */}
+        <Animated.View
+          entering={FadeIn.delay(300)}
+          style={styles.cta}
+        >
+          <GradientButton
+            label="Přihlásit"
+            onPress={handleLogin}
+            loading={loading}
+            disabled={loading}
+          />
+
+          <View style={styles.registerRow}>
+            <Text style={styles.registerText}>Nemáte účet? </Text>
+            <Link href="/(auth)/register" asChild>
+              <TouchableOpacity disabled={loading}>
+                <Text style={styles.registerLink}>Registrovat se</Text>
+              </TouchableOpacity>
+            </Link>
+          </View>
+        </Animated.View>
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.cream.default,
+  },
+  scrollContent: {
+    flexGrow: 1,
+    justifyContent: "center",
+    paddingHorizontal: SPACING.page,
+    paddingVertical: 48,
+  },
+  header: {
+    alignItems: "center",
+    marginBottom: 48,
+  },
+  title: {
+    fontSize: 40,
+    fontWeight: "800",
+    color: COLORS.charcoal.default,
+  },
+  titleUnderline: {
+    width: 80,
+    height: 4,
+    borderRadius: 2,
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  subtitle: {
+    fontSize: 17,
+    color: COLORS.muted,
+  },
+  errorContainer: {
+    backgroundColor: `${COLORS.error}15`,
+    borderWidth: 1,
+    borderColor: COLORS.error,
+    borderRadius: 16,
+    padding: 16,
+    marginBottom: 24,
+  },
+  errorText: {
+    color: COLORS.error,
+    textAlign: "center",
+    fontSize: 15,
+  },
+  form: {
+    marginBottom: 32,
+  },
+  forgotPassword: {
+    alignSelf: "flex-end",
+    marginTop: 8,
+  },
+  forgotPasswordText: {
+    color: COLORS.coral.default,
+    fontSize: 15,
+    fontWeight: "500",
+  },
+  cta: {
+    gap: 24,
+  },
+  registerRow: {
+    flexDirection: "row",
+    justifyContent: "center",
+  },
+  registerText: {
+    color: COLORS.muted,
+    fontSize: 15,
+  },
+  registerLink: {
+    color: COLORS.coral.default,
+    fontSize: 15,
+    fontWeight: "600",
+  },
+});

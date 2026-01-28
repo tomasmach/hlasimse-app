@@ -3,8 +3,11 @@ import { useEffect, useRef, useMemo } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { View, ActivityIndicator } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnboardingStore } from "@/stores/onboarding";
+// RevenueCat temporarily disabled
+// import { usePremiumStore } from "@/stores/premium";
 import { useNotifications } from "@/hooks/useNotifications";
 import { createTokenRegistrationTracker } from "@/utils/pushTokenRegistration";
 
@@ -57,6 +60,8 @@ export default function RootLayout() {
     checkOnboardingStatus,
   } = useOnboardingStore();
   const { requestPermissions, registerToken, expoPushToken, setNotificationResponseHandler } = useNotifications();
+  // RevenueCat temporarily disabled
+  // const { initialize: initializePremium } = usePremiumStore();
   const router = useRouter();
 
   // Create token registration tracker that persists across re-renders
@@ -69,6 +74,11 @@ export default function RootLayout() {
   useEffect(() => {
     checkOnboardingStatus();
   }, []);
+
+  // RevenueCat temporarily disabled
+  // useEffect(() => {
+  //   initializePremium();
+  // }, []);
 
   // Request notification permissions when user is logged in
   useEffect(() => {
@@ -108,7 +118,7 @@ export default function RootLayout() {
   }
 
   return (
-    <>
+    <GestureHandlerRootView style={{ flex: 1 }}>
       <StatusBar style="dark" />
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="(onboarding)" />
@@ -116,6 +126,6 @@ export default function RootLayout() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="+not-found" />
       </Stack>
-    </>
+    </GestureHandlerRootView>
   );
 }
