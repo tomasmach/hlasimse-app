@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { Warning } from "phosphor-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useAuth } from "@/hooks/useAuth";
@@ -88,7 +89,9 @@ export default function DeleteAccountScreen() {
 
         {/* Content */}
         <View className="px-6 pt-6">
-          <Text className="text-5xl mb-4">⚠️</Text>
+          <View className="mb-4">
+            <Warning size={80} color="#F43F5E" weight="regular" />
+          </View>
           <Text className="text-xl font-bold text-charcoal mb-2">
             Smazat účet
           </Text>

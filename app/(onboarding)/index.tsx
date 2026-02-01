@@ -18,6 +18,7 @@ import Animated, {
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
 import { useOnboardingStore } from "@/stores/onboarding";
+import { Hand, Clock, Shield, type Icon as PhosphorIcon } from "phosphor-react-native";
 import { DemoCheckIn } from "@/components/DemoCheckIn";
 import { GradientButton } from "@/components/ui";
 import { COLORS, GRADIENTS } from "@/constants/design";
@@ -68,7 +69,7 @@ function PaginationDot({
 
 interface Slide {
   id: string;
-  emoji: string;
+  icon: PhosphorIcon;
   title: string;
   description: string;
 }
@@ -76,21 +77,21 @@ interface Slide {
 const slides: Slide[] = [
   {
     id: "1",
-    emoji: "👋",
+    icon: Hand,
     title: "Vítejte v Hlásím se",
     description:
       "Aplikace, která pomáhá vašim blízkým vědět, že jste v pořádku.",
   },
   {
     id: "2",
-    emoji: "⏰",
+    icon: Clock,
     title: "Pravidelné hlášení",
     description:
       "Jedním klepnutím dejte vědět, že je vše v pořádku. Žádné složité zprávy.",
   },
   {
     id: "3",
-    emoji: "🛡️",
+    icon: Shield,
     title: "Klid pro vaše blízké",
     description:
       "Vaši blízcí budou informováni, pokud se neozvete včas.",
@@ -140,13 +141,18 @@ export default function OnboardingScreen() {
     );
   }
 
-  const renderSlide = ({ item, index }: { item: Slide; index: number }) => (
-    <View style={[styles.slide, { width }]}>
-      <Text style={styles.emoji}>{item.emoji}</Text>
-      <Text style={styles.slideTitle}>{item.title}</Text>
-      <Text style={styles.slideDescription}>{item.description}</Text>
-    </View>
-  );
+  const renderSlide = ({ item }: { item: Slide; index: number }) => {
+    const Icon = item.icon;
+    return (
+      <View style={[styles.slide, { width }]}>
+        <View style={styles.iconContainer}>
+          <Icon size={100} color={COLORS.coral.default} weight="regular" />
+        </View>
+        <Text style={styles.slideTitle}>{item.title}</Text>
+        <Text style={styles.slideDescription}>{item.description}</Text>
+      </View>
+    );
+  };
 
   const isLastSlide = currentIndex === slides.length - 1;
 
@@ -219,9 +225,10 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     paddingHorizontal: 40,
   },
-  emoji: {
-    fontSize: 100,
+  iconContainer: {
     marginBottom: 32,
+    alignItems: "center",
+    justifyContent: "center",
   },
   slideTitle: {
     fontSize: 32,
