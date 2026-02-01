@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { View, Text, ScrollView, Pressable, RefreshControl, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Eye, Shield } from "phosphor-react-native";
 import { useAuth } from "@/hooks/useAuth";
 import { useCheckInStore } from "@/stores/checkin";
 import { useGuardiansStore } from "@/stores/guardians";
@@ -112,7 +113,7 @@ export default function GuardiansScreen() {
           ) : myGuardians.length === 0 ? (
             <View className="bg-white rounded-2xl">
               <EmptyState
-                emoji="👀"
+                icon={Eye}
                 title="Zatím nemáte žádné strážce"
                 description="Strážce dostane upozornění, když se neohlásíte včas."
                 actionLabel="+ Přidat strážce"
@@ -168,7 +169,7 @@ export default function GuardiansScreen() {
           {watchedProfiles.length === 0 ? (
             <View className="bg-white rounded-2xl">
               <EmptyState
-                emoji="🛡️"
+                icon={Shield}
                 title="Nikoho nehlídáte"
                 description="Až vás někdo pozve jako strážce, uvidíte ho zde."
               />

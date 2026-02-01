@@ -1,7 +1,9 @@
 import { View, Text, Pressable } from "react-native";
+import { type Icon as PhosphorIcon } from "phosphor-react-native";
+import { COLORS } from "@/constants/design";
 
 interface EmptyStateProps {
-  emoji: string;
+  icon: PhosphorIcon;
   title: string;
   description: string;
   actionLabel?: string;
@@ -9,7 +11,7 @@ interface EmptyStateProps {
 }
 
 export function EmptyState({
-  emoji,
+  icon: Icon,
   title,
   description,
   actionLabel,
@@ -17,7 +19,9 @@ export function EmptyState({
 }: EmptyStateProps) {
   return (
     <View className="items-center py-8 px-4">
-      <Text className="text-5xl mb-4">{emoji}</Text>
+      <View className="mb-4">
+        <Icon size={80} color={COLORS.coral.default} weight="regular" />
+      </View>
       <Text className="text-lg font-semibold text-charcoal mb-2 text-center">
         {title}
       </Text>
