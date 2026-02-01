@@ -71,7 +71,7 @@ export function SuccessOverlay({
       }).start();
 
       // T+100ms: Circle scale up (spring bouncy)
-      setTimeout(() => {
+      const circleTimer = setTimeout(() => {
         Animated.spring(circleScale.current, {
           toValue: 1,
           damping: ANIMATION.spring.bouncy.damping,
@@ -81,7 +81,7 @@ export function SuccessOverlay({
       }, 100);
 
       // T+300ms: Checkmark scale up (spring bouncy)
-      setTimeout(() => {
+      const checkmarkTimer = setTimeout(() => {
         Animated.spring(checkmarkScale.current, {
           toValue: 1,
           damping: ANIMATION.spring.bouncy.damping,
@@ -91,7 +91,7 @@ export function SuccessOverlay({
       }, 300);
 
       // T+500ms: Text fade in + slide up
-      setTimeout(() => {
+      const textTimer = setTimeout(() => {
         Animated.parallel([
           Animated.timing(textOpacity.current, {
             toValue: 1,
@@ -108,11 +108,16 @@ export function SuccessOverlay({
       }, 500);
 
       // Auto-dismiss after 3 seconds
-      const timer = setTimeout(() => {
+      const autoDismissTimer = setTimeout(() => {
         handleDismiss();
       }, 3000);
 
-      return () => clearTimeout(timer);
+      return () => {
+        clearTimeout(circleTimer);
+        clearTimeout(checkmarkTimer);
+        clearTimeout(textTimer);
+        clearTimeout(autoDismissTimer);
+      };
     }
   }, [visible, handleDismiss]);
 

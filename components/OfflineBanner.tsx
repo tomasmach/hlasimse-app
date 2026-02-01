@@ -1,11 +1,13 @@
-import { View, Text } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
 interface OfflineBannerProps {
   pendingCount: number;
+  onSync?: () => void;
+  isSyncing?: boolean;
 }
 
-export function OfflineBanner({ pendingCount }: OfflineBannerProps) {
+export function OfflineBanner({ pendingCount, onSync, isSyncing = false }: OfflineBannerProps) {
   if (pendingCount === 0) return null;
 
   return (
@@ -20,6 +22,20 @@ export function OfflineBanner({ pendingCount }: OfflineBannerProps) {
             Vaše hlášení je v bezpečí.
           </Text>
         </View>
+        {onSync && (
+          <TouchableOpacity
+            onPress={onSync}
+            disabled={isSyncing}
+            className="ml-2 px-3 py-2 bg-charcoal rounded-xl"
+            activeOpacity={0.7}
+          >
+            {isSyncing ? (
+              <ActivityIndicator size="small" color="#FFFFFF" />
+            ) : (
+              <Ionicons name="refresh" size={18} color="#FFFFFF" />
+            )}
+          </TouchableOpacity>
+        )}
       </View>
     </View>
   );

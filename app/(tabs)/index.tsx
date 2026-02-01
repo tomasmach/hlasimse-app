@@ -40,6 +40,7 @@ export default function CheckInScreen() {
   const { isConnected } = useNetworkStatus();
 
   const [isCheckingIn, setIsCheckingIn] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
 
@@ -48,12 +49,27 @@ export default function CheckInScreen() {
   const [toastMessage, setToastMessage] = useState("");
   const [toastType, setToastType] = useState<"success" | "info" | "warning" | "error">("info");
 
+  // Define callbacks before useEffect hooks
+  const handleToastDismiss = useCallback(() => {
+    setToastVisible(false);
+  }, []);
+
+  const handleDismissSuccessOverlay = useCallback(() => {
+    setShowSuccessOverlay(false);
+  }, []);
+
+  const handleSync = useCallback(async () => {
+    setIsSyncing(true);
+    await syncPendingCheckIns();
+    setIsSyncing(false);
+  }, [syncPendingCheckIns]);
+
   // Fetch profile on mount
   useEffect(() => {
     if (user?.id) {
       fetchProfile(user.id);
     }
-  }, [user?.id]);
+  }, [user?.id, fetchProfile]);
 
   // Redirect to profile-setup if no profile exists after loading
   useEffect(() => {
@@ -67,7 +83,7 @@ export default function CheckInScreen() {
     if (isConnected && pendingCount > 0) {
       handleSync();
     }
-  }, [isConnected]);
+  }, [isConnected, pendingCount, handleSync]);
 
   // Reset success state after a delay
   useEffect(() => {
@@ -79,18 +95,10 @@ export default function CheckInScreen() {
     }
   }, [showSuccess]);
 
-  const handleToastDismiss = useCallback(() => {
-    setToastVisible(false);
-  }, []);
-
-  const handleDismissSuccessOverlay = useCallback(() => {
-    setShowSuccessOverlay(false);
-  }, []);
-
   if (!user) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.coral.default} />
+      <SafeAreaView className="flex-1 bg-cream items-center justify-center">
+        <ActivityIndicator size="large" color="#FF6B5B" />
       </SafeAreaView>
     );
   }
@@ -128,23 +136,19 @@ export default function CheckInScreen() {
     setIsCheckingIn(false);
   };
 
-  const handleSync = async () => {
-    await syncPendingCheckIns();
-  };
-
   // Show loading state while fetching profile
   if (!hasFetched || (isLoading && !profile)) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.coral.default} />
+      <SafeAreaView className="flex-1 bg-cream items-center justify-center">
+        <ActivityIndicator size="large" color="#FF6B5B" />
       </SafeAreaView>
     );
   }
 
   if (!profile) {
     return (
-      <SafeAreaView style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color={COLORS.coral.default} />
+      <SafeAreaView className="flex-1 bg-cream items-center justify-center">
+        <ActivityIndicator size="large" color="#FF6B5B" />
       </SafeAreaView>
     );
   }
@@ -162,7 +166,11 @@ export default function CheckInScreen() {
         {permissionStatus === "denied" && (
           <LocationBanner onRequestPermission={requestPermission} />
         )}
-        <OfflineBanner pendingCount={pendingCount} />
+        <OfflineBanner
+          pendingCount={pendingCount}
+          onSync={handleSync}
+          isSyncing={isSyncing}
+        />
       </View>
 
       {/* Main content */}

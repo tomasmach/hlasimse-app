@@ -59,7 +59,7 @@ export default function DeleteAccountScreen() {
           text: "OK",
           onPress: async () => {
             await signOut();
-            router.replace("/login");
+            router.replace("/(auth)/login");
           },
         },
       ]);

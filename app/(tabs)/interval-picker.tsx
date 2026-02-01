@@ -16,7 +16,7 @@ const INTERVAL_OPTIONS = [
 
 export default function IntervalPickerScreen() {
   const { user } = useAuth();
-  const { profile, fetchProfile } = useCheckInStore();
+  const { profile, fetchProfile, pendingCount } = useCheckInStore();
   const [selectedHours, setSelectedHours] = useState(
     profile?.interval_hours || 24
   );
@@ -29,6 +29,13 @@ export default function IntervalPickerScreen() {
     setError('');
     setLoadingHours(hours);
     try {
+      // Validate pending check-ins before calculating deadline
+      if (pendingCount > 0) {
+        setError('Počkejte prosím na synchronizaci offline hlášení pro přesný výpočet termínu.');
+        setLoadingHours(null);
+        return;
+      }
+
       // Calculate new deadline based on last check-in or current time
       const now = new Date();
       const baseTime = profile.last_check_in_at
@@ -79,6 +86,16 @@ export default function IntervalPickerScreen() {
         <Text className="text-xl font-bold text-charcoal mb-6">
           Jak často se chcete hlásit?
         </Text>
+
+        {/* Warning for pending offline check-ins */}
+        {pendingCount > 0 && (
+          <View className="bg-orange-50 border-2 border-orange-300 rounded-2xl p-4 mb-4 flex-row items-start">
+            <Ionicons name="warning" size={20} color="#f97316" className="mr-2" />
+            <Text className="text-orange-900 flex-1 ml-2">
+              Máte {pendingCount} nesynchronizované{pendingCount === 1 ? ' hlášení' : pendingCount < 5 ? ' hlášení' : ' hlášení'}. Pro přesný výpočet termínu počkejte na synchronizaci.
+            </Text>
+          </View>
+        )}
 
         <View className="gap-3">
           {INTERVAL_OPTIONS.map((option) => (
