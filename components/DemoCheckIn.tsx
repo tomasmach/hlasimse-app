@@ -1,4 +1,3 @@
-// components/DemoCheckIn.tsx
 import { useState } from "react";
 import { View, Text, StyleSheet } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";

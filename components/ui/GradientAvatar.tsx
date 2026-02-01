@@ -1,4 +1,3 @@
-import React from "react";
 import { View, Text, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { GRADIENTS, COLORS } from "@/constants/design";
@@ -104,5 +103,3 @@ const styles = StyleSheet.create({
     fontWeight: "600",
   },
 });
-
-export default GradientAvatar;

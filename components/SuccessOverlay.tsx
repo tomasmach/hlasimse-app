@@ -1,4 +1,3 @@
-// components/SuccessOverlay.tsx
 import { useEffect, useRef, useCallback } from "react";
 import { View, Text, Pressable, Animated, StyleSheet } from "react-native";
 import { BlurView } from "expo-blur";

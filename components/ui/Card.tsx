@@ -1,6 +1,3 @@
-// components/ui/Card.tsx
-// Card component with shadow and padding variants
-
 import { View, ViewProps, StyleSheet } from "react-native";
 import { COLORS, SHADOWS, BORDER_RADIUS } from "@/constants/design";
 

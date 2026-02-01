@@ -1,6 +1,3 @@
-// components/ui/AnimatedInput.tsx
-// Animated text input with floating label and bottom border
-
 import { useState, forwardRef } from "react";
 import {
   View,

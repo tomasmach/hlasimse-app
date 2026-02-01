@@ -1,4 +1,3 @@
-// components/ui/Toast.tsx
 import { useEffect, useCallback, useRef } from "react";
 import { Text, StyleSheet, Pressable, PanResponder } from "react-native";
 import * as Haptics from "expo-haptics";

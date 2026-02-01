@@ -1,4 +1,3 @@
-import React from "react";
 import { View, Pressable, Text, StyleSheet, Platform } from "react-native";
 import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";

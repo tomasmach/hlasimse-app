@@ -1,4 +1,3 @@
-// components/GuardianCard.tsx
 import { View, Text, StyleSheet, Pressable, Alert } from "react-native";
 import Animated, {
   useSharedValue,

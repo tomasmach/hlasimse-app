@@ -1,4 +1,4 @@
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import { View, ActivityIndicator, StyleSheet } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { Gesture, GestureDetector } from "react-native-gesture-handler";
@@ -57,7 +57,7 @@ export function HeroButton({
       -1, // infinite repeat
       false // no reverse
     );
-  }, []);
+  }, [breathingScale]);
 
   // Start glow pulse animation
   useEffect(() => {
@@ -75,7 +75,7 @@ export function HeroButton({
       -1,
       false
     );
-  }, []);
+  }, [glowOpacity]);
 
   // Handle success state
   useEffect(() => {
@@ -85,7 +85,7 @@ export function HeroButton({
     } else {
       checkmarkScale.value = withSpring(0, ANIMATION.spring.default);
     }
-  }, [showSuccess]);
+  }, [showSuccess, checkmarkScale]);
 
   // Haptic feedback functions
   const triggerPressHaptic = () => {
@@ -207,5 +207,3 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
 });
-
-export default HeroButton;

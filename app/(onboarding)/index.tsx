@@ -1,4 +1,3 @@
-// app/(onboarding)/index.tsx
 import { useRef, useState } from "react";
 import {
   View,
