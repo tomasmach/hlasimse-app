@@ -5,15 +5,70 @@ import {
   FlatList,
   TouchableOpacity,
   useWindowDimensions,
-  Animated,
-  ViewToken,
+  StyleSheet,
 } from "react-native";
 import { router } from "expo-router";
+import Animated, {
+  SharedValue,
+  useSharedValue,
+  useAnimatedStyle,
+  interpolate,
+} from "react-native-reanimated";
+import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
 import { useOnboardingStore } from "@/stores/onboarding";
+import { Hand, Clock, Shield, type Icon as PhosphorIcon } from "phosphor-react-native";
+import { DemoCheckIn } from "@/components/DemoCheckIn";
+import { GradientButton } from "@/components/ui";
+import { COLORS, GRADIENTS } from "@/constants/design";
+
+function PaginationDot({
+  index,
+  width,
+  scrollX,
+}: {
+  index: number;
+  width: number;
+  scrollX: SharedValue<number>;
+}) {
+  const inputRange = [
+    (index - 1) * width,
+    index * width,
+    (index + 1) * width,
+  ];
+
+  const dotStyle = useAnimatedStyle(() => {
+    const dotWidth = interpolate(
+      scrollX.value,
+      inputRange,
+      [8, 24, 8],
+      "clamp"
+    );
+    const opacity = interpolate(
+      scrollX.value,
+      inputRange,
+      [0.3, 1, 0.3],
+      "clamp"
+    );
+
+    return { width: dotWidth, opacity };
+  });
+
+  return (
+    <Animated.View style={[styles.dot, dotStyle]}>
+      <LinearGradient
+        colors={GRADIENTS.coral}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        className="flex-1"
+      />
+    </Animated.View>
+  );
+}
 
 interface Slide {
   id: string;
-  emoji: string;
+  icon: PhosphorIcon;
   title: string;
   description: string;
 }
@@ -21,50 +76,43 @@ interface Slide {
 const slides: Slide[] = [
   {
     id: "1",
-    emoji: "👋",
+    icon: Hand,
     title: "Vítejte v Hlásím se",
     description:
-      "Aplikace, která pomáhá vašim blízkým vědět, že jste v pořádku. Jednoduchý způsob, jak zůstat v kontaktu.",
+      "Aplikace, která pomáhá vašim blízkým vědět, že jste v pořádku.",
   },
   {
     id: "2",
-    emoji: "⏰",
+    icon: Clock,
     title: "Pravidelné hlášení",
     description:
-      "Nastavte si pravidelné připomínky a jedním klepnutím dejte vědět, že je vše v pořádku. Žádné složité zprávy.",
+      "Jedním klepnutím dejte vědět, že je vše v pořádku. Žádné složité zprávy.",
   },
   {
     id: "3",
-    emoji: "🛡️",
+    icon: Shield,
     title: "Klid pro vaše blízké",
     description:
-      "Vaši blízcí budou informováni, pokud se neozvet včas. Bezpečí a klid mysli pro celou rodinu.",
+      "Vaši blízcí budou informováni, pokud se neozvete včas.",
   },
 ];
 
 export default function OnboardingScreen() {
   const { width } = useWindowDimensions();
   const [currentIndex, setCurrentIndex] = useState(0);
+  const [showDemo, setShowDemo] = useState(false);
   const flatListRef = useRef<FlatList<Slide>>(null);
-  const scrollX = useRef(new Animated.Value(0)).current;
+  const scrollX = useSharedValue(0);
   const { completeOnboarding } = useOnboardingStore();
 
-  const viewableItemsChanged = useRef(
-    ({ viewableItems }: { viewableItems: ViewToken[] }) => {
-      if (viewableItems.length > 0 && viewableItems[0].index !== null) {
-        setCurrentIndex(viewableItems[0].index);
-      }
-    }
-  ).current;
+  const handleNext = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-  const viewConfig = useRef({ viewAreaCoveragePercentThreshold: 50 }).current;
-
-  const handleNext = async () => {
     if (currentIndex < slides.length - 1) {
       flatListRef.current?.scrollToIndex({ index: currentIndex + 1 });
     } else {
-      await completeOnboarding();
-      router.replace("/(auth)/login");
+      // Show demo instead of going to login
+      setShowDemo(true);
     }
   };
 
@@ -73,99 +121,107 @@ export default function OnboardingScreen() {
     router.replace("/(auth)/login");
   };
 
-  const renderSlide = ({ item }: { item: Slide }) => (
-    <View
-      style={{ width }}
-      className="flex-1 items-center justify-center px-8"
-    >
-      <Text className="text-8xl mb-8">{item.emoji}</Text>
-      <Text className="text-3xl font-bold text-charcoal text-center mb-4">
-        {item.title}
-      </Text>
-      <Text className="text-lg text-muted text-center leading-7">
-        {item.description}
-      </Text>
-    </View>
-  );
+  const handleDemoComplete = async () => {
+    await completeOnboarding();
+    router.replace("/(auth)/register");
+  };
+
+  const handleDemoSkip = async () => {
+    await completeOnboarding();
+    router.replace("/(auth)/login");
+  };
+
+  if (showDemo) {
+    return (
+      <DemoCheckIn
+        onComplete={handleDemoComplete}
+        onSkip={handleDemoSkip}
+      />
+    );
+  }
+
+  const renderSlide = ({ item }: { item: Slide; index: number }) => {
+    const Icon = item.icon;
+    return (
+      <View className="flex-1 items-center justify-center px-10" style={{ width }}>
+        <View className="mb-8 items-center justify-center">
+          <Icon size={100} color={COLORS.coral.default} weight="regular" />
+        </View>
+        <Text className="text-[32px] font-extrabold text-charcoal text-center mb-4">
+          {item.title}
+        </Text>
+        <Text className="text-lg text-muted text-center leading-[26px]">
+          {item.description}
+        </Text>
+      </View>
+    );
+  };
 
   const isLastSlide = currentIndex === slides.length - 1;
 
   return (
     <View className="flex-1 bg-cream">
-      <View className="flex-1">
-        <FlatList
-          ref={flatListRef}
-          data={slides}
-          renderItem={renderSlide}
-          keyExtractor={(item) => item.id}
-          horizontal
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          bounces={false}
-          onScroll={Animated.event(
-            [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-            { useNativeDriver: false }
-          )}
-          onViewableItemsChanged={viewableItemsChanged}
-          viewabilityConfig={viewConfig}
-          scrollEventThrottle={32}
-        />
-      </View>
+      <FlatList
+        ref={flatListRef}
+        data={slides}
+        renderItem={renderSlide}
+        keyExtractor={(item) => item.id}
+        horizontal
+        pagingEnabled
+        showsHorizontalScrollIndicator={false}
+        bounces={false}
+        style={{ flex: 1 }}
+        onScroll={(e) => {
+          scrollX.value = e.nativeEvent.contentOffset.x;
+        }}
+        onMomentumScrollEnd={(e) => {
+          const newIndex = Math.round(e.nativeEvent.contentOffset.x / width);
+          setCurrentIndex(newIndex);
+        }}
+        onScrollEndDrag={(e) => {
+          const newIndex = Math.round(e.nativeEvent.contentOffset.x / width);
+          setCurrentIndex(newIndex);
+        }}
+        scrollEventThrottle={16}
+      />
 
       <View className="px-8 pb-12">
-        <View className="flex-row justify-center mb-8">
-          {slides.map((_, index) => {
-            const inputRange = [
-              (index - 1) * width,
-              index * width,
-              (index + 1) * width,
-            ];
-
-            const dotWidth = scrollX.interpolate({
-              inputRange,
-              outputRange: [8, 24, 8],
-              extrapolate: "clamp",
-            });
-
-            const opacity = scrollX.interpolate({
-              inputRange,
-              outputRange: [0.3, 1, 0.3],
-              extrapolate: "clamp",
-            });
-
-            return (
-              <Animated.View
-                key={index}
-                style={{
-                  width: dotWidth,
-                  opacity,
-                }}
-                className="h-2 bg-coral rounded-full mx-1"
-              />
-            );
-          })}
+        {/* Pagination dots */}
+        <View className="flex-row justify-center items-center mb-8 gap-2">
+          {slides.map((_, index) => (
+            <PaginationDot
+              key={index}
+              index={index}
+              width={width}
+              scrollX={scrollX}
+            />
+          ))}
         </View>
 
-        <TouchableOpacity
-          className="bg-coral rounded-[2rem] py-4 items-center mb-4"
-          onPress={handleNext}
-          activeOpacity={0.8}
-        >
-          <Text className="text-white font-semibold text-lg">
-            {isLastSlide ? "Začít" : "Pokračovat"}
-          </Text>
-        </TouchableOpacity>
+        {/* CTA Buttons */}
+        <View className="gap-4">
+          <GradientButton
+            label={isLastSlide ? "Vyzkoušet" : "Pokračovat"}
+            onPress={handleNext}
+          />
 
-        {!isLastSlide && (
           <TouchableOpacity
-            className="py-2 items-center"
+            className="py-3 items-center"
             onPress={handleSkip}
-            activeOpacity={0.6}
           >
-            <Text className="text-muted text-base">Přeskočit</Text>
+            <Text className="text-base text-muted">Přeskočit</Text>
           </TouchableOpacity>
-        )}
+        </View>
       </View>
     </View>
   );
 }
+
+// Keep only animated dot styles that use interpolate
+const styles = StyleSheet.create({
+  dot: {
+    height: 8,
+    borderRadius: 4,
+    overflow: "hidden",
+  },
+});

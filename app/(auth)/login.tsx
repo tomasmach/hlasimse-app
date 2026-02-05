@@ -2,15 +2,17 @@ import { useState } from "react";
 import {
   View,
   Text,
-  TextInput,
   TouchableOpacity,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  ActivityIndicator,
 } from "react-native";
 import { Link, router } from "expo-router";
+import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import { LinearGradient } from "expo-linear-gradient";
 import { supabase } from "@/lib/supabase";
+import { AnimatedInput, GradientButton } from "@/components/ui";
+import { COLORS, GRADIENTS, SPACING } from "@/constants/design";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -59,25 +61,53 @@ export default function LoginScreen() {
       className="flex-1 bg-cream"
     >
       <ScrollView
-        contentContainerClassName="flex-grow justify-center px-6 py-12"
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: "center",
+          paddingHorizontal: SPACING.page,
+          paddingVertical: 48,
+        }}
         keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-        <View className="items-center mb-12">
-          <Text className="text-4xl font-bold text-charcoal">Hlásím se</Text>
-          <Text className="text-muted mt-2">Přihlaste se ke svému účtu</Text>
-        </View>
+        {/* Header */}
+        <Animated.View
+          entering={FadeIn.delay(100)}
+          className="items-center mb-12"
+        >
+          <Text className="text-[40px] font-extrabold text-charcoal">
+            Hlásím se
+          </Text>
+          <LinearGradient
+            colors={GRADIENTS.coral}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            className="w-20 h-1 rounded-sm mt-2 mb-4"
+          />
+          <Text className="text-[17px] text-muted">
+            Přihlaste se ke svému účtu
+          </Text>
+        </Animated.View>
 
+        {/* Error */}
         {error && (
-          <View className="bg-coral/10 border border-coral rounded-xl p-3 mb-6">
-            <Text className="text-coral text-center">{error}</Text>
-          </View>
+          <Animated.View
+            entering={FadeInDown}
+            className="bg-error/[0.15] border border-error rounded-2xl p-4 mb-6"
+          >
+            <Text className="text-error text-center text-[15px]">
+              {error}
+            </Text>
+          </Animated.View>
         )}
 
-        <View className="gap-4 mb-6">
-          <TextInput
-            className="bg-white border border-sand rounded-xl px-4 py-3 text-charcoal"
-            placeholder="E-mail"
-            placeholderTextColor="#8B7F7A"
+        {/* Form */}
+        <Animated.View
+          entering={FadeIn.delay(200)}
+          className="mb-8"
+        >
+          <AnimatedInput
+            label="E-mail"
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
@@ -86,45 +116,47 @@ export default function LoginScreen() {
             editable={!loading}
           />
 
-          <TextInput
-            className="bg-white border border-sand rounded-xl px-4 py-3 text-charcoal"
-            placeholder="Heslo"
-            placeholderTextColor="#8B7F7A"
+          <AnimatedInput
+            label="Heslo"
             value={password}
             onChangeText={setPassword}
             secureTextEntry
             autoComplete="password"
             editable={!loading}
           />
-        </View>
 
-        <Link href="/(auth)/forgot-password" asChild>
-          <TouchableOpacity className="mb-6" disabled={loading}>
-            <Text className="text-coral text-right">Zapomenuté heslo?</Text>
-          </TouchableOpacity>
-        </Link>
-
-        <TouchableOpacity
-          className="bg-coral rounded-xl py-4 items-center mb-8"
-          onPress={handleLogin}
-          disabled={loading}
-          activeOpacity={0.8}
-        >
-          {loading ? (
-            <ActivityIndicator color="#FFFFFF" />
-          ) : (
-            <Text className="text-white font-semibold text-lg">Přihlásit</Text>
-          )}
-        </TouchableOpacity>
-
-        <View className="flex-row justify-center">
-          <Text className="text-muted">Nemáte účet? </Text>
-          <Link href="/(auth)/register" asChild>
-            <TouchableOpacity disabled={loading}>
-              <Text className="text-coral font-semibold">Registrovat se</Text>
+          <Link href="/(auth)/forgot-password" asChild>
+            <TouchableOpacity className="self-end mt-2" disabled={loading}>
+              <Text className="text-coral text-[15px] font-medium">
+                Zapomenuté heslo?
+              </Text>
             </TouchableOpacity>
           </Link>
-        </View>
+        </Animated.View>
+
+        {/* CTA */}
+        <Animated.View
+          entering={FadeIn.delay(300)}
+          className="gap-6"
+        >
+          <GradientButton
+            label="Přihlásit"
+            onPress={handleLogin}
+            loading={loading}
+            disabled={loading}
+          />
+
+          <View className="flex-row justify-center">
+            <Text className="text-muted text-[15px]">Nemáte účet? </Text>
+            <Link href="/(auth)/register" asChild>
+              <TouchableOpacity disabled={loading}>
+                <Text className="text-coral text-[15px] font-semibold">
+                  Registrovat se
+                </Text>
+              </TouchableOpacity>
+            </Link>
+          </View>
+        </Animated.View>
       </ScrollView>
     </KeyboardAvoidingView>
   );

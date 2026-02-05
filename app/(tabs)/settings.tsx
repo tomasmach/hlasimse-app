@@ -1,20 +1,80 @@
-import { View, Text, TouchableOpacity, Alert } from "react-native";
+import { View, Text, TouchableOpacity, Alert, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { Ionicons } from "@expo/vector-icons";
+import { router, Href } from "expo-router";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { useCheckInStore } from "@/stores/checkin";
+import { COLORS } from "@/constants/design";
+import { formatInterval } from "@/utils/formatInterval";
+
+// Helper components
+function SectionHeader({ title }: { title: string }) {
+  return (
+    <Text className="text-muted text-xs font-semibold mb-2 px-1 tracking-wide">
+      {title}
+    </Text>
+  );
+}
+
+function SettingsRow({
+  label,
+  value,
+  onPress,
+  showChevron = true,
+  rightIcon,
+  labelColor = "text-charcoal",
+  isFirst = false,
+  isLast = false,
+}: {
+  label: string;
+  value?: string;
+  onPress?: () => void;
+  showChevron?: boolean;
+  rightIcon?: React.ReactNode;
+  labelColor?: string;
+  isFirst?: boolean;
+  isLast?: boolean;
+}) {
+  return (
+    <TouchableOpacity
+      className={`flex-row items-center justify-between px-4 py-3.5 bg-white ${
+        isFirst ? "rounded-t-2xl" : ""
+      } ${isLast ? "rounded-b-2xl" : ""}`}
+      onPress={onPress}
+      disabled={!onPress}
+      activeOpacity={onPress ? 0.7 : 1}
+    >
+      <Text className={`${labelColor} font-medium`}>{label}</Text>
+      <View className="flex-row items-center">
+        {value && <Text className="text-muted mr-2">{value}</Text>}
+        {rightIcon}
+        {showChevron && onPress && (
+          <Ionicons name="chevron-forward" size={20} color={COLORS.muted} />
+        )}
+      </View>
+    </TouchableOpacity>
+  );
+}
+
+function Divider() {
+  return <View className="h-px bg-sand mx-4" />;
+}
 
 export default function SettingsScreen() {
   const { user, signOut } = useAuth();
   const { resetOnboarding } = useOnboardingStore();
-  const { clearProfile } = useCheckInStore();
+  const { profile, clearProfile } = useCheckInStore();
+  // RevenueCat temporarily disabled - all features are free
+  // const { isPremium } = usePremiumStore();
+  // const [paywallVisible, setPaywallVisible] = useState(false);
 
   const handleLogout = () => {
-    Alert.alert("Odhlásit se", "Opravdu se chcete odhlásit?", [
-      { text: "Zrušit", style: "cancel" },
+    Alert.alert("Odhlasit se", "Opravdu se chcete odhlasit?", [
+      { text: "Zrusit", style: "cancel" },
       {
-        text: "Odhlásit",
+        text: "Odhlasit",
         style: "destructive",
         onPress: async () => {
           await signOut();
@@ -23,12 +83,34 @@ export default function SettingsScreen() {
     ]);
   };
 
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      "Smazat ucet",
+      "Opravdu chcete smazat svuj ucet? Tato akce je nevratna a vsechna vase data budou trvale smazana.",
+      [
+        { text: "Zrusit", style: "cancel" },
+        {
+          text: "Smazat ucet",
+          style: "destructive",
+          onPress: () => {
+            router.push("/delete-account" as Href);
+          },
+        },
+      ]
+    );
+  };
+
+  const handleIntervalPress = () => {
+    // All features are free - go directly to interval picker
+    router.push("/interval-picker" as Href);
+  };
+
   const handleResetOnboarding = () => {
     Alert.alert(
       "Reset Onboarding",
-      "Vymaže onboarding status a odhlásí tě. Uvidíš onboarding jako při prvním spuštění.",
+      "Vymaze onboarding status a odhlasi te. Uvidis onboarding jako pri prvnim spusteni.",
       [
-        { text: "Zrušit", style: "cancel" },
+        { text: "Zrusit", style: "cancel" },
         {
           text: "Reset",
           style: "destructive",
@@ -43,10 +125,10 @@ export default function SettingsScreen() {
 
   const handleDevReset = () => {
     Alert.alert(
-      "DEV Reset (úplný fresh start)",
-      "Vymaže všechna data + účet + odhlásí tě. Aplikace půjde do onboarding screenu jako při prvním spuštění.",
+      "DEV Reset (uplny fresh start)",
+      "Vymaze vsechna data + ucet + odhlasi te. Aplikace pujde do onboarding screenu jako pri prvnim spusteni.",
       [
-        { text: "Zrušit", style: "cancel" },
+        { text: "Zrusit", style: "cancel" },
         {
           text: "Reset All",
           style: "destructive",
@@ -113,7 +195,7 @@ export default function SettingsScreen() {
               console.error("Error during dev reset:", error);
               Alert.alert(
                 "Chyba",
-                "Nepodařilo se smazat data. Zkuste to prosím znovu."
+                "Nepodarilo se smazat data. Zkuste to prosim znovu."
               );
             }
           },
@@ -122,50 +204,90 @@ export default function SettingsScreen() {
     );
   };
 
+  const intervalDisplay = profile?.interval_hours
+    ? formatInterval(profile.interval_hours)
+    : "24 hodin";
+
   return (
     <SafeAreaView className="flex-1 bg-cream">
-      <View className="flex-1 px-4 pt-4">
-        <Text className="text-charcoal text-2xl font-bold mb-6">Nastavení</Text>
+      <ScrollView className="flex-1" contentContainerClassName="px-4 pt-4 pb-8">
+        <Text className="text-charcoal text-2xl font-bold mb-6">Nastaveni</Text>
 
-        <View className="bg-white rounded-2xl p-4 mb-4">
-          <Text className="text-muted text-sm mb-1">Přihlášen jako</Text>
-          <Text className="text-charcoal font-medium">{user?.email}</Text>
+        {/* PROFIL Section */}
+        <View className="mb-6">
+          <SectionHeader title="PROFIL" />
+          <View className="rounded-2xl overflow-hidden">
+            <SettingsRow
+              label="Jmeno"
+              value={profile?.name || "Nenastaveno"}
+              onPress={() => router.push("/edit-name" as Href)}
+              isFirst
+            />
+            <Divider />
+            <SettingsRow
+              label="Interval"
+              value={intervalDisplay}
+              onPress={handleIntervalPress}
+              isLast
+            />
+          </View>
         </View>
 
-        <View className="flex-1" />
+        {/* PREDPLATNE Section - temporarily disabled, all features free */}
 
-        {/* DEV Tools */}
-        <View className="mb-4">
-          <Text className="text-muted text-xs font-semibold mb-2 px-1">
-            🔧 DEV TOOLS
-          </Text>
-          <TouchableOpacity
-            className="bg-white rounded-2xl p-4 border border-sand mb-2"
-            onPress={handleResetOnboarding}
-          >
-            <Text className="text-charcoal text-center font-medium">
-              🔄 Reset Onboarding
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            className="bg-white rounded-2xl p-4 border border-coral"
-            onPress={handleDevReset}
-          >
-            <Text className="text-coral text-center font-medium">
-              🚨 Úplný Fresh Start
-            </Text>
-          </TouchableOpacity>
+        {/* UCET Section */}
+        <View className="mb-6">
+          <SectionHeader title="UCET" />
+          <View className="rounded-2xl overflow-hidden">
+            <View className="flex-row items-center justify-between px-4 py-3.5 bg-white rounded-t-2xl">
+              <Text className="text-charcoal font-medium">E-mail</Text>
+              <Text className="text-muted">{user?.email}</Text>
+            </View>
+            <Divider />
+            <SettingsRow
+              label="Odhlasit se"
+              onPress={handleLogout}
+              showChevron={false}
+            />
+            <Divider />
+            <SettingsRow
+              label="Smazat ucet"
+              onPress={handleDeleteAccount}
+              showChevron={false}
+              labelColor="text-coral"
+              isLast
+            />
+          </View>
         </View>
 
-        <TouchableOpacity
-          className="bg-white rounded-2xl p-4 border border-coral mb-8"
-          onPress={handleLogout}
-        >
-          <Text className="text-coral text-center font-medium">
-            Odhlásit se
-          </Text>
-        </TouchableOpacity>
-      </View>
+        {/* DEV Tools - keep for development */}
+        {__DEV__ && (
+          <View className="mb-4">
+            <SectionHeader title="DEV TOOLS" />
+            <View className="rounded-2xl overflow-hidden">
+              <TouchableOpacity
+                className="bg-white px-4 py-3.5 rounded-t-2xl"
+                onPress={handleResetOnboarding}
+              >
+                <Text className="text-charcoal font-medium">
+                  Reset Onboarding
+                </Text>
+              </TouchableOpacity>
+              <Divider />
+              <TouchableOpacity
+                className="bg-white px-4 py-3.5 rounded-b-2xl"
+                onPress={handleDevReset}
+              >
+                <Text className="text-coral font-medium">
+                  Uplny Fresh Start
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
+      </ScrollView>
+
+      {/* Paywall Modal - temporarily disabled */}
     </SafeAreaView>
   );
 }
