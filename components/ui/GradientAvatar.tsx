@@ -20,19 +20,9 @@ export function GradientAvatar({
   email,
   size = "md",
 }: GradientAvatarProps) {
-  // Get initial from name or email, fallback to "?"
-  const getInitial = (): string => {
-    if (name && name.trim().length > 0) {
-      return name.trim().charAt(0).toUpperCase();
-    }
-    if (email && email.trim().length > 0) {
-      return email.trim().charAt(0).toUpperCase();
-    }
-    return "?";
-  };
-
   const config = SIZE_CONFIG[size];
-  const initial = getInitial();
+  const displayText = name?.trim() || email?.trim() || "";
+  const initial = displayText ? displayText.charAt(0).toUpperCase() : "?";
 
   return (
     <View
@@ -46,7 +36,7 @@ export function GradientAvatar({
       ]}
     >
       <LinearGradient
-        colors={[...GRADIENTS.coral]}
+        colors={GRADIENTS.coral}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
         style={[

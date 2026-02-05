@@ -43,15 +43,14 @@ export default function CheckInScreen() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
+  const [toast, setToast] = useState<{
+    visible: boolean;
+    message: string;
+    type: "success" | "info" | "warning" | "error";
+  }>({ visible: false, message: "", type: "info" });
 
-  // Toast state
-  const [toastVisible, setToastVisible] = useState(false);
-  const [toastMessage, setToastMessage] = useState("");
-  const [toastType, setToastType] = useState<"success" | "info" | "warning" | "error">("info");
-
-  // Define callbacks before useEffect hooks
   const handleToastDismiss = useCallback(() => {
-    setToastVisible(false);
+    setToast((prev) => ({ ...prev, visible: false }));
   }, []);
 
   const handleDismissSuccessOverlay = useCallback(() => {
@@ -95,18 +94,8 @@ export default function CheckInScreen() {
     }
   }, [showSuccess]);
 
-  if (!user) {
-    return (
-      <SafeAreaView className="flex-1 bg-cream items-center justify-center">
-        <ActivityIndicator size="large" color="#FF6B5B" />
-      </SafeAreaView>
-    );
-  }
-
   const showToastMessage = (type: "info" | "error", message: string) => {
-    setToastType(type);
-    setToastMessage(message);
-    setToastVisible(true);
+    setToast({ visible: true, message, type });
   };
 
   const handleCheckIn = async () => {
@@ -122,33 +111,22 @@ export default function CheckInScreen() {
     if (result.success) {
       setShowSuccess(true);
       if (result.offline) {
-        // Show toast for offline check-ins
         showToastMessage("info", "Máme to! Pošleme hned, až bude signál.");
       } else {
-        // Show full-screen success overlay for online check-ins
         setShowSuccessOverlay(true);
       }
     } else {
-      // Show error toast for failed check-ins
       showToastMessage("error", "Nepodařilo se odeslat. Zkuste to znovu.");
     }
 
     setIsCheckingIn(false);
   };
 
-  // Show loading state while fetching profile
-  if (!hasFetched || (isLoading && !profile)) {
+  // Show loading state while waiting for user, profile fetch, or missing profile
+  if (!user || !hasFetched || (isLoading && !profile) || !profile) {
     return (
       <SafeAreaView className="flex-1 bg-cream items-center justify-center">
-        <ActivityIndicator size="large" color="#FF6B5B" />
-      </SafeAreaView>
-    );
-  }
-
-  if (!profile) {
-    return (
-      <SafeAreaView className="flex-1 bg-cream items-center justify-center">
-        <ActivityIndicator size="large" color="#FF6B5B" />
+        <ActivityIndicator size="large" color={COLORS.coral.default} />
       </SafeAreaView>
     );
   }
@@ -251,9 +229,9 @@ export default function CheckInScreen() {
 
       {/* Toast for offline/error states */}
       <Toast
-        message={toastMessage}
-        type={toastType}
-        visible={toastVisible}
+        message={toast.message}
+        type={toast.type}
+        visible={toast.visible}
         onDismiss={handleToastDismiss}
         duration={3000}
       />
@@ -272,12 +250,6 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.cream.default,
-  },
-  loadingContainer: {
-    flex: 1,
-    backgroundColor: COLORS.cream.default,
-    alignItems: "center",
-    justifyContent: "center",
   },
   bannersContainer: {
     paddingTop: 8,

@@ -1,4 +1,3 @@
-// useState removed - was only used for paywallVisible (RevenueCat disabled)
 import { View, Text, TouchableOpacity, Alert, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
@@ -7,15 +6,8 @@ import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { useCheckInStore } from "@/stores/checkin";
-// RevenueCat temporarily disabled
-// import { usePremiumStore } from "@/stores/premium";
-// import { Paywall } from "@/components/Paywall";
-
-const colors = {
-  charcoal: "#2D2926",
-  muted: "#8B7F7A",
-  coral: "#FF6B5B",
-} as const;
+import { COLORS } from "@/constants/design";
+import { formatInterval } from "@/utils/formatInterval";
 
 // Helper components
 function SectionHeader({ title }: { title: string }) {
@@ -59,7 +51,7 @@ function SettingsRow({
         {value && <Text className="text-muted mr-2">{value}</Text>}
         {rightIcon}
         {showChevron && onPress && (
-          <Ionicons name="chevron-forward" size={20} color={colors.muted} />
+          <Ionicons name="chevron-forward" size={20} color={COLORS.muted} />
         )}
       </View>
     </TouchableOpacity>
@@ -111,14 +103,6 @@ export default function SettingsScreen() {
   const handleIntervalPress = () => {
     // All features are free - go directly to interval picker
     router.push("/interval-picker" as Href);
-  };
-
-  const handleManageSubscription = () => {
-    // TODO: Navigate to subscription management or app store
-    Alert.alert(
-      "Sprava predplatneho",
-      "Predplatne muzete spravovat v nastaveni vaseho App Store nebo Google Play."
-    );
   };
 
   const handleResetOnboarding = () => {
@@ -218,18 +202,6 @@ export default function SettingsScreen() {
         },
       ]
     );
-  };
-
-  // Format interval display
-  const formatInterval = (hours: number) => {
-    if (hours < 24) {
-      return `${hours} hodin`;
-    } else if (hours === 24) {
-      return "24 hodin";
-    } else {
-      const days = Math.floor(hours / 24);
-      return `${days} ${days === 1 ? "den" : days < 5 ? "dny" : "dnu"}`;
-    }
   };
 
   const intervalDisplay = profile?.interval_hours

@@ -30,6 +30,26 @@ interface CheckInState {
   clearProfile: () => void;
 }
 
+// Checks if an error has a string `code` property (typical of Supabase/server errors)
+function isServerError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    typeof (error as { code: unknown }).code === "string"
+  );
+}
+
+// Checks if an error is a network/connectivity error (should be queued for offline retry)
+function isNetworkError(error: unknown): boolean {
+  if (error instanceof TypeError) return true;
+  if (error instanceof Error) {
+    const msg = error.message.toLowerCase();
+    return msg.includes("fetch") || msg.includes("network");
+  }
+  return false;
+}
+
 export const useCheckInStore = create<CheckInState>((set, get) => ({
   profile: null,
   isLoading: false,
@@ -175,29 +195,7 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
     } catch (error) {
       console.error("Check-in failed:", error);
 
-      // Determine if this is a network error (should queue) vs server error (should not queue)
-      const isNetworkError =
-        error instanceof TypeError ||
-        (error instanceof Error &&
-          (error.message.includes("fetch") ||
-            error.message.includes("network") ||
-            error.message.includes("Network"))) ||
-        (typeof error === "object" &&
-          error !== null &&
-          "message" in error &&
-          typeof (error as { message: unknown }).message === "string" &&
-          ((error as { message: string }).message.includes("fetch") ||
-            (error as { message: string }).message.includes("network") ||
-            (error as { message: string }).message.includes("Network")));
-
-      // Check if it's a Supabase/server error (has error code)
-      const isServerError =
-        typeof error === "object" &&
-        error !== null &&
-        "code" in error &&
-        typeof (error as { code: unknown }).code === "string";
-
-      if (isNetworkError && !isServerError) {
+      if (isNetworkError(error) && !isServerError(error)) {
         // Network error - queue for offline sync
         await addToQueue({
           profileId: profile.id,
@@ -262,14 +260,7 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
       } catch (error) {
         console.error("Failed to sync pending check-in:", error);
 
-        // Check if this is a server error (has error code) - these won't succeed on retry
-        const isServerError =
-          typeof error === "object" &&
-          error !== null &&
-          "code" in error &&
-          typeof (error as { code: unknown }).code === "string";
-
-        if (isServerError) {
+        if (isServerError(error)) {
           // Remove from queue - retrying won't help
           console.warn("Removing non-retriable check-in from queue:", pending.id);
           await removeFromQueue(pending.id);

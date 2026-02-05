@@ -4,6 +4,7 @@ import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import { Check } from "phosphor-react-native";
 import { COLORS, ANIMATION } from "@/constants/design";
+import { formatInterval } from "@/utils/formatInterval";
 
 interface SuccessOverlayProps {
   visible: boolean;
@@ -122,18 +123,6 @@ export function SuccessOverlay({
   }, [visible, handleDismiss]);
 
   if (!visible) return null;
-
-  const formatInterval = (hours: number): string => {
-    if (hours >= 24) {
-      const days = Math.floor(hours / 24);
-      if (days === 1) return "1 den";
-      if (days >= 2 && days <= 4) return `${days} dny`;
-      return `${days} dnů`;
-    }
-    if (hours === 1) return "1 hodinu";
-    if (hours >= 2 && hours <= 4) return `${hours} hodiny`;
-    return `${hours} hodin`;
-  };
 
   return (
     <Pressable onPress={handleDismiss} style={styles.container}>

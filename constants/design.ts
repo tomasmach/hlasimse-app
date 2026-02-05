@@ -101,12 +101,3 @@ export const BORDER_RADIUS = {
   "2xl": 24,
   full: 9999,
 } as const;
-
-export const HAPTICS = {
-  light: "light" as const,
-  medium: "medium" as const,
-  heavy: "heavy" as const,
-  success: "success" as const,
-  warning: "warning" as const,
-  error: "error" as const,
-} as const;

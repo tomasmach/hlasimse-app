@@ -1,5 +1,5 @@
 import "../global.css";
-import { useEffect, useRef, useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { View, ActivityIndicator } from "react-native";
@@ -19,7 +19,6 @@ function useProtectedRoute(
 ) {
   const segments = useSegments();
   const router = useRouter();
-  const hasNavigated = useRef(false);
 
   useEffect(() => {
     // Wait for both auth and onboarding status to be loaded

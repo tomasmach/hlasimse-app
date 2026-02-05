@@ -24,71 +24,60 @@ export function WatchedProfileCard({ profile }: WatchedProfileCardProps) {
   const isOverdue = hasAlert || (deadline !== null && timeRemaining < 0);
   const isApproaching = !isOverdue && deadline !== null && hoursRemaining < 1 && hoursRemaining >= 0;
 
-  // Border colors based on status
-  const borderColor = isOverdue
-    ? "border-accent" // Rose for missed (#f43f5e)
-    : isApproaching
-      ? "border-brand-500" // Orange for approaching (#f97316)
-      : "border-green-400"; // Green for OK (#4ADE80)
+  // Status-based styling and content
+  type StatusKey = "overdue" | "approaching" | "ok";
+  const statusKey: StatusKey = isOverdue ? "overdue" : isApproaching ? "approaching" : "ok";
 
-  // Avatar background colors
-  const avatarBgColor = isOverdue
-    ? "bg-accent/20"
-    : isApproaching
-      ? "bg-brand-500/20"
-      : "bg-green-400/20";
-
-  // Avatar text colors
-  const avatarTextColor = isOverdue
-    ? "text-accent"
-    : isApproaching
-      ? "text-brand-500"
-      : "text-green-400";
-
-  // Status icon and color
-  const getStatusIcon = () => {
-    if (isOverdue) {
-      return <Ionicons name="warning" size={24} color="#f43f5e" />;
-    }
-    if (isApproaching) {
-      return <Ionicons name="time" size={24} color="#f97316" />;
-    }
-    return <Ionicons name="checkmark-circle" size={24} color="#4ADE80" />;
+  const STATUS_CONFIG: Record<StatusKey, {
+    border: string;
+    avatarBg: string;
+    avatarText: string;
+    statusText: string;
+    statusTextColor: string;
+    iconName: "warning" | "time" | "checkmark-circle";
+    iconColor: string;
+  }> = {
+    overdue: {
+      border: "border-accent",
+      avatarBg: "bg-accent/20",
+      avatarText: "text-accent",
+      statusText: "Neohlásil/a se!",
+      statusTextColor: "text-accent",
+      iconName: "warning",
+      iconColor: "#f43f5e",
+    },
+    approaching: {
+      border: "border-brand-500",
+      avatarBg: "bg-brand-500/20",
+      avatarText: "text-brand-500",
+      statusText: "Blíží se termín",
+      statusTextColor: "text-brand-500",
+      iconName: "time",
+      iconColor: "#f97316",
+    },
+    ok: {
+      border: "border-green-400",
+      avatarBg: "bg-green-400/20",
+      avatarText: "text-green-400",
+      statusText: "V pořádku",
+      statusTextColor: "text-green-400",
+      iconName: "checkmark-circle",
+      iconColor: "#4ADE80",
+    },
   };
 
-  // Format last check-in time
-  const getLastCheckInText = () => {
-    if (!profile.last_check_in_at) {
-      return "Zatím bez hlášení";
-    }
+  const status = STATUS_CONFIG[statusKey];
+
+  const getLastCheckInText = (): string => {
+    if (!profile.last_check_in_at) return "Zatím bez hlášení";
     const lastCheckIn = new Date(profile.last_check_in_at);
-    if (isNaN(lastCheckIn.getTime())) {
-      return "Zatím bez hlášení";
-    }
+    if (isNaN(lastCheckIn.getTime())) return "Zatím bez hlášení";
     const distance = formatDistanceToNow(lastCheckIn, {
       locale: cs,
-      addSuffix: true
+      addSuffix: true,
     });
     return `Naposledy: ${distance}`;
   };
-
-  // Status text
-  const getStatusText = () => {
-    if (isOverdue) {
-      return "Neohlásil/a se!";
-    }
-    if (isApproaching) {
-      return "Blíží se termín";
-    }
-    return "V pořádku";
-  };
-
-  // Status text color
-  const statusTextColor = isOverdue
-    ? "text-accent"
-    : isApproaching
-      ? "text-brand-500"
-      : "text-green-400";
 
   const openMap = () => {
     if (profile.last_known_lat && profile.last_known_lng) {
@@ -98,18 +87,18 @@ export function WatchedProfileCard({ profile }: WatchedProfileCardProps) {
   };
 
   return (
-    <View className={`bg-white rounded-2xl p-4 mb-3 border-2 ${borderColor}`}>
+    <View className={`bg-white rounded-2xl p-4 mb-3 border-2 ${status.border}`}>
       <View className="flex-row items-center justify-between">
         <View className="flex-row items-center flex-1">
-          <View className={`w-10 h-10 rounded-full items-center justify-center mr-3 ${avatarBgColor}`}>
-            <Text className={`${avatarTextColor} text-lg font-medium`}>
+          <View className={`w-10 h-10 rounded-full items-center justify-center mr-3 ${status.avatarBg}`}>
+            <Text className={`${status.avatarText} text-lg font-medium`}>
               {safeInitial}
             </Text>
           </View>
           <View className="flex-1">
             <Text className="text-charcoal font-medium">{profile.name}</Text>
-            <Text className={`text-sm font-medium ${statusTextColor}`}>
-              {getStatusText()}
+            <Text className={`text-sm font-medium ${status.statusTextColor}`}>
+              {status.statusText}
             </Text>
             <Text className="text-muted text-xs mt-0.5">
               {getLastCheckInText()}
@@ -123,7 +112,7 @@ export function WatchedProfileCard({ profile }: WatchedProfileCardProps) {
         </View>
 
         <View className="items-end">
-          {getStatusIcon()}
+          <Ionicons name={status.iconName} size={24} color={status.iconColor} />
         </View>
       </View>
 
