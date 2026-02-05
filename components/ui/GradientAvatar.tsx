@@ -1,6 +1,6 @@
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
-import { GRADIENTS, COLORS } from "@/constants/design";
+import { GRADIENTS } from "@/constants/design";
 
 interface GradientAvatarProps {
   name?: string;
@@ -26,46 +26,36 @@ export function GradientAvatar({
 
   return (
     <View
-      style={[
-        styles.container,
-        {
-          width: config.size,
-          height: config.size,
-          borderRadius: config.size / 2,
-        },
-      ]}
+      className="overflow-hidden"
+      style={{
+        width: config.size,
+        height: config.size,
+        borderRadius: config.size / 2,
+      }}
     >
       <LinearGradient
         colors={GRADIENTS.coral}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        style={[
-          styles.gradient,
-          {
-            width: config.size,
-            height: config.size,
-            borderRadius: config.size / 2,
-          },
-        ]}
+        className="justify-center items-center"
+        style={{
+          width: config.size,
+          height: config.size,
+          borderRadius: config.size / 2,
+        }}
       >
         {/* Inner shadow overlay for depth */}
         <View
-          style={[
-            styles.innerShadow,
-            {
-              width: config.size,
-              height: config.size,
-              borderRadius: config.size / 2,
-            },
-          ]}
+          className="justify-center items-center bg-black/5"
+          style={{
+            width: config.size,
+            height: config.size,
+            borderRadius: config.size / 2,
+          }}
         >
           <Text
-            style={[
-              styles.initial,
-              {
-                fontSize: config.fontSize,
-              },
-            ]}
+            className="text-white font-semibold"
+            style={{ fontSize: config.fontSize }}
           >
             {initial}
           </Text>
@@ -74,22 +64,3 @@ export function GradientAvatar({
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    overflow: "hidden",
-  },
-  gradient: {
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  innerShadow: {
-    backgroundColor: "rgba(0,0,0,0.05)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  initial: {
-    color: COLORS.white,
-    fontWeight: "600",
-  },
-});

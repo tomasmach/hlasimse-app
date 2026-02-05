@@ -159,13 +159,13 @@ export function Toast({
       ]}
       {...panResponder.panHandlers}
     >
-      <Pressable onPress={dismiss} style={styles.content}>
+      <Pressable onPress={dismiss} className="flex-row items-center px-4 py-4 gap-3">
         <IconComponent
           size={24}
           color={config.iconColor}
           weight="fill"
         />
-        <Text style={styles.message} numberOfLines={2}>
+        <Text className="flex-1 text-[15px] font-medium text-charcoal" numberOfLines={2}>
           {message}
         </Text>
       </Pressable>
@@ -173,6 +173,7 @@ export function Toast({
   );
 }
 
+// Keep only styles that must remain (position, animated values, shadows)
 const styles = StyleSheet.create({
   container: {
     position: "absolute",
@@ -183,18 +184,5 @@ const styles = StyleSheet.create({
     borderRadius: BORDER_RADIUS.lg,
     borderWidth: 1,
     ...SHADOWS.elevated,
-  },
-  content: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 16,
-    paddingVertical: 16,
-    gap: 12,
-  },
-  message: {
-    flex: 1,
-    fontSize: 15,
-    fontWeight: "500",
-    color: COLORS.charcoal.default,
   },
 });

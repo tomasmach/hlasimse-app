@@ -6,6 +6,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/hooks/useAuth";
 import { useCheckInStore } from "@/stores/checkin";
 import { supabase } from "@/lib/supabase";
+import { COLORS } from "@/constants/design";
 
 const INTERVAL_OPTIONS = [
   { hours: 12, label: "12 hodin" },
@@ -90,7 +91,7 @@ export default function IntervalPickerScreen() {
         {/* Warning for pending offline check-ins */}
         {pendingCount > 0 && (
           <View className="bg-orange-50 border-2 border-orange-300 rounded-2xl p-4 mb-4 flex-row items-start">
-            <Ionicons name="warning" size={20} color="#f97316" className="mr-2" />
+            <Ionicons name="warning" size={20} color={COLORS.brand[500]} className="mr-2" />
             <Text className="text-orange-900 flex-1 ml-2">
               Máte {pendingCount} nesynchronizované{pendingCount === 1 ? ' hlášení' : pendingCount < 5 ? ' hlášení' : ' hlášení'}. Pro přesný výpočet termínu počkejte na synchronizaci.
             </Text>
@@ -123,7 +124,7 @@ export default function IntervalPickerScreen() {
               </View>
               <Text className="text-charcoal text-lg">{option.label}</Text>
               {loadingHours === option.hours && (
-                <ActivityIndicator className="ml-auto" color="#FF6B5B" />
+                <ActivityIndicator className="ml-auto" color={COLORS.coral.default} />
               )}
             </TouchableOpacity>
           ))}

@@ -118,6 +118,13 @@ export function SuccessOverlay({
         clearTimeout(checkmarkTimer);
         clearTimeout(textTimer);
         clearTimeout(autoDismissTimer);
+
+        // Stop all running animations to prevent memory leaks
+        backdropOpacity.current.stopAnimation();
+        circleScale.current.stopAnimation();
+        checkmarkScale.current.stopAnimation();
+        textOpacity.current.stopAnimation();
+        textTranslateY.current.stopAnimation();
       };
     }
   }, [visible, handleDismiss]);
@@ -131,15 +138,13 @@ export function SuccessOverlay({
         <View style={styles.creamOverlay} />
       </Animated.View>
 
-      <View style={styles.content}>
+      <View className="flex-1 items-center justify-center">
         {/* Success Circle */}
         <Animated.View
-          style={[
-            styles.circleContainer,
-            { transform: [{ scale: circleScale.current }] },
-          ]}
+          className="mb-6"
+          style={{ transform: [{ scale: circleScale.current }] }}
         >
-          <View style={styles.successCircle}>
+          <View className="w-[120px] h-[120px] rounded-[60px] bg-success items-center justify-center">
             {/* Checkmark with separate animation */}
             <Animated.View
               style={{ transform: [{ scale: checkmarkScale.current }] }}
@@ -156,10 +161,12 @@ export function SuccessOverlay({
             transform: [{ translateY: textTranslateY.current }],
           }}
         >
-          <Text style={styles.title}>Vše v pořádku!</Text>
-          <Text style={styles.subtitle}>
+          <Text className="text-[28px] font-bold text-charcoal mb-2 text-center">
+            Vše v pořádku!
+          </Text>
+          <Text className="text-lg text-muted text-center leading-[26px]">
             Další hlášení za{"\n"}
-            <Text style={styles.intervalText}>{formatInterval(intervalHours)}</Text>
+            <Text className="font-semibold text-charcoal">{formatInterval(intervalHours)}</Text>
           </Text>
         </Animated.View>
       </View>
@@ -167,6 +174,7 @@ export function SuccessOverlay({
   );
 }
 
+// Keep only styles that must remain (position, absolute fills, Animated.Value refs)
 const styles = StyleSheet.create({
   container: {
     position: "absolute",
@@ -183,38 +191,5 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFillObject,
     backgroundColor: COLORS.cream.default,
     opacity: 0.6,
-  },
-  content: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  circleContainer: {
-    marginBottom: 24,
-  },
-  successCircle: {
-    width: 120,
-    height: 120,
-    borderRadius: 60,
-    backgroundColor: COLORS.success,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: COLORS.charcoal.default,
-    marginBottom: 8,
-    textAlign: "center",
-  },
-  subtitle: {
-    fontSize: 18,
-    color: COLORS.muted,
-    textAlign: "center",
-    lineHeight: 26,
-  },
-  intervalText: {
-    fontWeight: "600",
-    color: COLORS.charcoal.default,
   },
 });

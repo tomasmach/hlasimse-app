@@ -60,7 +60,7 @@ function PaginationDot({
         colors={GRADIENTS.coral}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
-        style={styles.dotGradient}
+        className="flex-1"
       />
     </Animated.View>
   );
@@ -143,12 +143,16 @@ export default function OnboardingScreen() {
   const renderSlide = ({ item }: { item: Slide; index: number }) => {
     const Icon = item.icon;
     return (
-      <View style={[styles.slide, { width }]}>
-        <View style={styles.iconContainer}>
+      <View className="flex-1 items-center justify-center px-10" style={{ width }}>
+        <View className="mb-8 items-center justify-center">
           <Icon size={100} color={COLORS.coral.default} weight="regular" />
         </View>
-        <Text style={styles.slideTitle}>{item.title}</Text>
-        <Text style={styles.slideDescription}>{item.description}</Text>
+        <Text className="text-[32px] font-extrabold text-charcoal text-center mb-4">
+          {item.title}
+        </Text>
+        <Text className="text-lg text-muted text-center leading-[26px]">
+          {item.description}
+        </Text>
       </View>
     );
   };
@@ -156,7 +160,7 @@ export default function OnboardingScreen() {
   const isLastSlide = currentIndex === slides.length - 1;
 
   return (
-    <View style={styles.container}>
+    <View className="flex-1 bg-cream">
       <FlatList
         ref={flatListRef}
         data={slides}
@@ -181,9 +185,9 @@ export default function OnboardingScreen() {
         scrollEventThrottle={16}
       />
 
-      <View style={styles.footer}>
+      <View className="px-8 pb-12">
         {/* Pagination dots */}
-        <View style={styles.pagination}>
+        <View className="flex-row justify-center items-center mb-8 gap-2">
           {slides.map((_, index) => (
             <PaginationDot
               key={index}
@@ -195,17 +199,17 @@ export default function OnboardingScreen() {
         </View>
 
         {/* CTA Buttons */}
-        <View style={styles.buttons}>
+        <View className="gap-4">
           <GradientButton
             label={isLastSlide ? "Vyzkoušet" : "Pokračovat"}
             onPress={handleNext}
           />
 
           <TouchableOpacity
-            style={styles.skipButton}
+            className="py-3 items-center"
             onPress={handleSkip}
           >
-            <Text style={styles.skipText}>Přeskočit</Text>
+            <Text className="text-base text-muted">Přeskočit</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -213,63 +217,11 @@ export default function OnboardingScreen() {
   );
 }
 
+// Keep only animated dot styles that use interpolate
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.cream.default,
-  },
-  slide: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 40,
-  },
-  iconContainer: {
-    marginBottom: 32,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  slideTitle: {
-    fontSize: 32,
-    fontWeight: "800",
-    color: COLORS.charcoal.default,
-    textAlign: "center",
-    marginBottom: 16,
-  },
-  slideDescription: {
-    fontSize: 18,
-    color: COLORS.muted,
-    textAlign: "center",
-    lineHeight: 26,
-  },
-  footer: {
-    paddingHorizontal: 32,
-    paddingBottom: 48,
-  },
-  pagination: {
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    marginBottom: 32,
-    gap: 8,
-  },
   dot: {
     height: 8,
     borderRadius: 4,
     overflow: "hidden",
-  },
-  dotGradient: {
-    flex: 1,
-  },
-  buttons: {
-    gap: 16,
-  },
-  skipButton: {
-    paddingVertical: 12,
-    alignItems: "center",
-  },
-  skipText: {
-    fontSize: 16,
-    color: COLORS.muted,
   },
 });

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { Check, ArrowRight } from "phosphor-react-native";
@@ -32,41 +32,43 @@ export function DemoCheckIn({ onComplete, onSkip }: DemoCheckInProps) {
   };
 
   return (
-    <View style={styles.container}>
+    <View className="flex-1 bg-cream">
       {showCTA ? (
         // After animation - show CTA
-        <Animated.View entering={FadeIn.duration(300)} style={styles.content}>
-          <View style={styles.successCircle}>
+        <Animated.View entering={FadeIn.duration(300)} className="flex-1 items-center justify-center px-8">
+          <View className="w-[100px] h-[100px] rounded-[50px] bg-success/20 items-center justify-center mb-8">
             <Check size={48} color={COLORS.success} weight="bold" />
           </View>
 
-          <Text style={styles.successTitle}>Právě jste se ohlásili!</Text>
-          <Text style={styles.successSubtitle}>
+          <Text className="text-[28px] font-extrabold text-charcoal text-center mb-3">
+            Právě jste se ohlásili!
+          </Text>
+          <Text className="text-[17px] text-muted text-center leading-6 mb-12">
             Takhle jednoduše dáte vědět{"\n"}blízkým, že jste v pořádku.
           </Text>
 
-          <View style={styles.ctaContainer}>
+          <View className="w-full gap-4">
             <GradientButton label="Vytvořit účet" onPress={onComplete} />
-            <Text style={styles.loginLink} onPress={onSkip}>
+            <Text className="text-[15px] text-coral text-center font-medium" onPress={onSkip}>
               Už mám účet? Přihlásit
             </Text>
           </View>
         </Animated.View>
       ) : (
         // Before press and during animation - keep same layout structure
-        <View style={styles.content}>
+        <View className="flex-1 items-center justify-center px-8">
           <Animated.Text
-            style={[styles.title, hasPressed && styles.hidden]}
+            className={`text-[32px] font-extrabold text-charcoal text-center mb-3 ${hasPressed ? 'opacity-0' : ''}`}
           >
             Zkuste si to
           </Animated.Text>
           <Animated.Text
-            style={[styles.subtitle, hasPressed && styles.hidden]}
+            className={`text-lg text-muted text-center leading-[26px] mb-12 ${hasPressed ? 'opacity-0' : ''}`}
           >
             Stiskněte tlačítko a zažijte,{"\n"}jak snadné je hlásit se.
           </Animated.Text>
 
-          <View style={styles.heroContainer}>
+          <View className="mb-8">
             <HeroButton
               onPress={handlePress}
               showSuccess={showSuccess}
@@ -74,8 +76,8 @@ export function DemoCheckIn({ onComplete, onSkip }: DemoCheckInProps) {
             />
           </View>
 
-          <View style={[styles.hint, hasPressed && styles.hidden]}>
-            <Text style={styles.hintText}>Stiskněte tlačítko</Text>
+          <View className={`flex-row items-center gap-2 ${hasPressed ? 'opacity-0' : ''}`}>
+            <Text className="text-[15px] text-coral font-medium">Stiskněte tlačítko</Text>
             <ArrowRight size={16} color={COLORS.coral.default} />
           </View>
         </View>
@@ -83,79 +85,3 @@ export function DemoCheckIn({ onComplete, onSkip }: DemoCheckInProps) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.cream.default,
-  },
-  content: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 32,
-  },
-  title: {
-    fontSize: 32,
-    fontWeight: "800",
-    color: COLORS.charcoal.default,
-    textAlign: "center",
-    marginBottom: 12,
-  },
-  subtitle: {
-    fontSize: 18,
-    color: COLORS.muted,
-    textAlign: "center",
-    lineHeight: 26,
-    marginBottom: 48,
-  },
-  heroContainer: {
-    marginBottom: 32,
-  },
-  hint: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  hintText: {
-    fontSize: 15,
-    color: COLORS.coral.default,
-    fontWeight: "500",
-  },
-  successCircle: {
-    width: 100,
-    height: 100,
-    borderRadius: 50,
-    backgroundColor: `${COLORS.success}20`,
-    alignItems: "center",
-    justifyContent: "center",
-    marginBottom: 32,
-  },
-  successTitle: {
-    fontSize: 28,
-    fontWeight: "800",
-    color: COLORS.charcoal.default,
-    textAlign: "center",
-    marginBottom: 12,
-  },
-  successSubtitle: {
-    fontSize: 17,
-    color: COLORS.muted,
-    textAlign: "center",
-    lineHeight: 24,
-    marginBottom: 48,
-  },
-  ctaContainer: {
-    width: "100%",
-    gap: 16,
-  },
-  loginLink: {
-    fontSize: 15,
-    color: COLORS.coral.default,
-    textAlign: "center",
-    fontWeight: "500",
-  },
-  hidden: {
-    opacity: 0,
-  },
-});

@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, Pressable, Alert } from "react-native";
+import { View, Text, Pressable, Alert } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -60,20 +60,21 @@ export function GuardianCard({
   return (
     <Animated.View
       entering={FadeInDown.delay(index * 50).springify()}
-      style={[styles.container, animatedStyle]}
+      className="mb-3"
+      style={animatedStyle}
     >
-      <Card style={styles.card}>
-        <View style={styles.content}>
+      <Card style={SHADOWS.elevated}>
+        <View className="flex-row items-center">
           <GradientAvatar
             name={guardian.user.name ?? undefined}
             email={guardian.user.email}
             size="lg"
           />
-          <View style={styles.info}>
-            <Text style={styles.name} numberOfLines={1}>
+          <View className="flex-1 ml-4">
+            <Text className="text-[17px] font-semibold text-charcoal mb-0.5" numberOfLines={1}>
               {guardian.user.name || "Bez jména"}
             </Text>
-            <Text style={styles.email} numberOfLines={1}>
+            <Text className="text-sm text-muted" numberOfLines={1}>
               {guardian.user.email}
             </Text>
           </View>
@@ -82,7 +83,7 @@ export function GuardianCard({
             onPressIn={handlePressIn}
             onPressOut={handlePressOut}
             disabled={isRemoving}
-            style={styles.removeButton}
+            className="p-2 ml-2"
             hitSlop={12}
           >
             <X size={20} color={COLORS.muted} weight="bold" />
@@ -92,34 +93,3 @@ export function GuardianCard({
     </Animated.View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    marginBottom: 12,
-  },
-  card: {
-    ...SHADOWS.elevated,
-  },
-  content: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  info: {
-    flex: 1,
-    marginLeft: 16,
-  },
-  name: {
-    fontSize: 17,
-    fontWeight: "600",
-    color: COLORS.charcoal.default,
-    marginBottom: 2,
-  },
-  email: {
-    fontSize: 14,
-    color: COLORS.muted,
-  },
-  removeButton: {
-    padding: 8,
-    marginLeft: 8,
-  },
-});

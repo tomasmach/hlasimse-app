@@ -1,5 +1,6 @@
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { COLORS } from '@/constants/design';
 
 interface OfflineBannerProps {
   pendingCount: number;
@@ -13,7 +14,7 @@ export function OfflineBanner({ pendingCount, onSync, isSyncing = false }: Offli
   return (
     <View className="bg-sand rounded-2xl p-4 mx-4 mb-4">
       <View className="flex-row items-center">
-        <Ionicons name="cellular-outline" size={20} color="#8B7F7A" />
+        <Ionicons name="cellular-outline" size={20} color={COLORS.muted} />
         <View className="ml-3 flex-1">
           <Text className="text-charcoal font-medium">
             Čekáme na připojení...
@@ -30,9 +31,9 @@ export function OfflineBanner({ pendingCount, onSync, isSyncing = false }: Offli
             activeOpacity={0.7}
           >
             {isSyncing ? (
-              <ActivityIndicator size="small" color="#FFFFFF" />
+              <ActivityIndicator size="small" color={COLORS.white} />
             ) : (
-              <Ionicons name="refresh" size={18} color="#FFFFFF" />
+              <Ionicons name="refresh" size={18} color={COLORS.white} />
             )}
           </TouchableOpacity>
         )}

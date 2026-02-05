@@ -6,7 +6,6 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  StyleSheet,
 } from "react-native";
 import { Link, router } from "expo-router";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
@@ -59,42 +58,53 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
-      style={styles.container}
+      className="flex-1 bg-cream"
     >
       <ScrollView
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: "center",
+          paddingHorizontal: SPACING.page,
+          paddingVertical: 48,
+        }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         {/* Header */}
         <Animated.View
           entering={FadeIn.delay(100)}
-          style={styles.header}
+          className="items-center mb-12"
         >
-          <Text style={styles.title}>Hlásím se</Text>
+          <Text className="text-[40px] font-extrabold text-charcoal">
+            Hlásím se
+          </Text>
           <LinearGradient
             colors={GRADIENTS.coral}
             start={{ x: 0, y: 0 }}
             end={{ x: 1, y: 0 }}
-            style={styles.titleUnderline}
+            className="w-20 h-1 rounded-sm mt-2 mb-4"
           />
-          <Text style={styles.subtitle}>Přihlaste se ke svému účtu</Text>
+          <Text className="text-[17px] text-muted">
+            Přihlaste se ke svému účtu
+          </Text>
         </Animated.View>
 
         {/* Error */}
         {error && (
           <Animated.View
             entering={FadeInDown}
-            style={styles.errorContainer}
+            className="bg-error/[0.15] border border-error rounded-2xl p-4 mb-6"
           >
-            <Text style={styles.errorText}>{error}</Text>
+            <Text className="text-error text-center text-[15px]">
+              {error}
+            </Text>
           </Animated.View>
         )}
 
         {/* Form */}
         <Animated.View
           entering={FadeIn.delay(200)}
-          style={styles.form}
+          className="mb-8"
         >
           <AnimatedInput
             label="E-mail"
@@ -116,8 +126,10 @@ export default function LoginScreen() {
           />
 
           <Link href="/(auth)/forgot-password" asChild>
-            <TouchableOpacity style={styles.forgotPassword} disabled={loading}>
-              <Text style={styles.forgotPasswordText}>Zapomenuté heslo?</Text>
+            <TouchableOpacity className="self-end mt-2" disabled={loading}>
+              <Text className="text-coral text-[15px] font-medium">
+                Zapomenuté heslo?
+              </Text>
             </TouchableOpacity>
           </Link>
         </Animated.View>
@@ -125,7 +137,7 @@ export default function LoginScreen() {
         {/* CTA */}
         <Animated.View
           entering={FadeIn.delay(300)}
-          style={styles.cta}
+          className="gap-6"
         >
           <GradientButton
             label="Přihlásit"
@@ -134,11 +146,13 @@ export default function LoginScreen() {
             disabled={loading}
           />
 
-          <View style={styles.registerRow}>
-            <Text style={styles.registerText}>Nemáte účet? </Text>
+          <View className="flex-row justify-center">
+            <Text className="text-muted text-[15px]">Nemáte účet? </Text>
             <Link href="/(auth)/register" asChild>
               <TouchableOpacity disabled={loading}>
-                <Text style={styles.registerLink}>Registrovat se</Text>
+                <Text className="text-coral text-[15px] font-semibold">
+                  Registrovat se
+                </Text>
               </TouchableOpacity>
             </Link>
           </View>
@@ -147,77 +161,3 @@ export default function LoginScreen() {
     </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.cream.default,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: "center",
-    paddingHorizontal: SPACING.page,
-    paddingVertical: 48,
-  },
-  header: {
-    alignItems: "center",
-    marginBottom: 48,
-  },
-  title: {
-    fontSize: 40,
-    fontWeight: "800",
-    color: COLORS.charcoal.default,
-  },
-  titleUnderline: {
-    width: 80,
-    height: 4,
-    borderRadius: 2,
-    marginTop: 8,
-    marginBottom: 16,
-  },
-  subtitle: {
-    fontSize: 17,
-    color: COLORS.muted,
-  },
-  errorContainer: {
-    backgroundColor: `${COLORS.error}15`,
-    borderWidth: 1,
-    borderColor: COLORS.error,
-    borderRadius: 16,
-    padding: 16,
-    marginBottom: 24,
-  },
-  errorText: {
-    color: COLORS.error,
-    textAlign: "center",
-    fontSize: 15,
-  },
-  form: {
-    marginBottom: 32,
-  },
-  forgotPassword: {
-    alignSelf: "flex-end",
-    marginTop: 8,
-  },
-  forgotPasswordText: {
-    color: COLORS.coral.default,
-    fontSize: 15,
-    fontWeight: "500",
-  },
-  cta: {
-    gap: 24,
-  },
-  registerRow: {
-    flexDirection: "row",
-    justifyContent: "center",
-  },
-  registerText: {
-    color: COLORS.muted,
-    fontSize: 15,
-  },
-  registerLink: {
-    color: COLORS.coral.default,
-    fontSize: 15,
-    fontWeight: "600",
-  },
-});

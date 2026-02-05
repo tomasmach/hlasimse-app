@@ -138,9 +138,9 @@ export default function CheckInScreen() {
   const seconds = countdownParts[2] || "00";
 
   return (
-    <SafeAreaView style={styles.container} edges={["top"]}>
+    <SafeAreaView className="flex-1 bg-cream" edges={["top"]}>
       {/* Banners */}
-      <View style={styles.bannersContainer}>
+      <View className="pt-2">
         {permissionStatus === "denied" && (
           <LocationBanner onRequestPermission={requestPermission} />
         )}
@@ -152,17 +152,17 @@ export default function CheckInScreen() {
       </View>
 
       {/* Main content */}
-      <View style={styles.mainContent}>
+      <View className="flex-1 items-center justify-center" style={{ paddingHorizontal: SPACING.page }}>
         {/* Greeting */}
-        <Animated.View entering={FadeIn.duration(600)} style={styles.greetingContainer}>
-          <Text style={styles.greeting}>{getGreeting()},</Text>
-          <Text style={styles.userName}>{profile.name}!</Text>
+        <Animated.View entering={FadeIn.duration(600)} className="items-center mb-2">
+          <Text className="text-xl font-medium text-muted">{getGreeting()},</Text>
+          <Text className="text-[32px] font-bold text-charcoal">{profile.name}!</Text>
         </Animated.View>
 
         {/* Subtitle */}
         <Animated.Text
           entering={FadeIn.duration(600).delay(100)}
-          style={styles.subtitle}
+          className="text-base text-muted text-center mb-10 leading-6"
         >
           {countdown.isExpired
             ? "Zmáčkni tlačítko a dej vědět, že jsi v pořádku!"
@@ -170,7 +170,7 @@ export default function CheckInScreen() {
         </Animated.Text>
 
         {/* Hero Button */}
-        <Animated.View entering={FadeIn.duration(600).delay(200)} style={styles.buttonContainer}>
+        <Animated.View entering={FadeIn.duration(600).delay(200)} className="mb-12">
           <HeroButton
             onPress={handleCheckIn}
             isLoading={isCheckingIn}
@@ -180,52 +180,52 @@ export default function CheckInScreen() {
         </Animated.View>
 
         {/* Countdown */}
-        <Animated.View entering={FadeIn.duration(600).delay(300)} style={styles.countdownContainer}>
-          <Text style={styles.countdownLabel}>
+        <Animated.View entering={FadeIn.duration(600).delay(300)} className="items-center">
+          <Text className="text-sm font-medium text-muted mb-3 uppercase tracking-wider">
             {countdown.isExpired ? "Čas překročen o:" : "Další hlášení za:"}
           </Text>
-          <View style={styles.countdownRow}>
+          <View className="flex-row items-start">
             {/* Hours */}
-            <View style={styles.countdownUnit}>
-              <Text style={[styles.countdownNumber, countdown.isExpired && styles.countdownExpired]}>
+            <View className="items-center min-w-[56px]">
+              <Text style={styles.countdownNumber} className={countdown.isExpired ? 'text-coral' : 'text-charcoal'}>
                 {hours}
               </Text>
-              <Text style={styles.countdownUnitLabel}>hod</Text>
+              <Text className="text-xs font-medium text-muted -mt-1 uppercase tracking-wide">hod</Text>
             </View>
 
-            <Text style={[styles.countdownSeparator, countdown.isExpired && styles.countdownExpired]}>:</Text>
+            <Text style={styles.countdownSeparator} className={countdown.isExpired ? 'text-coral' : 'text-charcoal'}>:</Text>
 
             {/* Minutes */}
-            <View style={styles.countdownUnit}>
-              <Text style={[styles.countdownNumber, countdown.isExpired && styles.countdownExpired]}>
+            <View className="items-center min-w-[56px]">
+              <Text style={styles.countdownNumber} className={countdown.isExpired ? 'text-coral' : 'text-charcoal'}>
                 {minutes}
               </Text>
-              <Text style={styles.countdownUnitLabel}>min</Text>
+              <Text className="text-xs font-medium text-muted -mt-1 uppercase tracking-wide">min</Text>
             </View>
 
-            <Text style={[styles.countdownSeparator, countdown.isExpired && styles.countdownExpired]}>:</Text>
+            <Text style={styles.countdownSeparator} className={countdown.isExpired ? 'text-coral' : 'text-charcoal'}>:</Text>
 
             {/* Seconds */}
-            <View style={styles.countdownUnit}>
-              <Text style={[styles.countdownNumber, countdown.isExpired && styles.countdownExpired]}>
+            <View className="items-center min-w-[56px]">
+              <Text style={styles.countdownNumber} className={countdown.isExpired ? 'text-coral' : 'text-charcoal'}>
                 {seconds}
               </Text>
-              <Text style={styles.countdownUnitLabel}>sek</Text>
+              <Text className="text-xs font-medium text-muted -mt-1 uppercase tracking-wide">sek</Text>
             </View>
           </View>
         </Animated.View>
 
         {/* Connection status indicator */}
         {isConnected === false && (
-          <Animated.View entering={FadeIn.duration(300)} style={styles.offlineIndicator}>
-            <View style={styles.offlineDot} />
-            <Text style={styles.offlineText}>Offline</Text>
+          <Animated.View entering={FadeIn.duration(300)} className="flex-row items-center mt-6">
+            <View className="w-2 h-2 rounded-full bg-muted mr-2" />
+            <Text className="text-sm text-muted">Offline</Text>
           </Animated.View>
         )}
       </View>
 
       {/* Bottom padding for floating tab bar */}
-      <View style={styles.bottomPadding} />
+      <View className="h-[100px]" />
 
       {/* Toast for offline/error states */}
       <Toast
@@ -246,104 +246,17 @@ export default function CheckInScreen() {
   );
 }
 
+// Keep only styles that need specific values (fontSize, fontVariant, margins)
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: COLORS.cream.default,
-  },
-  bannersContainer: {
-    paddingTop: 8,
-  },
-  mainContent: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: SPACING.page,
-  },
-  greetingContainer: {
-    alignItems: "center",
-    marginBottom: 8,
-  },
-  greeting: {
-    fontSize: 20,
-    fontWeight: "500",
-    color: COLORS.muted,
-  },
-  userName: {
-    fontSize: 32,
-    fontWeight: "bold",
-    color: COLORS.charcoal.default,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: COLORS.muted,
-    textAlign: "center",
-    marginBottom: 40,
-    lineHeight: 24,
-  },
-  buttonContainer: {
-    marginBottom: 48,
-  },
-  countdownContainer: {
-    alignItems: "center",
-  },
-  countdownLabel: {
-    fontSize: 14,
-    fontWeight: "500",
-    color: COLORS.muted,
-    marginBottom: 12,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-  },
-  countdownRow: {
-    flexDirection: "row",
-    alignItems: "flex-start",
-  },
-  countdownUnit: {
-    alignItems: "center",
-    minWidth: 56,
-  },
   countdownNumber: {
     fontSize: 48,
     fontWeight: "bold",
     fontVariant: ["tabular-nums"],
-    color: COLORS.charcoal.default,
-  },
-  countdownExpired: {
-    color: COLORS.coral.default,
-  },
-  countdownUnitLabel: {
-    fontSize: 12,
-    fontWeight: "500",
-    color: COLORS.muted,
-    marginTop: -4,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
   },
   countdownSeparator: {
     fontSize: 48,
     fontWeight: "bold",
-    color: COLORS.charcoal.default,
     marginHorizontal: 4,
     marginTop: -2,
-  },
-  offlineIndicator: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginTop: 24,
-  },
-  offlineDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: COLORS.muted,
-    marginRight: 8,
-  },
-  offlineText: {
-    fontSize: 14,
-    color: COLORS.muted,
-  },
-  bottomPadding: {
-    height: 100,
   },
 });

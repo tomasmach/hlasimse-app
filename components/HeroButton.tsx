@@ -160,7 +160,7 @@ export function HeroButton({
                 <Check size={64} color={COLORS.white} weight="bold" />
               </Animated.View>
             ) : (
-              <View style={styles.iconContainer}>
+              <View className="items-center justify-center">
                 <Check size={64} color={COLORS.white} weight="bold" />
               </View>
             )}
@@ -171,6 +171,7 @@ export function HeroButton({
   );
 }
 
+// Keep all styles - they use animated values, dynamic sizes, and shadows
 const styles = StyleSheet.create({
   container: {
     width: GLOW_SIZE,
@@ -201,9 +202,5 @@ const styles = StyleSheet.create({
   },
   buttonDisabled: {
     opacity: 0.6,
-  },
-  iconContainer: {
-    alignItems: "center",
-    justifyContent: "center",
   },
 });

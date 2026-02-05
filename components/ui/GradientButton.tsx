@@ -35,6 +35,7 @@ export function GradientButton({
 }: GradientButtonProps) {
   const scale = useSharedValue(1);
 
+  // KEEP animated style (uses withSpring)
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
@@ -57,25 +58,14 @@ export function GradientButton({
   const isLarge = size === "lg";
 
   const buttonContent = (
-    <View
-      style={[
-        styles.content,
-        isLarge ? styles.contentLarge : styles.contentMedium,
-      ]}
-    >
+    <View className={`items-center justify-center ${isLarge ? 'px-8 py-4' : 'px-6 py-3'}`}>
       {loading ? (
         <ActivityIndicator
           color={isPrimary ? COLORS.white : COLORS.coral.default}
           size="small"
         />
       ) : (
-        <Text
-          style={[
-            styles.label,
-            isLarge ? styles.labelLarge : styles.labelMedium,
-            isPrimary ? styles.labelPrimary : styles.labelSecondary,
-          ]}
-        >
+        <Text className={`font-semibold ${isLarge ? 'text-lg' : 'text-base'} ${isPrimary ? 'text-white' : 'text-coral'}`}>
           {label}
         </Text>
       )}
@@ -90,7 +80,7 @@ export function GradientButton({
       disabled={disabled || loading}
       style={[
         animatedStyle,
-        isPrimary ? styles.shadowPrimary : styles.shadowSecondary,
+        isPrimary ? SHADOWS.glow : SHADOWS.elevated,
         (disabled || loading) && styles.disabled,
       ]}
     >
@@ -99,18 +89,12 @@ export function GradientButton({
           colors={GRADIENTS.coral}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          style={[styles.button, isLarge ? styles.buttonLarge : styles.buttonMedium]}
+          className={`rounded-2xl overflow-hidden ${isLarge ? 'min-h-[56px]' : 'min-h-[48px]'}`}
         >
           {buttonContent}
         </LinearGradient>
       ) : (
-        <View
-          style={[
-            styles.button,
-            styles.buttonSecondary,
-            isLarge ? styles.buttonLarge : styles.buttonMedium,
-          ]}
-        >
+        <View className={`rounded-2xl overflow-hidden bg-white border-2 border-coral ${isLarge ? 'min-h-[56px]' : 'min-h-[48px]'}`}>
           {buttonContent}
         </View>
       )}
@@ -118,55 +102,8 @@ export function GradientButton({
   );
 }
 
+// Keep only styles that can't be in NativeWind
 const styles = StyleSheet.create({
-  button: {
-    borderRadius: 16,
-    overflow: "hidden",
-  },
-  buttonMedium: {
-    minHeight: 48,
-  },
-  buttonLarge: {
-    minHeight: 56,
-  },
-  buttonSecondary: {
-    backgroundColor: COLORS.white,
-    borderWidth: 2,
-    borderColor: COLORS.coral.default,
-  },
-  content: {
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  contentMedium: {
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-  },
-  contentLarge: {
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-  },
-  label: {
-    fontWeight: "600",
-  },
-  labelMedium: {
-    fontSize: 16,
-  },
-  labelLarge: {
-    fontSize: 18,
-  },
-  labelPrimary: {
-    color: COLORS.white,
-  },
-  labelSecondary: {
-    color: COLORS.coral.default,
-  },
-  shadowPrimary: {
-    ...SHADOWS.glow,
-  },
-  shadowSecondary: {
-    ...SHADOWS.elevated,
-  },
   disabled: {
     opacity: 0.5,
   },

@@ -14,9 +14,17 @@ async function removeChunks(key: string) {
   if (countStr) {
     const count = parseInt(countStr, 10);
     for (let i = 0; i < count; i++) {
-      await SecureStore.deleteItemAsync(`${key}${CHUNK_PREFIX}${i}`);
+      try {
+        await SecureStore.deleteItemAsync(`${key}${CHUNK_PREFIX}${i}`);
+      } catch (error) {
+        console.warn(`Failed to delete chunk ${i} for key ${key}:`, error);
+      }
     }
-    await SecureStore.deleteItemAsync(key + COUNT_SUFFIX);
+    try {
+      await SecureStore.deleteItemAsync(key + COUNT_SUFFIX);
+    } catch (error) {
+      console.warn(`Failed to delete count suffix for key ${key}:`, error);
+    }
   }
 }
 

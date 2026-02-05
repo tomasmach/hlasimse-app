@@ -4,6 +4,7 @@ import { formatDistanceToNow } from "date-fns";
 import { cs } from "date-fns/locale";
 import { WatchedProfile } from "@/types/database";
 import { useCountdown } from "@/hooks/useCountdown";
+import { COLORS } from "@/constants/design";
 
 interface WatchedProfileCardProps {
   profile: WatchedProfile;
@@ -44,7 +45,7 @@ export function WatchedProfileCard({ profile }: WatchedProfileCardProps) {
       statusText: "Neohlásil/a se!",
       statusTextColor: "text-accent",
       iconName: "warning",
-      iconColor: "#f43f5e",
+      iconColor: COLORS.error,
     },
     approaching: {
       border: "border-brand-500",
@@ -53,7 +54,7 @@ export function WatchedProfileCard({ profile }: WatchedProfileCardProps) {
       statusText: "Blíží se termín",
       statusTextColor: "text-brand-500",
       iconName: "time",
-      iconColor: "#f97316",
+      iconColor: COLORS.brand[500],
     },
     ok: {
       border: "border-green-400",
@@ -62,7 +63,7 @@ export function WatchedProfileCard({ profile }: WatchedProfileCardProps) {
       statusText: "V pořádku",
       statusTextColor: "text-green-400",
       iconName: "checkmark-circle",
-      iconColor: "#4ADE80",
+      iconColor: COLORS.success,
     },
   };
 
@@ -122,7 +123,7 @@ export function WatchedProfileCard({ profile }: WatchedProfileCardProps) {
           className="mt-3 py-2 rounded-xl bg-accent/10"
         >
           <View className="flex-row items-center justify-center">
-            <Ionicons name="location" size={18} color="#f43f5e" />
+            <Ionicons name="location" size={18} color={COLORS.error} />
             <Text className="text-accent text-center font-medium ml-1">
               Zobrazit poslední polohu
             </Text>

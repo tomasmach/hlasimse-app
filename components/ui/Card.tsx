@@ -1,16 +1,16 @@
-import { View, ViewProps, StyleSheet } from "react-native";
-import { COLORS, SHADOWS, BORDER_RADIUS } from "@/constants/design";
+import { View, ViewProps } from "react-native";
+import { SHADOWS } from "@/constants/design";
 
 interface CardProps extends ViewProps {
   variant?: "elevated" | "floating" | "flat";
   padding?: "none" | "sm" | "md" | "lg";
 }
 
-const PADDING_VALUES = {
-  none: 0,
-  sm: 12,
-  md: 16,
-  lg: 20,
+const PADDING_CLASSES = {
+  none: "",
+  sm: "p-3",
+  md: "p-4",
+  lg: "p-5",
 } as const;
 
 export function Card({
@@ -18,28 +18,18 @@ export function Card({
   padding = "md",
   style,
   children,
+  className,
   ...props
 }: CardProps) {
   const shadowStyle = variant !== "flat" ? SHADOWS[variant] : {};
 
   return (
     <View
-      style={[
-        styles.base,
-        shadowStyle,
-        { padding: PADDING_VALUES[padding] },
-        style,
-      ]}
+      className={`bg-white rounded-[32px] ${PADDING_CLASSES[padding]} ${className || ""}`}
+      style={[shadowStyle, style]}
       {...props}
     >
       {children}
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  base: {
-    backgroundColor: COLORS.white,
-    borderRadius: BORDER_RADIUS["2xl"],
-  },
-});

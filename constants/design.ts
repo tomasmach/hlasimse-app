@@ -2,6 +2,10 @@
 // Luxury UI Design System Constants
 
 export const COLORS = {
+  // Brand
+  brand: {
+    500: "#f97316",
+  },
   // Primary
   coral: {
     default: "#FF6B5B",

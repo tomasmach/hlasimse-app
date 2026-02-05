@@ -32,7 +32,7 @@ export const AnimatedInput = forwardRef<TextInput, AnimatedInputProps>(
     const focusProgress = useSharedValue(0);
     const hasValue = value && value.length > 0;
 
-    // Label animation
+    // Label animation - KEEP in StyleSheet (uses interpolation)
     const labelStyle = useAnimatedStyle(() => {
       const isActive = focusProgress.value > 0 || hasValue;
       return {
@@ -59,7 +59,7 @@ export const AnimatedInput = forwardRef<TextInput, AnimatedInputProps>(
       };
     });
 
-    // Border animation
+    // Border animation - KEEP in StyleSheet (uses interpolateColor)
     const borderStyle = useAnimatedStyle(() => {
       return {
         backgroundColor: interpolateColor(
@@ -88,8 +88,8 @@ export const AnimatedInput = forwardRef<TextInput, AnimatedInputProps>(
     };
 
     return (
-      <View style={styles.container}>
-        <View style={styles.inputContainer}>
+      <View className="mb-4">
+        <View className="relative pt-4">
           {/* Floating label */}
           <AnimatedText
             style={[styles.label, labelStyle]}
@@ -106,7 +106,8 @@ export const AnimatedInput = forwardRef<TextInput, AnimatedInputProps>(
             onFocus={handleFocus}
             onBlur={handleBlur}
             secureTextEntry={secureTextEntry && !isPasswordVisible}
-            style={[styles.input, style]}
+            className="text-base text-charcoal py-2 pr-10"
+            style={style}
             placeholderTextColor={COLORS.muted}
             {...props}
           />
@@ -115,7 +116,7 @@ export const AnimatedInput = forwardRef<TextInput, AnimatedInputProps>(
           {secureTextEntry && (
             <Pressable
               onPress={togglePasswordVisibility}
-              style={styles.toggleButton}
+              className="absolute right-0 top-5 p-1"
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
               {isPasswordVisible ? (
@@ -131,7 +132,7 @@ export const AnimatedInput = forwardRef<TextInput, AnimatedInputProps>(
         </View>
 
         {/* Error message */}
-        {error && <Text style={styles.errorText}>{error}</Text>}
+        {error && <Text className="text-error text-xs mt-1">{error}</Text>}
       </View>
     );
   }
@@ -139,14 +140,8 @@ export const AnimatedInput = forwardRef<TextInput, AnimatedInputProps>(
 
 AnimatedInput.displayName = "AnimatedInput";
 
+// Keep only animated styles that need interpolation
 const styles = StyleSheet.create({
-  container: {
-    marginBottom: 16,
-  },
-  inputContainer: {
-    position: "relative",
-    paddingTop: 16,
-  },
   label: {
     position: "absolute",
     left: 0,
@@ -155,27 +150,10 @@ const styles = StyleSheet.create({
     fontWeight: "400",
     transformOrigin: "left top",
   },
-  input: {
-    fontSize: 16,
-    color: COLORS.charcoal.default,
-    paddingVertical: 8,
-    paddingRight: 40,
-  },
-  toggleButton: {
-    position: "absolute",
-    right: 0,
-    top: 20,
-    padding: 4,
-  },
   border: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-  },
-  errorText: {
-    color: COLORS.error,
-    fontSize: 12,
-    marginTop: 4,
   },
 });

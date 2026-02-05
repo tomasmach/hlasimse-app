@@ -34,6 +34,7 @@ function TabButton({ tab, isActive, onPress }: TabButtonProps) {
   const scale = useSharedValue(1);
   const Icon = tab.icon;
 
+  // KEEP animated style - uses withSpring
   const animatedStyle = useAnimatedStyle(() => ({
     transform: [{ scale: scale.value }],
   }));
@@ -57,16 +58,17 @@ function TabButton({ tab, isActive, onPress }: TabButtonProps) {
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      style={[styles.tabButton, animatedStyle]}
+      className="items-center justify-center flex-1"
+      style={animatedStyle}
     >
-      <View style={[styles.iconContainer, isActive && styles.iconContainerActive]}>
+      <View className={`w-11 h-11 rounded-[22px] items-center justify-center ${isActive ? 'bg-coral/15' : ''}`}>
         <Icon
           size={24}
           weight={isActive ? "fill" : "light"}
           color={isActive ? COLORS.coral.default : COLORS.muted}
         />
       </View>
-      <Text style={[styles.label, isActive && styles.labelActive]}>
+      <Text className={`text-[11px] font-medium mt-1 ${isActive ? 'text-coral font-semibold' : 'text-muted'}`}>
         {tab.label}
       </Text>
     </AnimatedPressable>
@@ -81,8 +83,8 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   return (
     <View style={styles.container}>
       <View style={styles.blurContainer}>
-        <BlurView intensity={80} tint="light" style={styles.blur}>
-          <View style={styles.tabBar}>
+        <BlurView intensity={80} tint="light" className="bg-white/80">
+          <View className="flex-row py-3 px-8 justify-around items-center">
             {visibleRoutes.map((route) => {
               const tab = TABS.find((t) => t.name === route.name);
               if (!tab) return null;
@@ -118,6 +120,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
   );
 }
 
+// Keep only styles that must remain (position, shadows, dynamic border color)
 const styles = StyleSheet.create({
   container: {
     position: "absolute",
@@ -130,40 +133,5 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: `${COLORS.coral.light}30`,
     ...SHADOWS.floating,
-  },
-  blur: {
-    backgroundColor: "rgba(255, 255, 255, 0.8)",
-  },
-  tabBar: {
-    flexDirection: "row",
-    paddingVertical: 12,
-    paddingHorizontal: 32,
-    justifyContent: "space-around",
-    alignItems: "center",
-  },
-  tabButton: {
-    alignItems: "center",
-    justifyContent: "center",
-    flex: 1,
-  },
-  iconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  iconContainerActive: {
-    backgroundColor: `${COLORS.coral.default}15`,
-  },
-  label: {
-    fontSize: 11,
-    fontWeight: "500",
-    color: COLORS.muted,
-    marginTop: 4,
-  },
-  labelActive: {
-    color: COLORS.coral.default,
-    fontWeight: "600",
   },
 });
