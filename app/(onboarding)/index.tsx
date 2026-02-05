@@ -53,7 +53,7 @@ function PersonaCardItem({
       <Animated.View entering={FadeInDown.delay(200 + index * 100).duration(400)}>
         <View className="flex-row items-center gap-4">
           <View style={styles.iconCircle}>
-            <Icon size={28} color={COLORS.coral.default} weight="regular" />
+            <Icon size={40} color={COLORS.coral.default} weight="regular" />
           </View>
           <View className="flex-1">
             <Text className="text-lg font-semibold text-charcoal">
@@ -115,7 +115,7 @@ export default function PersonaSelectionScreen() {
 
 const styles = StyleSheet.create({
   card: {
-    borderRadius: 24,
+    borderRadius: 32,
     borderWidth: 2,
     padding: 20,
   },
