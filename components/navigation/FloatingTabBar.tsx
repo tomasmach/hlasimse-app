@@ -68,7 +68,7 @@ function TabButton({ tab, isActive, onPress }: TabButtonProps) {
           color={isActive ? COLORS.coral.default : COLORS.muted}
         />
       </View>
-      <Text className={`text-[11px] font-medium mt-1 ${isActive ? 'text-coral font-semibold' : 'text-muted'}`}>
+      <Text className={`text-[11px] font-lora-medium mt-1 ${isActive ? 'text-coral font-lora-semibold' : 'text-muted'}`}>
         {tab.label}
       </Text>
     </AnimatedPressable>

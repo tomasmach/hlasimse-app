@@ -10,6 +10,7 @@ import { InviteCard } from "@/components/InviteCard";
 import { WatchedProfileCard } from "@/components/WatchedProfileCard";
 import { AddGuardianModal } from "@/components/AddGuardianModal";
 import { EmptyState } from "@/components/EmptyState";
+import { COLORS } from "@/constants/design";
 
 export default function GuardiansScreen() {
   const { user } = useAuth();
@@ -82,7 +83,7 @@ export default function GuardiansScreen() {
   if (!user) {
     return (
       <SafeAreaView className="flex-1 bg-cream items-center justify-center">
-        <ActivityIndicator size="large" color="#FF6B5B" />
+        <ActivityIndicator size="large" color={COLORS.coral.default} />
       </SafeAreaView>
     );
   }
@@ -96,19 +97,19 @@ export default function GuardiansScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        <Text className="text-charcoal text-2xl font-semibold mt-4 mb-6">
+        <Text className="text-charcoal text-2xl font-lora-semibold mt-4 mb-6">
           Strážci
         </Text>
 
         {/* Moji strážci */}
         <View className="mb-6">
-          <Text className="text-muted text-sm font-medium mb-3 uppercase tracking-wide">
+          <Text className="text-muted text-sm font-lora-medium mb-3 uppercase tracking-wide">
             Moji strážci
           </Text>
 
           {isLoading && myGuardians.length === 0 ? (
             <View className="bg-white rounded-2xl p-4">
-              <ActivityIndicator color="#FF6B5B" />
+              <ActivityIndicator color={COLORS.coral.default} />
             </View>
           ) : myGuardians.length === 0 ? (
             <View className="bg-white rounded-2xl">
@@ -134,7 +135,7 @@ export default function GuardiansScreen() {
                 onPress={() => setIsModalVisible(true)}
                 className="bg-coral/10 rounded-2xl p-4 mt-2"
               >
-                <Text className="text-coral text-center font-medium">
+                <Text className="text-coral text-center font-lora-medium">
                   + Přidat strážce
                 </Text>
               </Pressable>
@@ -145,7 +146,7 @@ export default function GuardiansScreen() {
         {/* Čekající pozvánky */}
         {pendingInvites.length > 0 && (
           <View className="mb-6">
-            <Text className="text-muted text-sm font-medium mb-3 uppercase tracking-wide">
+            <Text className="text-muted text-sm font-lora-medium mb-3 uppercase tracking-wide">
               Čekající pozvánky
             </Text>
             {pendingInvites.map((invite) => (
@@ -162,7 +163,7 @@ export default function GuardiansScreen() {
 
         {/* Hlídám */}
         <View className="mb-6">
-          <Text className="text-muted text-sm font-medium mb-3 uppercase tracking-wide">
+          <Text className="text-muted text-sm font-lora-medium mb-3 uppercase tracking-wide">
             Hlídám
           </Text>
 

@@ -165,7 +165,7 @@ export function Toast({
           color={config.iconColor}
           weight="fill"
         />
-        <Text className="flex-1 text-[15px] font-medium text-charcoal" numberOfLines={2}>
+        <Text className="flex-1 text-[15px] font-lora-medium text-charcoal" numberOfLines={2}>
           {message}
         </Text>
       </Pressable>

@@ -161,12 +161,12 @@ export function SuccessOverlay({
             transform: [{ translateY: textTranslateY.current }],
           }}
         >
-          <Text className="text-[28px] font-bold text-charcoal mb-2 text-center">
+          <Text className="text-[28px] font-bold text-charcoal mb-2 text-center font-lora-bold">
             Vše v pořádku!
           </Text>
-          <Text className="text-lg text-muted text-center leading-[26px]">
+          <Text className="text-lg text-muted text-center leading-[26px] font-lora">
             Další hlášení za{"\n"}
-            <Text className="font-semibold text-charcoal">{formatInterval(intervalHours)}</Text>
+            <Text className="font-semibold text-charcoal font-lora-semibold">{formatInterval(intervalHours)}</Text>
           </Text>
         </Animated.View>
       </View>

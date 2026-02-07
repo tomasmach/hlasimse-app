@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { Link } from "expo-router";
 import { supabase } from "@/lib/supabase";
+import { COLORS } from "@/constants/design";
 
 export default function RegisterScreen() {
   const [name, setName] = useState("");
@@ -90,16 +91,16 @@ export default function RegisterScreen() {
     return (
       <View className="flex-1 bg-cream justify-center px-6">
         <View className="bg-success/10 border border-success rounded-xl p-6 items-center">
-          <Text className="text-charcoal text-xl font-bold mb-3">
+          <Text className="text-charcoal text-xl font-bold mb-3 font-lora">
             Registrace úspěšná!
           </Text>
-          <Text className="text-muted text-center mb-4">
+          <Text className="text-muted text-center mb-4 font-lora">
             Na váš e-mail jsme odeslali potvrzovací odkaz. Klikněte na něj pro
             aktivaci účtu.
           </Text>
           <Link href="/(auth)/login" asChild>
             <TouchableOpacity className="bg-coral rounded-xl py-3 px-6">
-              <Text className="text-white font-semibold">
+              <Text className="text-white font-lora-semibold">
                 Zpět na přihlášení
               </Text>
             </TouchableOpacity>
@@ -119,13 +120,13 @@ export default function RegisterScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View className="items-center mb-12">
-          <Text className="text-4xl font-bold text-charcoal">Registrace</Text>
-          <Text className="text-muted mt-2">Vytvořte si nový účet</Text>
+          <Text className="text-4xl font-bold text-charcoal font-lora">Registrace</Text>
+          <Text className="text-muted mt-2 font-lora">Vytvořte si nový účet</Text>
         </View>
 
         {error && (
           <View className="bg-coral/10 border border-coral rounded-xl p-3 mb-6">
-            <Text className="text-coral text-center">{error}</Text>
+            <Text className="text-coral text-center font-lora">{error}</Text>
           </View>
         )}
 
@@ -133,7 +134,7 @@ export default function RegisterScreen() {
           <TextInput
             className="bg-white border border-sand rounded-xl px-4 py-3 text-charcoal"
             placeholder="Jméno"
-            placeholderTextColor="#8B7F7A"
+            placeholderTextColor={COLORS.muted}
             value={name}
             onChangeText={setName}
             autoCapitalize="words"
@@ -144,7 +145,7 @@ export default function RegisterScreen() {
           <TextInput
             className="bg-white border border-sand rounded-xl px-4 py-3 text-charcoal"
             placeholder="E-mail"
-            placeholderTextColor="#8B7F7A"
+            placeholderTextColor={COLORS.muted}
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
@@ -156,7 +157,7 @@ export default function RegisterScreen() {
           <TextInput
             className="bg-white border border-sand rounded-xl px-4 py-3 text-charcoal"
             placeholder="Heslo (min. 6 znaků)"
-            placeholderTextColor="#8B7F7A"
+            placeholderTextColor={COLORS.muted}
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -167,7 +168,7 @@ export default function RegisterScreen() {
           <TextInput
             className="bg-white border border-sand rounded-xl px-4 py-3 text-charcoal"
             placeholder="Potvrzení hesla"
-            placeholderTextColor="#8B7F7A"
+            placeholderTextColor={COLORS.muted}
             value={confirmPassword}
             onChangeText={setConfirmPassword}
             secureTextEntry
@@ -183,19 +184,19 @@ export default function RegisterScreen() {
           activeOpacity={0.8}
         >
           {loading ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color={COLORS.white} />
           ) : (
-            <Text className="text-white font-semibold text-lg">
+            <Text className="text-white font-lora-semibold text-lg">
               Registrovat
             </Text>
           )}
         </TouchableOpacity>
 
         <View className="flex-row justify-center">
-          <Text className="text-muted">Máte již účet? </Text>
+          <Text className="text-muted font-lora">Máte již účet? </Text>
           <Link href="/(auth)/login" asChild>
             <TouchableOpacity disabled={loading}>
-              <Text className="text-coral font-semibold">Přihlásit se</Text>
+              <Text className="text-coral font-lora-semibold">Přihlásit se</Text>
             </TouchableOpacity>
           </Link>
         </View>

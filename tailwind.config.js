@@ -4,6 +4,17 @@ module.exports = {
   presets: [require("nativewind/preset")],
   theme: {
     extend: {
+      fontFamily: {
+        sans: "Lora_400Regular",
+        display: ["Lora_600SemiBold", "Lora_700Bold"],
+        body: ["InstrumentSans_400Regular", "InstrumentSans_500Medium", "InstrumentSans_600SemiBold"],
+      },
+      fontWeight: {
+        normal: "400",
+        medium: "500",
+        semibold: "600",
+        bold: "700",
+      },
       colors: {
         brand: {
           500: "#f97316",
@@ -26,7 +37,7 @@ module.exports = {
           DEFAULT: "#2D2926",
           light: "#4A4543",
         },
-        muted: "#8B7F7A",
+        muted: "#6B625E",
         success: {
           DEFAULT: "#4ADE80",
           light: "#86EFAC",
@@ -55,5 +66,14 @@ module.exports = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    ({ addUtilities }) => {
+      addUtilities({
+        '.font-lora': { fontFamily: 'Lora_400Regular' },
+        '.font-lora-medium': { fontFamily: 'Lora_500Medium' },
+        '.font-lora-semibold': { fontFamily: 'Lora_600SemiBold' },
+        '.font-lora-bold': { fontFamily: 'Lora_700Bold' },
+      });
+    },
+  ],
 };

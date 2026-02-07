@@ -71,10 +71,10 @@ export function GuardianCard({
             size="lg"
           />
           <View className="flex-1 ml-4">
-            <Text className="text-[17px] font-semibold text-charcoal mb-0.5" numberOfLines={1}>
+            <Text className="text-[17px] font-semibold text-charcoal mb-0.5 font-lora-semibold" numberOfLines={1}>
               {guardian.user.name || "Bez jména"}
             </Text>
-            <Text className="text-sm text-muted" numberOfLines={1}>
+            <Text className="text-sm text-muted font-lora" numberOfLines={1}>
               {guardian.user.email}
             </Text>
           </View>

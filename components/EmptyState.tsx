@@ -22,16 +22,16 @@ export function EmptyState({
       <View className="mb-4">
         <Icon size={80} color={COLORS.coral.default} weight="regular" />
       </View>
-      <Text className="text-lg font-semibold text-charcoal mb-2 text-center">
+      <Text className="text-lg font-semibold text-charcoal mb-2 text-center font-lora-semibold">
         {title}
       </Text>
-      <Text className="text-muted text-center mb-4">{description}</Text>
+      <Text className="text-muted text-center mb-4 font-lora">{description}</Text>
       {actionLabel && onAction && (
         <Pressable
           onPress={onAction}
           className="bg-brand-500 px-6 py-3 rounded-full"
         >
-          <Text className="text-white font-semibold">{actionLabel}</Text>
+          <Text className="text-white font-semibold font-lora-semibold">{actionLabel}</Text>
         </Pressable>
       )}
     </View>

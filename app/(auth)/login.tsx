@@ -12,7 +12,7 @@ import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { supabase } from "@/lib/supabase";
 import { AnimatedInput, GradientButton } from "@/components/ui";
-import { COLORS, GRADIENTS, SPACING } from "@/constants/design";
+import { GRADIENTS, SPACING } from "@/constants/design";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");
@@ -75,7 +75,7 @@ export default function LoginScreen() {
           entering={FadeIn.delay(100)}
           className="items-center mb-12"
         >
-          <Text className="text-[40px] font-extrabold text-charcoal">
+          <Text className="text-[40px] font-extrabold text-charcoal font-lora">
             Hlásím se
           </Text>
           <LinearGradient
@@ -84,7 +84,7 @@ export default function LoginScreen() {
             end={{ x: 1, y: 0 }}
             className="w-20 h-1 rounded-sm mt-2 mb-4"
           />
-          <Text className="text-[17px] text-muted">
+          <Text className="text-[17px] text-muted font-lora">
             Přihlaste se ke svému účtu
           </Text>
         </Animated.View>
@@ -95,7 +95,7 @@ export default function LoginScreen() {
             entering={FadeInDown}
             className="bg-error/[0.15] border border-error rounded-2xl p-4 mb-6"
           >
-            <Text className="text-error text-center text-[15px]">
+            <Text className="text-error text-center text-[15px] font-lora">
               {error}
             </Text>
           </Animated.View>
@@ -127,7 +127,7 @@ export default function LoginScreen() {
 
           <Link href="/(auth)/forgot-password" asChild>
             <TouchableOpacity className="self-end mt-2" disabled={loading}>
-              <Text className="text-coral text-[15px] font-medium">
+              <Text className="text-coral text-[15px] font-lora-medium">
                 Zapomenuté heslo?
               </Text>
             </TouchableOpacity>
@@ -147,10 +147,10 @@ export default function LoginScreen() {
           />
 
           <View className="flex-row justify-center">
-            <Text className="text-muted text-[15px]">Nemáte účet? </Text>
+            <Text className="text-muted text-[15px] font-lora">Nemáte účet? </Text>
             <Link href="/(auth)/register" asChild>
               <TouchableOpacity disabled={loading}>
-                <Text className="text-coral text-[15px] font-semibold">
+                <Text className="text-coral text-[15px] font-lora-semibold">
                   Registrovat se
                 </Text>
               </TouchableOpacity>

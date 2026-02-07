@@ -6,11 +6,11 @@ export default function NotFoundScreen() {
     <>
       <Stack.Screen options={{ title: "Oops!" }} />
       <View className="flex-1 items-center justify-center p-5 bg-cream">
-        <Text className="text-xl font-bold text-charcoal mb-4">
+        <Text className="text-xl font-bold text-charcoal mb-4 font-lora-bold">
           Tato stránka neexistuje.
         </Text>
         <Link href="/">
-          <Text className="text-coral">Zpět na hlavní obrazovku</Text>
+          <Text className="text-coral font-lora">Zpět na hlavní obrazovku</Text>
         </Link>
       </View>
     </>

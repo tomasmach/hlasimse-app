@@ -2,18 +2,25 @@ import { create } from "zustand";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 const STORAGE_KEY = "hasSeenOnboarding";
+const PERSONA_KEY = "onboardingPersona";
+
+export type Persona = "alone" | "caregiver" | "traveler";
 
 interface OnboardingState {
   hasSeenOnboarding: boolean | null;
   isLoading: boolean;
+  selectedPersona: Persona | null;
   checkOnboardingStatus: () => Promise<void>;
   completeOnboarding: () => Promise<void>;
   resetOnboarding: () => Promise<void>;
+  setPersona: (persona: Persona) => Promise<void>;
+  loadPersona: () => Promise<void>;
 }
 
 export const useOnboardingStore = create<OnboardingState>((set) => ({
   hasSeenOnboarding: null,
   isLoading: true,
+  selectedPersona: null,
   checkOnboardingStatus: async () => {
     try {
       set({ isLoading: true });
@@ -35,9 +42,28 @@ export const useOnboardingStore = create<OnboardingState>((set) => ({
   resetOnboarding: async () => {
     try {
       await AsyncStorage.removeItem(STORAGE_KEY);
-      set({ hasSeenOnboarding: false, isLoading: false });
+      await AsyncStorage.removeItem(PERSONA_KEY);
+      set({ hasSeenOnboarding: false, isLoading: false, selectedPersona: null });
     } catch (error) {
       console.error("Error resetting onboarding:", error);
+    }
+  },
+  setPersona: async (persona: Persona) => {
+    try {
+      await AsyncStorage.setItem(PERSONA_KEY, persona);
+      set({ selectedPersona: persona });
+    } catch (error) {
+      console.error("Error saving persona:", error);
+    }
+  },
+  loadPersona: async () => {
+    try {
+      const value = await AsyncStorage.getItem(PERSONA_KEY);
+      if (value) {
+        set({ selectedPersona: value as Persona });
+      }
+    } catch (error) {
+      console.error("Error loading persona:", error);
     }
   },
 }));

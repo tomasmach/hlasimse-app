@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { COLORS } from "@/constants/design";
 
 interface AddGuardianModalProps {
   visible: boolean;
@@ -78,10 +79,10 @@ export function AddGuardianModal({ visible, onClose, onSubmit }: AddGuardianModa
             onPress={(e) => e.stopPropagation()}
             className="bg-cream w-full rounded-3xl p-6"
           >
-            <Text className="text-charcoal text-xl font-semibold mb-2">
+            <Text className="text-charcoal text-xl font-semibold mb-2 font-lora-semibold">
               Přidat strážce
             </Text>
-            <Text className="text-muted mb-4">
+            <Text className="text-muted mb-4 font-lora">
               Zadej email osoby, která tě bude hlídat. Musí mít účet v aplikaci.
             </Text>
 
@@ -97,11 +98,11 @@ export function AddGuardianModal({ visible, onClose, onSubmit }: AddGuardianModa
               autoCorrect={false}
               autoFocus
               className="bg-white rounded-xl px-4 py-3 text-charcoal mb-3"
-              placeholderTextColor="#8B7F7A"
+              placeholderTextColor={COLORS.muted}
             />
 
             {error && (
-              <Text className="text-coral text-sm mb-3">{error}</Text>
+              <Text className="text-coral text-sm mb-3 font-lora">{error}</Text>
             )}
 
             <View className="flex-row gap-3">
@@ -110,7 +111,7 @@ export function AddGuardianModal({ visible, onClose, onSubmit }: AddGuardianModa
                 disabled={isLoading}
                 className="flex-1 py-3 rounded-xl border border-muted/30"
               >
-                <Text className="text-muted text-center font-medium">Zrušit</Text>
+                <Text className="text-muted text-center font-medium font-lora-medium">Zrušit</Text>
               </Pressable>
               <Pressable
                 onPress={handleSubmit}
@@ -118,9 +119,9 @@ export function AddGuardianModal({ visible, onClose, onSubmit }: AddGuardianModa
                 className="flex-1 py-3 rounded-xl bg-coral"
               >
                 {isLoading ? (
-                  <ActivityIndicator color="#FFFFFF" />
+                  <ActivityIndicator color={COLORS.white} />
                 ) : (
-                  <Text className="text-white text-center font-medium">Pozvat</Text>
+                  <Text className="text-white text-center font-medium font-lora-medium">Pozvat</Text>
                 )}
               </Pressable>
             </View>

@@ -24,42 +24,27 @@ export function GradientAvatar({
   const displayText = name?.trim() || email?.trim() || "";
   const initial = displayText ? displayText.charAt(0).toUpperCase() : "?";
 
+  const sharedStyle = {
+    width: config.size,
+    height: config.size,
+    borderRadius: config.size / 2,
+  };
+
   return (
-    <View
-      className="overflow-hidden"
-      style={{
-        width: config.size,
-        height: config.size,
-        borderRadius: config.size / 2,
-      }}
-    >
+    <View className="overflow-hidden" style={sharedStyle}>
       <LinearGradient
         colors={GRADIENTS.coral}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
-        className="justify-center items-center"
-        style={{
-          width: config.size,
-          height: config.size,
-          borderRadius: config.size / 2,
-        }}
+        className="justify-center items-center bg-black/5"
+        style={sharedStyle}
       >
-        {/* Inner shadow overlay for depth */}
-        <View
-          className="justify-center items-center bg-black/5"
-          style={{
-            width: config.size,
-            height: config.size,
-            borderRadius: config.size / 2,
-          }}
+        <Text
+          className="text-white font-lora-semibold"
+          style={{ fontSize: config.fontSize }}
         >
-          <Text
-            className="text-white font-semibold"
-            style={{ fontSize: config.fontSize }}
-          >
-            {initial}
-          </Text>
-        </View>
+          {initial}
+        </Text>
       </LinearGradient>
     </View>
   );

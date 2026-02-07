@@ -16,10 +16,10 @@ export function OfflineBanner({ pendingCount, onSync, isSyncing = false }: Offli
       <View className="flex-row items-center">
         <Ionicons name="cellular-outline" size={20} color={COLORS.muted} />
         <View className="ml-3 flex-1">
-          <Text className="text-charcoal font-medium">
+          <Text className="text-charcoal font-medium font-lora-medium">
             Čekáme na připojení...
           </Text>
-          <Text className="text-muted text-sm">
+          <Text className="text-muted text-sm font-lora">
             Vaše hlášení je v bezpečí.
           </Text>
         </View>

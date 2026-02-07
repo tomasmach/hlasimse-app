@@ -11,6 +11,7 @@ import {
 import { useRouter } from "expo-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useCheckInStore } from "@/stores/checkin";
+import { COLORS } from "@/constants/design";
 
 export default function ProfileSetupScreen() {
   const router = useRouter();
@@ -31,7 +32,7 @@ export default function ProfileSetupScreen() {
   if (!user) {
     return (
       <View className="flex-1 bg-cream items-center justify-center">
-        <ActivityIndicator size="large" color="#FF6B5B" />
+        <ActivityIndicator size="large" color={COLORS.coral.default} />
       </View>
     );
   }
@@ -67,17 +68,17 @@ export default function ProfileSetupScreen() {
       <View className="flex-1 justify-center px-6">
         <View className="items-center mb-12">
           <Text className="text-6xl mb-4">👤</Text>
-          <Text className="text-4xl font-bold text-charcoal text-center">
+          <Text className="text-4xl font-lora-bold text-charcoal text-center">
             Nastavte svůj profil
           </Text>
-          <Text className="text-muted mt-2 text-center">
+          <Text className="text-muted mt-2 text-center font-lora">
             Jak se máte jmenovat v hlášeních?
           </Text>
         </View>
 
         {error && (
           <View className="bg-coral/10 border border-coral rounded-xl p-3 mb-6">
-            <Text className="text-coral text-center">{error}</Text>
+            <Text className="text-coral text-center font-lora">{error}</Text>
           </View>
         )}
 
@@ -85,7 +86,7 @@ export default function ProfileSetupScreen() {
           <TextInput
             className="bg-white border border-sand rounded-xl px-4 py-3 text-charcoal"
             placeholder="Vaše jméno"
-            placeholderTextColor="#8B7F7A"
+            placeholderTextColor={COLORS.muted}
             value={name}
             onChangeText={setName}
             autoCapitalize="words"
@@ -101,13 +102,13 @@ export default function ProfileSetupScreen() {
           activeOpacity={0.8}
         >
           {isLoading ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color={COLORS.white} />
           ) : (
-            <Text className="text-white font-semibold text-lg">Pokračovat</Text>
+            <Text className="text-white font-lora-semibold text-lg">Pokračovat</Text>
           )}
         </TouchableOpacity>
 
-        <Text className="text-muted text-center text-sm">
+        <Text className="text-muted text-center text-sm font-lora">
           Interval hlášení: 1× za 24 hodin
         </Text>
       </View>

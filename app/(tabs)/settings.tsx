@@ -12,7 +12,7 @@ import { formatInterval } from "@/utils/formatInterval";
 // Helper components
 function SectionHeader({ title }: { title: string }) {
   return (
-    <Text className="text-muted text-xs font-semibold mb-2 px-1 tracking-wide">
+    <Text className="text-muted text-xs font-lora-semibold mb-2 px-1 tracking-wide">
       {title}
     </Text>
   );
@@ -46,9 +46,9 @@ function SettingsRow({
       disabled={!onPress}
       activeOpacity={onPress ? 0.7 : 1}
     >
-      <Text className={`${labelColor} font-medium`}>{label}</Text>
+      <Text className={`${labelColor} font-lora-medium`}>{label}</Text>
       <View className="flex-row items-center">
-        {value && <Text className="text-muted mr-2">{value}</Text>}
+        {value && <Text className="text-muted mr-2 font-lora">{value}</Text>}
         {rightIcon}
         {showChevron && onPress && (
           <Ionicons name="chevron-forward" size={20} color={COLORS.muted} />
@@ -211,7 +211,7 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView className="flex-1 bg-cream">
       <ScrollView className="flex-1" contentContainerClassName="px-4 pt-4 pb-8">
-        <Text className="text-charcoal text-2xl font-bold mb-6">Nastaveni</Text>
+        <Text className="text-charcoal text-2xl font-lora-bold mb-6">Nastaveni</Text>
 
         {/* PROFIL Section */}
         <View className="mb-6">
@@ -240,8 +240,8 @@ export default function SettingsScreen() {
           <SectionHeader title="UCET" />
           <View className="rounded-2xl overflow-hidden">
             <View className="flex-row items-center justify-between px-4 py-3.5 bg-white rounded-t-2xl">
-              <Text className="text-charcoal font-medium">E-mail</Text>
-              <Text className="text-muted">{user?.email}</Text>
+              <Text className="text-charcoal font-lora-medium">E-mail</Text>
+              <Text className="text-muted font-lora">{user?.email}</Text>
             </View>
             <Divider />
             <SettingsRow
@@ -269,7 +269,7 @@ export default function SettingsScreen() {
                 className="bg-white px-4 py-3.5 rounded-t-2xl"
                 onPress={handleResetOnboarding}
               >
-                <Text className="text-charcoal font-medium">
+                <Text className="text-charcoal font-lora-medium">
                   Reset Onboarding
                 </Text>
               </TouchableOpacity>
@@ -278,7 +278,7 @@ export default function SettingsScreen() {
                 className="bg-white px-4 py-3.5 rounded-b-2xl"
                 onPress={handleDevReset}
               >
-                <Text className="text-coral font-medium">
+                <Text className="text-coral font-lora-medium">
                   Uplny Fresh Start
                 </Text>
               </TouchableOpacity>

@@ -4,7 +4,21 @@ import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { View, ActivityIndicator } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { useFonts } from "expo-font";
+import {
+  Lora_400Regular,
+  Lora_500Medium,
+  Lora_600SemiBold,
+  Lora_700Bold,
+} from "@expo-google-fonts/lora";
+import {
+  InstrumentSans_400Regular,
+  InstrumentSans_500Medium,
+  InstrumentSans_600SemiBold,
+  InstrumentSans_700Bold,
+} from "@expo-google-fonts/instrument-sans";
 import { useAuth } from "@/hooks/useAuth";
+import { COLORS } from "@/constants/design";
 import { useOnboardingStore } from "@/stores/onboarding";
 // RevenueCat temporarily disabled
 // import { usePremiumStore } from "@/stores/premium";
@@ -52,6 +66,17 @@ function useProtectedRoute(
 }
 
 export default function RootLayout() {
+  const [fontsLoaded] = useFonts({
+    Lora_400Regular,
+    Lora_500Medium,
+    Lora_600SemiBold,
+    Lora_700Bold,
+    InstrumentSans_400Regular,
+    InstrumentSans_500Medium,
+    InstrumentSans_600SemiBold,
+    InstrumentSans_700Bold,
+  });
+
   const { user, isLoading: isAuthLoading } = useAuth();
   const {
     hasSeenOnboarding,
@@ -107,11 +132,11 @@ export default function RootLayout() {
 
   useProtectedRoute(user, isAuthLoading, hasSeenOnboarding, isOnboardingLoading);
 
-  // Show loading while either auth or onboarding is loading
-  if (isAuthLoading || isOnboardingLoading) {
+  // Show loading while fonts, auth, or onboarding is loading
+  if (!fontsLoaded || isAuthLoading || isOnboardingLoading) {
     return (
       <View className="flex-1 bg-cream items-center justify-center">
-        <ActivityIndicator size="large" color="#FF6B5B" />
+        <ActivityIndicator size="large" color={COLORS.coral.default} />
       </View>
     );
   }

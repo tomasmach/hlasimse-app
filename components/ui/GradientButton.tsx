@@ -58,14 +58,14 @@ export function GradientButton({
   const isLarge = size === "lg";
 
   const buttonContent = (
-    <View className={`items-center justify-center ${isLarge ? 'px-8 py-4' : 'px-6 py-3'}`}>
+    <View style={styles.content} className="items-center justify-center">
       {loading ? (
         <ActivityIndicator
           color={isPrimary ? COLORS.white : COLORS.coral.default}
           size="small"
         />
       ) : (
-        <Text className={`font-semibold ${isLarge ? 'text-lg' : 'text-base'} ${isPrimary ? 'text-white' : 'text-coral'}`}>
+        <Text className={`font-lora-semibold ${isLarge ? 'text-2xl' : 'text-xl'} ${isPrimary ? 'text-white' : 'text-coral'}`}>
           {label}
         </Text>
       )}
@@ -89,12 +89,12 @@ export function GradientButton({
           colors={GRADIENTS.coral}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
-          className={`rounded-2xl overflow-hidden ${isLarge ? 'min-h-[56px]' : 'min-h-[48px]'}`}
+          style={[styles.gradient, isLarge && styles.gradientLg]}
         >
           {buttonContent}
         </LinearGradient>
       ) : (
-        <View className={`rounded-2xl overflow-hidden bg-white border-2 border-coral ${isLarge ? 'min-h-[56px]' : 'min-h-[48px]'}`}>
+        <View className={`rounded-2xl overflow-hidden bg-white border-2 border-coral ${isLarge ? 'min-h-[68px]' : 'min-h-[60px]'}`}>
           {buttonContent}
         </View>
       )}
@@ -104,6 +104,19 @@ export function GradientButton({
 
 // Keep only styles that can't be in NativeWind
 const styles = StyleSheet.create({
+  gradient: {
+    borderRadius: 9999,
+    overflow: "hidden",
+    minHeight: 60,
+  },
+  gradientLg: {
+    minHeight: 68,
+  },
+  content: {
+    paddingHorizontal: 24,
+    paddingVertical: 16,
+    minHeight: 60,
+  },
   disabled: {
     opacity: 0.5,
   },

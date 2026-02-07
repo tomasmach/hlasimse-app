@@ -78,13 +78,13 @@ export default function IntervalPickerScreen() {
           className="p-2"
           activeOpacity={0.7}
         >
-          <Text className="text-coral text-lg font-medium">← Zpět</Text>
+          <Text className="text-coral text-lg font-lora-medium">← Zpět</Text>
         </TouchableOpacity>
       </View>
 
       {/* Content */}
       <View className="px-6 pt-6">
-        <Text className="text-xl font-bold text-charcoal mb-6">
+        <Text className="text-xl font-lora-bold text-charcoal mb-6">
           Jak často se chcete hlásit?
         </Text>
 
@@ -92,7 +92,7 @@ export default function IntervalPickerScreen() {
         {pendingCount > 0 && (
           <View className="bg-orange-50 border-2 border-orange-300 rounded-2xl p-4 mb-4 flex-row items-start">
             <Ionicons name="warning" size={20} color={COLORS.brand[500]} className="mr-2" />
-            <Text className="text-orange-900 flex-1 ml-2">
+            <Text className="text-orange-900 flex-1 ml-2 font-lora">
               Máte {pendingCount} nesynchronizované{pendingCount === 1 ? ' hlášení' : pendingCount < 5 ? ' hlášení' : ' hlášení'}. Pro přesný výpočet termínu počkejte na synchronizaci.
             </Text>
           </View>
@@ -122,7 +122,7 @@ export default function IntervalPickerScreen() {
                   <Ionicons name="checkmark" size={16} color="white" />
                 )}
               </View>
-              <Text className="text-charcoal text-lg">{option.label}</Text>
+              <Text className="text-charcoal text-lg font-lora">{option.label}</Text>
               {loadingHours === option.hours && (
                 <ActivityIndicator className="ml-auto" color={COLORS.coral.default} />
               )}
@@ -131,7 +131,7 @@ export default function IntervalPickerScreen() {
         </View>
 
         {error && (
-          <Text className="text-accent mt-4">{error}</Text>
+          <Text className="text-accent mt-4 font-lora">{error}</Text>
         )}
       </View>
     </SafeAreaView>
