@@ -96,13 +96,13 @@ export default function GuardiansScreen() {
         }
         showsVerticalScrollIndicator={false}
       >
-        <Text className="text-charcoal text-2xl font-semibold mt-4 mb-6">
+        <Text className="text-charcoal text-2xl font-lora-semibold mt-4 mb-6">
           Strážci
         </Text>
 
         {/* Moji strážci */}
         <View className="mb-6">
-          <Text className="text-muted text-sm font-medium mb-3 uppercase tracking-wide">
+          <Text className="text-muted text-sm font-lora-medium mb-3 uppercase tracking-wide">
             Moji strážci
           </Text>
 
@@ -134,7 +134,7 @@ export default function GuardiansScreen() {
                 onPress={() => setIsModalVisible(true)}
                 className="bg-coral/10 rounded-2xl p-4 mt-2"
               >
-                <Text className="text-coral text-center font-medium">
+                <Text className="text-coral text-center font-lora-medium">
                   + Přidat strážce
                 </Text>
               </Pressable>
@@ -145,7 +145,7 @@ export default function GuardiansScreen() {
         {/* Čekající pozvánky */}
         {pendingInvites.length > 0 && (
           <View className="mb-6">
-            <Text className="text-muted text-sm font-medium mb-3 uppercase tracking-wide">
+            <Text className="text-muted text-sm font-lora-medium mb-3 uppercase tracking-wide">
               Čekající pozvánky
             </Text>
             {pendingInvites.map((invite) => (
@@ -162,7 +162,7 @@ export default function GuardiansScreen() {
 
         {/* Hlídám */}
         <View className="mb-6">
-          <Text className="text-muted text-sm font-medium mb-3 uppercase tracking-wide">
+          <Text className="text-muted text-sm font-lora-medium mb-3 uppercase tracking-wide">
             Hlídám
           </Text>
 

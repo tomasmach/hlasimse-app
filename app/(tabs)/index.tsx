@@ -155,14 +155,14 @@ export default function CheckInScreen() {
       <View className="flex-1 items-center justify-center" style={{ paddingHorizontal: SPACING.page }}>
         {/* Greeting */}
         <Animated.View entering={FadeIn.duration(600)} className="items-center mb-2">
-          <Text className="text-xl font-medium text-muted">{getGreeting()},</Text>
-          <Text className="text-[32px] font-bold text-charcoal">{profile.name}!</Text>
+          <Text className="text-xl font-lora text-muted">{getGreeting()},</Text>
+          <Text className="text-[32px] font-lora-bold text-charcoal">{profile.name}!</Text>
         </Animated.View>
 
         {/* Subtitle */}
         <Animated.Text
           entering={FadeIn.duration(600).delay(100)}
-          className="text-base text-muted text-center mb-10 leading-6"
+          className="text-base text-muted text-center mb-10 leading-6 font-lora"
         >
           {countdown.isExpired
             ? "Zmáčkni tlačítko a dej vědět, že jsi v pořádku!"
@@ -181,7 +181,7 @@ export default function CheckInScreen() {
 
         {/* Countdown */}
         <Animated.View entering={FadeIn.duration(600).delay(300)} className="items-center">
-          <Text className="text-sm font-medium text-muted mb-3 uppercase tracking-wider">
+          <Text className="text-sm font-lora-medium text-muted mb-3 uppercase tracking-wider">
             {countdown.isExpired ? "Čas překročen o:" : "Další hlášení za:"}
           </Text>
           <View className="flex-row items-start">
@@ -190,7 +190,7 @@ export default function CheckInScreen() {
               <Text style={styles.countdownNumber} className={countdown.isExpired ? 'text-coral' : 'text-charcoal'}>
                 {hours}
               </Text>
-              <Text className="text-xs font-medium text-muted -mt-1 uppercase tracking-wide">hod</Text>
+              <Text className="text-xs font-lora-medium text-muted -mt-1 uppercase tracking-wide">hod</Text>
             </View>
 
             <Text style={styles.countdownSeparator} className={countdown.isExpired ? 'text-coral' : 'text-charcoal'}>:</Text>
@@ -200,7 +200,7 @@ export default function CheckInScreen() {
               <Text style={styles.countdownNumber} className={countdown.isExpired ? 'text-coral' : 'text-charcoal'}>
                 {minutes}
               </Text>
-              <Text className="text-xs font-medium text-muted -mt-1 uppercase tracking-wide">min</Text>
+              <Text className="text-xs font-lora-medium text-muted -mt-1 uppercase tracking-wide">min</Text>
             </View>
 
             <Text style={styles.countdownSeparator} className={countdown.isExpired ? 'text-coral' : 'text-charcoal'}>:</Text>
@@ -210,7 +210,7 @@ export default function CheckInScreen() {
               <Text style={styles.countdownNumber} className={countdown.isExpired ? 'text-coral' : 'text-charcoal'}>
                 {seconds}
               </Text>
-              <Text className="text-xs font-medium text-muted -mt-1 uppercase tracking-wide">sek</Text>
+              <Text className="text-xs font-lora-medium text-muted -mt-1 uppercase tracking-wide">sek</Text>
             </View>
           </View>
         </Animated.View>
@@ -219,7 +219,7 @@ export default function CheckInScreen() {
         {isConnected === false && (
           <Animated.View entering={FadeIn.duration(300)} className="flex-row items-center mt-6">
             <View className="w-2 h-2 rounded-full bg-muted mr-2" />
-            <Text className="text-sm text-muted">Offline</Text>
+            <Text className="text-sm text-muted font-lora">Offline</Text>
           </Animated.View>
         )}
       </View>

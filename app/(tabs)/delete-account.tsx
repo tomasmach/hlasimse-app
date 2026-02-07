@@ -83,7 +83,7 @@ export default function DeleteAccountScreen() {
             className="p-2"
             activeOpacity={0.7}
           >
-            <Text className="text-coral text-lg font-medium">← Zpět</Text>
+            <Text className="text-coral text-lg font-lora-medium">← Zpět</Text>
           </TouchableOpacity>
         </View>
 
@@ -92,14 +92,14 @@ export default function DeleteAccountScreen() {
           <View className="mb-4">
             <Warning size={80} color="#F43F5E" weight="regular" />
           </View>
-          <Text className="text-xl font-bold text-charcoal mb-2">
+          <Text className="text-xl font-lora-bold text-charcoal mb-2">
             Smazat účet
           </Text>
-          <Text className="text-muted mb-6">
+          <Text className="text-muted mb-6 font-lora">
             Tato akce je nevratná. Všechna vaše data budou trvale odstraněna.
           </Text>
 
-          <Text className="text-charcoal font-medium mb-2">
+          <Text className="text-charcoal font-lora-medium mb-2">
             Pro potvrzení zadejte heslo:
           </Text>
           <TextInput
@@ -116,7 +116,7 @@ export default function DeleteAccountScreen() {
             autoComplete="password"
             editable={!isLoading}
           />
-          {error && <Text className="text-coral mt-2">{error}</Text>}
+          {error && <Text className="text-coral mt-2 font-lora">{error}</Text>}
 
           <TouchableOpacity
             onPress={handleDelete}
@@ -127,7 +127,7 @@ export default function DeleteAccountScreen() {
             {isLoading ? (
               <ActivityIndicator color="white" />
             ) : (
-              <Text className="text-white font-semibold text-lg">
+              <Text className="text-white font-lora-semibold text-lg">
                 Smazat účet trvale
               </Text>
             )}

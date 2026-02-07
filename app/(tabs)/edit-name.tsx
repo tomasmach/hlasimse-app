@@ -65,7 +65,7 @@ export default function EditNameScreen() {
             className="p-2"
             activeOpacity={0.7}
           >
-            <Text className="text-coral text-lg font-medium">← Zpět</Text>
+            <Text className="text-coral text-lg font-lora-medium">← Zpět</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSave}
@@ -76,14 +76,14 @@ export default function EditNameScreen() {
             {isLoading ? (
               <ActivityIndicator color="#FF6B5B" />
             ) : (
-              <Text className="text-coral text-lg font-semibold">Uložit</Text>
+              <Text className="text-coral text-lg font-lora-semibold">Uložit</Text>
             )}
           </TouchableOpacity>
         </View>
 
         {/* Form */}
         <View className="px-6 pt-6">
-          <Text className="text-lg font-semibold text-charcoal mb-2">
+          <Text className="text-lg font-lora-semibold text-charcoal mb-2">
             Vaše jméno
           </Text>
           <TextInput
@@ -100,8 +100,8 @@ export default function EditNameScreen() {
             autoComplete="name"
             editable={!isLoading}
           />
-          {error && <Text className="text-coral mt-2">{error}</Text>}
-          <Text className="text-muted mt-4">Toto jméno uvidí vaši strážci.</Text>
+          {error && <Text className="text-coral mt-2 font-lora">{error}</Text>}
+          <Text className="text-muted mt-4 font-lora">Toto jméno uvidí vaši strážci.</Text>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>

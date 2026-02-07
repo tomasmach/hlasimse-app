@@ -67,17 +67,17 @@ export default function ProfileSetupScreen() {
       <View className="flex-1 justify-center px-6">
         <View className="items-center mb-12">
           <Text className="text-6xl mb-4">👤</Text>
-          <Text className="text-4xl font-bold text-charcoal text-center">
+          <Text className="text-4xl font-lora-bold text-charcoal text-center">
             Nastavte svůj profil
           </Text>
-          <Text className="text-muted mt-2 text-center">
+          <Text className="text-muted mt-2 text-center font-lora">
             Jak se máte jmenovat v hlášeních?
           </Text>
         </View>
 
         {error && (
           <View className="bg-coral/10 border border-coral rounded-xl p-3 mb-6">
-            <Text className="text-coral text-center">{error}</Text>
+            <Text className="text-coral text-center font-lora">{error}</Text>
           </View>
         )}
 
@@ -103,11 +103,11 @@ export default function ProfileSetupScreen() {
           {isLoading ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : (
-            <Text className="text-white font-semibold text-lg">Pokračovat</Text>
+            <Text className="text-white font-lora-semibold text-lg">Pokračovat</Text>
           )}
         </TouchableOpacity>
 
-        <Text className="text-muted text-center text-sm">
+        <Text className="text-muted text-center text-sm font-lora">
           Interval hlášení: 1× za 24 hodin
         </Text>
       </View>
