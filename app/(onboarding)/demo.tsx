@@ -51,7 +51,7 @@ export default function DemoScreen() {
       <View className="flex-1 justify-center items-center px-8">
         {phase === "initial" && (
           <Animated.View entering={FadeIn.duration(500)} className="items-center mb-8">
-            <Text className="text-2xl font-semibold text-charcoal text-center">
+            <Text className="text-3xl font-semibold text-charcoal text-center font-lora-semibold">
               Zkuste to. Klepněte.
             </Text>
           </Animated.View>
@@ -59,7 +59,7 @@ export default function DemoScreen() {
 
         {(phase === "success" || phase === "notification") && (
           <Animated.View entering={FadeIn.duration(300)} className="items-center mb-8">
-            <Text className="text-2xl font-semibold text-charcoal text-center">
+            <Text className="text-3xl font-semibold text-charcoal text-center font-lora-semibold">
               Právě jste se ohlásili!
             </Text>
           </Animated.View>
@@ -67,7 +67,7 @@ export default function DemoScreen() {
 
         {phase === "cta" && (
           <Animated.View entering={FadeIn.duration(500)} className="items-center mb-8">
-            <Text className="text-2xl font-semibold text-charcoal text-center">
+            <Text className="text-3xl font-semibold text-charcoal text-center font-lora-semibold">
               Tohle uvidí vaši blízcí.{"\n"}Pokaždé.
             </Text>
           </Animated.View>

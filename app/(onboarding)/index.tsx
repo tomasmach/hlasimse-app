@@ -53,13 +53,13 @@ function PersonaCardItem({
       <Animated.View entering={FadeInDown.delay(200 + index * 100).duration(400)}>
         <View className="flex-row items-center gap-4">
           <View style={styles.iconCircle}>
-            <Icon size={40} color={COLORS.coral.default} weight="regular" />
+            <Icon size={48} color={COLORS.coral.default} weight="regular" />
           </View>
           <View className="flex-1">
-            <Text className="text-lg font-semibold text-charcoal">
+            <Text className="text-2xl font-semibold text-charcoal font-lora-semibold">
               {card.title}
             </Text>
-            <Text className="text-sm text-muted mt-0.5">
+            <Text className="text-lg text-muted mt-1 font-lora">
               {card.description}
             </Text>
           </View>
@@ -89,10 +89,10 @@ export default function PersonaSelectionScreen() {
 
       <View className="flex-1 px-6 justify-center">
         <Animated.View entering={FadeInDown.duration(500)}>
-          <Text className="text-3xl font-semibold text-charcoal text-center mb-2">
+          <Text className="text-5xl font-semibold text-charcoal text-center mb-3 font-lora-semibold">
             Co vás přivedlo?
           </Text>
-          <Text className="text-base text-muted text-center mb-10">
+          <Text className="text-xl text-muted text-center mb-10 font-lora">
             Díky tomu vám ukážeme, jak vám pomůžeme
           </Text>
         </Animated.View>
@@ -120,9 +120,9 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   iconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 64,
+    height: 64,
+    borderRadius: 32,
     backgroundColor: COLORS.cream.dark,
     alignItems: "center",
     justifyContent: "center",

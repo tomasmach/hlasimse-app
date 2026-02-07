@@ -90,10 +90,10 @@ export default function SignUpScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <Animated.View entering={FadeInDown.duration(500)}>
-          <Text className="text-3xl font-semibold text-charcoal text-center mb-2">
+          <Text className="text-4xl font-semibold text-charcoal text-center mb-3 font-lora-semibold">
             Pojďme na to
           </Text>
-          <Text className="text-base text-muted text-center mb-10">
+          <Text className="text-lg text-muted text-center mb-10 font-lora">
             Vytvoření účtu zabere minutu
           </Text>
         </Animated.View>
@@ -103,7 +103,7 @@ export default function SignUpScreen() {
             entering={FadeInDown.duration(300)}
             className="bg-coral/10 border border-coral rounded-2xl p-3 mb-6"
           >
-            <Text className="text-coral text-center text-sm">{error}</Text>
+            <Text className="text-coral text-center text-sm font-lora">{error}</Text>
           </Animated.View>
         )}
 
@@ -156,7 +156,7 @@ export default function SignUpScreen() {
         />
 
         <View className="flex-row justify-center mt-6">
-          <Text className="text-muted">Už máte účet? </Text>
+          <Text className="text-base text-muted font-lora">Už máte účet? </Text>
           <TouchableOpacity
             onPress={async () => {
               await completeOnboarding();
@@ -164,7 +164,7 @@ export default function SignUpScreen() {
             }}
             disabled={loading}
           >
-            <Text className="text-coral font-semibold">Přihlásit se</Text>
+            <Text className="text-base text-coral font-semibold font-lora-semibold">Přihlásit se</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
