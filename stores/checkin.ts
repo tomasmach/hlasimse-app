@@ -8,6 +8,7 @@ import {
   removeFromQueue,
   getQueueCount,
 } from "@/lib/offlineQueue";
+import { scheduleReminders } from "@/lib/reminderNotifications";
 
 interface CheckInState {
   profile: CheckInProfile | null;
@@ -77,6 +78,11 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
       }
 
       set({ profile: data, isLoading: false, hasFetched: true });
+
+      // Schedule reminder notifications for existing deadline
+      if (data.next_deadline) {
+        scheduleReminders(data.next_deadline);
+      }
 
       // Also refresh pending count
       get().refreshPendingCount();
@@ -191,6 +197,12 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
         isLoading: false,
         lastCheckInWasOffline: false,
       });
+
+      // Schedule reminder notifications for new deadline
+      if (updatedProfile.next_deadline) {
+        scheduleReminders(updatedProfile.next_deadline);
+      }
+
       return { success: true, offline: false };
     } catch (error) {
       console.error("Check-in failed:", error);
@@ -218,6 +230,9 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
           lastCheckInWasOffline: true,
           error: null,
         });
+
+        // Schedule reminder notifications for new deadline (works offline)
+        scheduleReminders(nextDeadline.toISOString());
 
         get().refreshPendingCount();
 
