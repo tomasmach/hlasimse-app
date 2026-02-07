@@ -20,7 +20,7 @@ export default function SolutionScreen() {
 
       <View className="flex-1 px-8 justify-center">
         <Animated.View entering={FadeInDown.duration(500)}>
-          <Text className="text-3xl font-semibold text-charcoal text-center mb-12">
+          <Text className="text-4xl font-semibold text-charcoal text-center mb-12 font-lora-semibold">
             Takhle to řešíme
           </Text>
         </Animated.View>
@@ -39,7 +39,7 @@ export default function SolutionScreen() {
                 <View className="items-center mr-4">
                   <View style={styles.iconCircle}>
                     <Icon
-                      size={22}
+                      size={26}
                       color={COLORS.white}
                       weight="bold"
                     />
@@ -49,10 +49,10 @@ export default function SolutionScreen() {
 
                 {/* Content column */}
                 <View className="flex-1 pb-8">
-                  <Text className="text-base font-semibold text-charcoal mb-1">
+                  <Text className="text-xl font-semibold text-charcoal mb-1 font-lora-semibold">
                     {step.title}
                   </Text>
-                  <Text className="text-sm text-muted">
+                  <Text className="text-lg text-muted leading-7 font-lora">
                     {step.description}
                   </Text>
                 </View>
@@ -74,9 +74,9 @@ export default function SolutionScreen() {
 
 const styles = StyleSheet.create({
   iconCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 52,
+    height: 52,
+    borderRadius: 26,
     backgroundColor: COLORS.coral.default,
     alignItems: "center",
     justifyContent: "center",
