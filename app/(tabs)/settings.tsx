@@ -1,4 +1,5 @@
-import { View, Text, TouchableOpacity, Alert, ScrollView } from "react-native";
+import { useState } from "react";
+import { View, Text, TouchableOpacity, Alert, ScrollView, Share, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router, Href } from "expo-router";
@@ -66,9 +67,33 @@ export default function SettingsScreen() {
   const { user, signOut } = useAuth();
   const { resetOnboarding } = useOnboardingStore();
   const { profile, clearProfile } = useCheckInStore();
-  // RevenueCat temporarily disabled - all features are free
-  // const { isPremium } = usePremiumStore();
-  // const [paywallVisible, setPaywallVisible] = useState(false);
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportData = async () => {
+    setExporting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        Alert.alert("Chyba", "Nejste přihlášeni.");
+        return;
+      }
+
+      const response = await supabase.functions.invoke("export-user-data", {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+      });
+
+      if (response.error) throw response.error;
+
+      await Share.share({
+        message: JSON.stringify(response.data, null, 2),
+        title: "Hlásím se - Export dat",
+      });
+    } catch {
+      Alert.alert("Chyba", "Nepodařilo se exportovat data. Zkuste to prosím znovu.");
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const handleLogout = () => {
     Alert.alert("Odhlasit se", "Opravdu se chcete odhlasit?", [
@@ -233,8 +258,6 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* PREDPLATNE Section - temporarily disabled, all features free */}
-
         {/* UCET Section */}
         <View className="mb-6">
           <SectionHeader title="UCET" />
@@ -243,6 +266,13 @@ export default function SettingsScreen() {
               <Text className="text-charcoal font-lora-medium">E-mail</Text>
               <Text className="text-muted font-lora">{user?.email}</Text>
             </View>
+            <Divider />
+            <SettingsRow
+              label="Exportovat moje data"
+              onPress={handleExportData}
+              showChevron={false}
+              rightIcon={exporting ? <ActivityIndicator size="small" color={COLORS.muted} /> : undefined}
+            />
             <Divider />
             <SettingsRow
               label="Odhlasit se"
@@ -287,7 +317,6 @@ export default function SettingsScreen() {
         )}
       </ScrollView>
 
-      {/* Paywall Modal - temporarily disabled */}
     </SafeAreaView>
   );
 }

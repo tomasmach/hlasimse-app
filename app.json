@@ -3,6 +3,7 @@
     "name": "Hlásím se",
     "slug": "hlasim-se",
     "version": "1.0.0",
+    "description": "Pravidelné hlášení pro vaše blízké. Nastavte si interval a pokud se neohlásíte včas, aplikace upozorní vaše strážce.",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "hlasimse",
@@ -15,9 +16,13 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.hlasimse",
+      "bundleIdentifier": "cz.hlasimse.app",
       "infoPlist": {
-        "NSUserNotificationsUsageDescription": "Potřebujeme oprávnění k notifikacím, abychom vás mohli upozornit, když se někdo neohlásí včas."
+        "NSUserNotificationsUsageDescription": "Potřebujeme oprávnění k notifikacím, abychom vás mohli upozornit, když se někdo neohlásí včas.",
+        "NSLocationWhenInUseUsageDescription": "Hlásím se zaznamenává vaši polohu při check-inu, aby ji mohla sdílet s vašimi strážci v případě, že se neohlásíte včas.",
+        "NSLocationAlwaysUsageDescription": "Hlásím se zaznamenává vaši polohu při check-inu, aby ji mohla sdílet s vašimi strážci v případě, že se neohlásíte včas.",
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "Hlásím se zaznamenává vaši polohu při check-inu, aby ji mohla sdílet s vašimi strážci v případě, že se neohlásíte včas.",
+        "NSFaceIDUsageDescription": "Hlásím se používá Face ID pro bezpečné přihlášení do aplikace."
       }
     },
     "android": {
@@ -27,7 +32,12 @@
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
-      "package": "com.anonymous.hlasimse"
+      "package": "cz.hlasimse.app",
+      "blockedPermissions": [
+        "android.permission.READ_EXTERNAL_STORAGE",
+        "android.permission.WRITE_EXTERNAL_STORAGE",
+        "android.permission.SYSTEM_ALERT_WINDOW"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -52,7 +62,8 @@
       "router": {},
       "eas": {
         "projectId": "3027c5db-2ddd-4a0a-a2e4-2c5470410438"
-      }
+      },
+      "privacyPolicyUrl": "https://hlasimse.cz/ochrana-soukromi"
     },
     "owner": "tomasmachs-organization"
   }

@@ -63,8 +63,7 @@ export default function IntervalPickerScreen() {
       await fetchProfile(user.id);
 
       setSelectedHours(hours);
-    } catch (err) {
-      console.error("Failed to update interval:", err);
+    } catch {
       setError("Nepodařilo se uložit. Zkuste to znovu.");
     } finally {
       setLoadingHours(null);

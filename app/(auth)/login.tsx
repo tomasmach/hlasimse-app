@@ -47,8 +47,7 @@ export default function LoginScreen() {
       }
 
       router.replace("/(tabs)");
-    } catch (err) {
-      console.error("Login error:", err);
+    } catch {
       setError("Nastala neočekávaná chyba. Zkuste to prosím znovu.");
     } finally {
       setLoading(false);
