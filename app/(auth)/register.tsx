@@ -90,16 +90,16 @@ export default function RegisterScreen() {
     return (
       <View className="flex-1 bg-cream justify-center px-6">
         <View className="bg-success/10 border border-success rounded-xl p-6 items-center">
-          <Text className="text-charcoal text-xl font-bold mb-3">
+          <Text className="text-charcoal text-xl font-bold mb-3 font-lora">
             Registrace úspěšná!
           </Text>
-          <Text className="text-muted text-center mb-4">
+          <Text className="text-muted text-center mb-4 font-lora">
             Na váš e-mail jsme odeslali potvrzovací odkaz. Klikněte na něj pro
             aktivaci účtu.
           </Text>
           <Link href="/(auth)/login" asChild>
             <TouchableOpacity className="bg-coral rounded-xl py-3 px-6">
-              <Text className="text-white font-semibold">
+              <Text className="text-white font-lora-semibold">
                 Zpět na přihlášení
               </Text>
             </TouchableOpacity>
@@ -119,13 +119,13 @@ export default function RegisterScreen() {
         keyboardShouldPersistTaps="handled"
       >
         <View className="items-center mb-12">
-          <Text className="text-4xl font-bold text-charcoal">Registrace</Text>
-          <Text className="text-muted mt-2">Vytvořte si nový účet</Text>
+          <Text className="text-4xl font-bold text-charcoal font-lora">Registrace</Text>
+          <Text className="text-muted mt-2 font-lora">Vytvořte si nový účet</Text>
         </View>
 
         {error && (
           <View className="bg-coral/10 border border-coral rounded-xl p-3 mb-6">
-            <Text className="text-coral text-center">{error}</Text>
+            <Text className="text-coral text-center font-lora">{error}</Text>
           </View>
         )}
 
@@ -185,17 +185,17 @@ export default function RegisterScreen() {
           {loading ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : (
-            <Text className="text-white font-semibold text-lg">
+            <Text className="text-white font-lora-semibold text-lg">
               Registrovat
             </Text>
           )}
         </TouchableOpacity>
 
         <View className="flex-row justify-center">
-          <Text className="text-muted">Máte již účet? </Text>
+          <Text className="text-muted font-lora">Máte již účet? </Text>
           <Link href="/(auth)/login" asChild>
             <TouchableOpacity disabled={loading}>
-              <Text className="text-coral font-semibold">Přihlásit se</Text>
+              <Text className="text-coral font-lora-semibold">Přihlásit se</Text>
             </TouchableOpacity>
           </Link>
         </View>
