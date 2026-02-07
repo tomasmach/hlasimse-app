@@ -8,6 +8,7 @@ import {
   removeFromQueue,
   getQueueCount,
 } from "@/lib/offlineQueue";
+import { scheduleReminders } from "@/lib/reminderNotifications";
 
 interface CheckInState {
   profile: CheckInProfile | null;
@@ -78,8 +79,15 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
 
       set({ profile: data, isLoading: false, hasFetched: true });
 
-      // Also refresh pending count
-      get().refreshPendingCount();
+      if (data.next_deadline) {
+        try {
+          await scheduleReminders(data.next_deadline);
+        } catch (notificationError) {
+          console.warn("Failed to schedule reminder notifications:", notificationError);
+        }
+      }
+
+      await get().refreshPendingCount();
     } catch (error) {
       console.error("Error fetching check-in profile:", error);
       set({
@@ -191,6 +199,15 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
         isLoading: false,
         lastCheckInWasOffline: false,
       });
+
+      if (updatedProfile.next_deadline) {
+        try {
+          await scheduleReminders(updatedProfile.next_deadline);
+        } catch (notificationError) {
+          console.warn("Failed to schedule reminder notifications:", notificationError);
+        }
+      }
+
       return { success: true, offline: false };
     } catch (error) {
       console.error("Check-in failed:", error);
@@ -219,7 +236,13 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
           error: null,
         });
 
-        get().refreshPendingCount();
+        try {
+          await scheduleReminders(nextDeadline.toISOString());
+        } catch (notificationError) {
+          console.warn("Failed to schedule reminder notifications:", notificationError);
+        }
+
+        await get().refreshPendingCount();
 
         return { success: true, offline: true };
       }
@@ -270,7 +293,7 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
       }
     }
 
-    get().refreshPendingCount();
+    await get().refreshPendingCount();
 
     return { synced, failed };
   },

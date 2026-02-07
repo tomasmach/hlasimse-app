@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/stores/auth";
 import { useCheckInStore } from "@/stores/checkin";
+import { cancelAllReminders } from "@/lib/reminderNotifications";
 
 export function useAuth() {
   const { session, user, isLoading, setSession, setUser, setIsLoading } =
@@ -24,6 +25,8 @@ export function useAuth() {
           // Don't throw - allow sign out to continue
         }
       }
+
+      await cancelAllReminders();
 
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
