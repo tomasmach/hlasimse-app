@@ -48,30 +48,33 @@ export default function DemoScreen() {
         onHidden={handleNotificationHidden}
       />
 
-      <View className="flex-1 justify-center items-center px-8">
-        {phase === "initial" && (
-          <Animated.View entering={FadeIn.duration(500)} className="items-center mb-8">
-            <Text className="text-3xl font-semibold text-charcoal text-center font-lora-semibold">
-              Zkuste to. Klepněte.
-            </Text>
-          </Animated.View>
-        )}
+      <View className="flex-1 justify-center items-center px-8" style={{ marginTop: -80 }}>
+        {/* Text container with fixed height to prevent layout shift */}
+        <View className="items-center mb-12" style={{ minHeight: 100 }}>
+          {phase === "initial" && (
+            <Animated.View entering={FadeIn.duration(500)} className="items-center">
+              <Text className="text-3xl font-semibold text-charcoal text-center font-lora-semibold">
+                Zkuste to. Klepněte.
+              </Text>
+            </Animated.View>
+          )}
 
-        {(phase === "success" || phase === "notification") && (
-          <Animated.View entering={FadeIn.duration(300)} className="items-center mb-8">
-            <Text className="text-3xl font-semibold text-charcoal text-center font-lora-semibold">
-              Právě jste se ohlásili!
-            </Text>
-          </Animated.View>
-        )}
+          {(phase === "success" || phase === "notification") && (
+            <Animated.View entering={FadeIn.duration(300)} className="items-center">
+              <Text className="text-3xl font-semibold text-charcoal text-center font-lora-semibold">
+                Právě jste se ohlásili!
+              </Text>
+            </Animated.View>
+          )}
 
-        {phase === "cta" && (
-          <Animated.View entering={FadeIn.duration(500)} className="items-center mb-8">
-            <Text className="text-3xl font-semibold text-charcoal text-center font-lora-semibold">
-              Tohle uvidí vaši blízcí.{"\n"}Pokaždé.
-            </Text>
-          </Animated.View>
-        )}
+          {phase === "cta" && (
+            <Animated.View entering={FadeIn.duration(500)} className="items-center">
+              <Text className="text-3xl font-semibold text-charcoal text-center font-lora-semibold">
+                Tohle uvidí vaši blízcí.{"\n"}Pokaždé.
+              </Text>
+            </Animated.View>
+          )}
+        </View>
 
         <HeroButton
           onPress={handlePress}
