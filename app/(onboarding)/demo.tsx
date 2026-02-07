@@ -31,7 +31,7 @@ export default function DemoScreen() {
     }, 800);
   }, [phase]);
 
-  // Cleanup timeouts on unmount or when phase changes
+  // Cleanup timeouts on unmount
   useEffect(() => {
     return () => {
       if (successTimeoutRef.current) {
@@ -43,7 +43,7 @@ export default function DemoScreen() {
         notificationTimeoutRef.current = null;
       }
     };
-  }, [phase]);
+  }, []);
 
   const handleNotificationHidden = useCallback(() => {
     setPhase("cta");
