@@ -101,7 +101,7 @@ export default function DemoScreen() {
       </View>
 
       {phase === "cta" && (
-        <Animated.View entering={FadeInUp.duration(500)} className="px-8 pb-12">
+        <Animated.View entering={FadeInUp.duration(500)} className="absolute bottom-12 left-8 right-8">
           <GradientButton
             label="Chci začít"
             onPress={() => router.push("/(onboarding)/signup")}
