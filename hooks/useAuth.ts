@@ -26,7 +26,6 @@ export function useAuth() {
         }
       }
 
-      // Cancel all scheduled reminder notifications
       await cancelAllReminders();
 
       const { error } = await supabase.auth.signOut();

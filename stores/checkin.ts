@@ -79,13 +79,11 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
 
       set({ profile: data, isLoading: false, hasFetched: true });
 
-      // Schedule reminder notifications for existing deadline
       if (data.next_deadline) {
-        scheduleReminders(data.next_deadline);
+        await scheduleReminders(data.next_deadline);
       }
 
-      // Also refresh pending count
-      get().refreshPendingCount();
+      await get().refreshPendingCount();
     } catch (error) {
       console.error("Error fetching check-in profile:", error);
       set({
@@ -198,9 +196,8 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
         lastCheckInWasOffline: false,
       });
 
-      // Schedule reminder notifications for new deadline
       if (updatedProfile.next_deadline) {
-        scheduleReminders(updatedProfile.next_deadline);
+        await scheduleReminders(updatedProfile.next_deadline);
       }
 
       return { success: true, offline: false };
@@ -231,8 +228,7 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
           error: null,
         });
 
-        // Schedule reminder notifications for new deadline (works offline)
-        scheduleReminders(nextDeadline.toISOString());
+        await scheduleReminders(nextDeadline.toISOString());
 
         get().refreshPendingCount();
 

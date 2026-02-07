@@ -98,7 +98,7 @@ export default function IntervalPickerScreen() {
           <View className="bg-orange-50 border-2 border-orange-300 rounded-2xl p-4 mb-4 flex-row items-start">
             <Ionicons name="warning" size={20} color={COLORS.brand[500]} className="mr-2" />
             <Text className="text-orange-900 flex-1 ml-2 font-lora">
-              Máte {pendingCount} nesynchronizované{pendingCount === 1 ? ' hlášení' : pendingCount < 5 ? ' hlášení' : ' hlášení'}. Pro přesný výpočet termínu počkejte na synchronizaci.
+              Máte {pendingCount} nesynchronizované hlášení. Pro přesný výpočet termínu počkejte na synchronizaci.
             </Text>
           </View>
         )}

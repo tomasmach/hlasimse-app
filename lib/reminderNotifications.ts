@@ -38,7 +38,6 @@ const REMINDERS: ReminderConfig[] = [
 ];
 
 export async function scheduleReminders(deadline: string): Promise<void> {
-  // Cancel any existing reminders first
   await cancelAllReminders();
 
   const deadlineMs = new Date(deadline).getTime();
@@ -46,11 +45,7 @@ export async function scheduleReminders(deadline: string): Promise<void> {
 
   for (const reminder of REMINDERS) {
     const triggerMs = deadlineMs + reminder.offsetMs;
-
-    // Skip notifications that would be in the past
-    if (triggerMs <= now) {
-      continue;
-    }
+    if (triggerMs <= now) continue;
 
     const secondsFromNow = Math.ceil((triggerMs - now) / 1000);
 
@@ -74,11 +69,9 @@ export async function scheduleReminders(deadline: string): Promise<void> {
 export async function cancelAllReminders(): Promise<void> {
   const scheduled = await Notifications.getAllScheduledNotificationsAsync();
 
-  for (const notification of scheduled) {
-    if (notification.identifier.startsWith(REMINDER_PREFIX)) {
-      await Notifications.cancelScheduledNotificationAsync(
-        notification.identifier
-      );
-    }
-  }
+  await Promise.all(
+    scheduled
+      .filter((n) => n.identifier.startsWith(REMINDER_PREFIX))
+      .map((n) => Notifications.cancelScheduledNotificationAsync(n.identifier))
+  );
 }

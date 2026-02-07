@@ -110,20 +110,20 @@ export function useNotifications(): UseNotificationsResult {
       return false;
     }
 
-    // Configure Android channel
+    // Configure Android notification channels
     if (Platform.OS === "android") {
-      await Notifications.setNotificationChannelAsync("alerts", {
-        name: "Alerts",
-        importance: Notifications.AndroidImportance.HIGH,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: "#FF6B5B",
-      });
-      await Notifications.setNotificationChannelAsync("reminders", {
-        name: "Připomínky",
-        importance: Notifications.AndroidImportance.HIGH,
-        vibrationPattern: [0, 250, 250, 250],
-        lightColor: "#FF6B5B",
-      });
+      const channels = [
+        { id: "alerts", name: "Alerts" },
+        { id: "reminders", name: "Připomínky" },
+      ];
+      for (const channel of channels) {
+        await Notifications.setNotificationChannelAsync(channel.id, {
+          name: channel.name,
+          importance: Notifications.AndroidImportance.HIGH,
+          vibrationPattern: [0, 250, 250, 250],
+          lightColor: "#FF6B5B",
+        });
+      }
     }
 
     return true;

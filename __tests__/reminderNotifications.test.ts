@@ -17,9 +17,23 @@ jest.mock("expo-notifications", () => ({
   },
 }));
 
+interface ScheduledCall {
+  identifier: string;
+  content: { title: string; body: string };
+  trigger: { type: number; seconds: number; repeats: boolean };
+}
+
 const mockSchedule = Notifications.scheduleNotificationAsync as jest.Mock;
 const mockGetAll = Notifications.getAllScheduledNotificationsAsync as jest.Mock;
 const mockCancel = Notifications.cancelScheduledNotificationAsync as jest.Mock;
+
+function getScheduledCalls(): ScheduledCall[] {
+  return mockSchedule.mock.calls.map((call: unknown[]) => call[0] as ScheduledCall);
+}
+
+function getScheduledIdentifiers(): string[] {
+  return getScheduledCalls().map((c) => c.identifier);
+}
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -34,10 +48,7 @@ describe("scheduleReminders", () => {
 
     expect(mockSchedule).toHaveBeenCalledTimes(4);
 
-    // Check identifiers
-    const identifiers = mockSchedule.mock.calls.map(
-      (call: unknown[]) => (call[0] as { identifier: string }).identifier
-    );
+    const identifiers = getScheduledIdentifiers();
     expect(identifiers).toContain("checkin-reminder-1h-before");
     expect(identifiers).toContain("checkin-reminder-15min-before");
     expect(identifiers).toContain("checkin-reminder-deadline");
@@ -50,9 +61,7 @@ describe("scheduleReminders", () => {
 
     await scheduleReminders(deadline);
 
-    const identifiers = mockSchedule.mock.calls.map(
-      (call: unknown[]) => (call[0] as { identifier: string }).identifier
-    );
+    const identifiers = getScheduledIdentifiers();
     expect(identifiers).not.toContain("checkin-reminder-1h-before");
     expect(identifiers).not.toContain("checkin-reminder-15min-before");
     expect(identifiers).toContain("checkin-reminder-deadline");
@@ -64,8 +73,6 @@ describe("scheduleReminders", () => {
 
     await scheduleReminders(deadline);
 
-    // Only the +30min-after could be in the future if deadline was -1h ago => -1h + 30min = -30min => still past
-    // All should be skipped
     expect(mockSchedule).not.toHaveBeenCalled();
   });
 
@@ -89,10 +96,7 @@ describe("scheduleReminders", () => {
     const deadline = new Date(Date.now() + 3 * 60 * 60 * 1000).toISOString();
     await scheduleReminders(deadline);
 
-    const calls = mockSchedule.mock.calls.map(
-      (call: unknown[]) => call[0] as { identifier: string; content: { title: string; body: string } }
-    );
-
+    const calls = getScheduledCalls();
     const find = (id: string) => calls.find((c) => c.identifier === `checkin-reminder-${id}`);
 
     expect(find("1h-before")?.content.title).toBe("Nezapomeň se ohlásit");
@@ -109,12 +113,12 @@ describe("scheduleReminders", () => {
 
     await scheduleReminders(deadline);
 
-    const deadlineCall = mockSchedule.mock.calls.find(
-      (call: unknown[]) => (call[0] as { identifier: string }).identifier === "checkin-reminder-deadline"
+    const deadlineCall = getScheduledCalls().find(
+      (c) => c.identifier === "checkin-reminder-deadline"
     );
 
     expect(deadlineCall).toBeDefined();
-    const trigger = (deadlineCall![0] as { trigger: { type: number; seconds: number; repeats: boolean } }).trigger;
+    const trigger = deadlineCall!.trigger;
     expect(trigger.type).toBe(Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL);
     expect(trigger.repeats).toBe(false);
     // Should be approximately 2 hours in seconds (allow some margin for test execution)
