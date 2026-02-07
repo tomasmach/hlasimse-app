@@ -80,7 +80,11 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
       set({ profile: data, isLoading: false, hasFetched: true });
 
       if (data.next_deadline) {
-        await scheduleReminders(data.next_deadline);
+        try {
+          await scheduleReminders(data.next_deadline);
+        } catch (notificationError) {
+          console.warn("Failed to schedule reminder notifications:", notificationError);
+        }
       }
 
       await get().refreshPendingCount();
@@ -197,7 +201,11 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
       });
 
       if (updatedProfile.next_deadline) {
-        await scheduleReminders(updatedProfile.next_deadline);
+        try {
+          await scheduleReminders(updatedProfile.next_deadline);
+        } catch (notificationError) {
+          console.warn("Failed to schedule reminder notifications:", notificationError);
+        }
       }
 
       return { success: true, offline: false };
@@ -228,9 +236,13 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
           error: null,
         });
 
-        await scheduleReminders(nextDeadline.toISOString());
+        try {
+          await scheduleReminders(nextDeadline.toISOString());
+        } catch (notificationError) {
+          console.warn("Failed to schedule reminder notifications:", notificationError);
+        }
 
-        get().refreshPendingCount();
+        await get().refreshPendingCount();
 
         return { success: true, offline: true };
       }
@@ -281,7 +293,7 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
       }
     }
 
-    get().refreshPendingCount();
+    await get().refreshPendingCount();
 
     return { synced, failed };
   },

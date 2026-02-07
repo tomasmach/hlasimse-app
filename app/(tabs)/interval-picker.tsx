@@ -7,7 +7,6 @@ import { useAuth } from "@/hooks/useAuth";
 import { useCheckInStore } from "@/stores/checkin";
 import { supabase } from "@/lib/supabase";
 import { COLORS } from "@/constants/design";
-import { scheduleReminders } from "@/lib/reminderNotifications";
 
 const INTERVAL_OPTIONS = [
   { hours: 12, label: "12 hodin" },
@@ -60,10 +59,8 @@ export default function IntervalPickerScreen() {
 
       if (supabaseError) throw supabaseError;
 
+      // Fetch updated profile and reschedule reminder notifications
       await fetchProfile(user.id);
-
-      // Reschedule reminder notifications for new deadline
-      await scheduleReminders(newDeadline.toISOString());
 
       setSelectedHours(hours);
     } catch (err) {
