@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text } from "react-native";
 import { router } from "expo-router";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { HeartHalf } from "phosphor-react-native";
@@ -55,8 +55,8 @@ export default function EmpathyScreen() {
 
         <Animated.View
           entering={FadeInDown.delay(200).duration(600)}
-          style={styles.card}
-          className="bg-white mx-4"
+          style={[{ borderColor: COLORS.peach.light }, SHADOWS.glow]}
+          className="bg-white mx-4 rounded-[32px] border"
         >
           <View className="px-8 py-10">
             <View className="mb-8">
@@ -82,12 +82,3 @@ export default function EmpathyScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    borderRadius: 32,
-    ...SHADOWS.glow,
-    borderWidth: 1,
-    borderColor: COLORS.peach.light,
-  },
-});

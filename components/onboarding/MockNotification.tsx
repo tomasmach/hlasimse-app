@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text } from "react-native";
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -53,11 +53,17 @@ export function MockNotification({
   if (!visible) return null;
 
   return (
-    <Animated.View style={[styles.container, animatedStyle]}>
-      <BlurView intensity={95} tint="light" style={styles.blur}>
-        <View style={styles.innerContainer}>
+    <Animated.View
+      className="absolute top-[50px] left-4 right-4 z-[100] rounded-2xl overflow-hidden border border-white"
+      style={[animatedStyle, SHADOWS.glowLarge]}
+    >
+      <BlurView intensity={95} tint="light" className="rounded-2xl overflow-hidden">
+        <View style={{ backgroundColor: "rgba(255, 255, 255, 0.4)" }}>
           <View className="flex-row items-center px-4 py-3">
-            <View style={styles.appIcon}>
+            <View
+              className="w-9 h-9 rounded-lg items-center justify-center"
+              style={{ backgroundColor: COLORS.coral.default }}
+            >
               <Text className="text-white text-xs font-bold font-lora-bold">H</Text>
             </View>
             <View className="flex-1 ml-3">
@@ -73,33 +79,3 @@ export function MockNotification({
     </Animated.View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    position: "absolute",
-    top: 50,
-    left: 16,
-    right: 16,
-    zIndex: 100,
-    borderRadius: 16,
-    overflow: "hidden",
-    borderWidth: 1,
-    borderColor: COLORS.white,
-    ...SHADOWS.glowLarge,
-  },
-  blur: {
-    borderRadius: 16,
-    overflow: "hidden",
-  },
-  innerContainer: {
-    backgroundColor: "rgba(255, 255, 255, 0.4)",
-  },
-  appIcon: {
-    width: 36,
-    height: 36,
-    borderRadius: 8,
-    backgroundColor: COLORS.coral.default,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-});

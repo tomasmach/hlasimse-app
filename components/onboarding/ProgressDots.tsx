@@ -1,4 +1,4 @@
-import { View, StyleSheet } from "react-native";
+import { View } from "react-native";
 import Animated, {
   useAnimatedStyle,
   withTiming,
@@ -25,8 +25,8 @@ function Dot({ isActive }: { isActive: boolean }) {
 
   return (
     <Animated.View
+      className="h-2 rounded-full"
       style={[
-        styles.dot,
         animatedStyle,
         { backgroundColor: COLORS.coral.default },
       ]}
@@ -43,10 +43,3 @@ export function ProgressDots({ currentStep }: ProgressDotsProps) {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  dot: {
-    height: DOT_SIZE,
-    borderRadius: DOT_SIZE / 2,
-  },
-});

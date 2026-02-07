@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text } from "react-native";
 import { router } from "expo-router";
 import Animated, { FadeInDown, FadeInLeft } from "react-native-reanimated";
 import { useOnboardingStore } from "@/stores/onboarding";
@@ -37,14 +37,17 @@ export default function SolutionScreen() {
               >
                 {/* Timeline column */}
                 <View className="items-center mr-4">
-                  <View style={styles.iconCircle}>
+                  <View
+                    style={[{ backgroundColor: COLORS.coral.default }, SHADOWS.glow]}
+                    className="w-[52px] h-[52px] rounded-[26px] items-center justify-center"
+                  >
                     <Icon
                       size={26}
                       color={COLORS.white}
                       weight="bold"
                     />
                   </View>
-                  {!isLast && <View style={styles.line} />}
+                  {!isLast && <View style={{ backgroundColor: COLORS.peach.light }} className="w-0.5 flex-1 my-1" />}
                 </View>
 
                 {/* Content column */}
@@ -71,21 +74,3 @@ export default function SolutionScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  iconCircle: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
-    backgroundColor: COLORS.coral.default,
-    alignItems: "center",
-    justifyContent: "center",
-    ...SHADOWS.glow,
-  },
-  line: {
-    width: 2,
-    flex: 1,
-    backgroundColor: COLORS.peach.light,
-    marginVertical: 4,
-  },
-});

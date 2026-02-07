@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { View, Text } from "react-native";
 import { router } from "expo-router";
 import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
@@ -14,19 +14,35 @@ type DemoPhase = "initial" | "loading" | "success" | "notification" | "cta";
 export default function DemoScreen() {
   const { selectedPersona } = useOnboardingStore();
   const [phase, setPhase] = useState<DemoPhase>("initial");
+  const successTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const notificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const handlePress = useCallback(() => {
     if (phase !== "initial") return;
     setPhase("loading");
 
     // Simulate check-in
-    setTimeout(() => {
+    successTimeoutRef.current = setTimeout(() => {
       setPhase("success");
       // Show notification after success animation
-      setTimeout(() => {
+      notificationTimeoutRef.current = setTimeout(() => {
         setPhase("notification");
       }, 1500);
     }, 800);
+  }, [phase]);
+
+  // Cleanup timeouts on unmount or when phase changes
+  useEffect(() => {
+    return () => {
+      if (successTimeoutRef.current) {
+        clearTimeout(successTimeoutRef.current);
+        successTimeoutRef.current = null;
+      }
+      if (notificationTimeoutRef.current) {
+        clearTimeout(notificationTimeoutRef.current);
+        notificationTimeoutRef.current = null;
+      }
+    };
   }, [phase]);
 
   const handleNotificationHidden = useCallback(() => {

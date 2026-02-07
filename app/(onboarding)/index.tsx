@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { View, Text, Pressable, StyleSheet } from "react-native";
+import { View, Text, Pressable } from "react-native";
 import { router } from "expo-router";
 import Animated, {
   useAnimatedStyle,
@@ -48,11 +48,12 @@ function PersonaCardItem({
   return (
     <AnimatedPressable
       onPress={() => onSelect(card.id)}
-      style={[styles.card, animatedStyle, SHADOWS.elevated]}
+      style={[animatedStyle, SHADOWS.elevated]}
+      className="rounded-[32px] border-2 p-5"
     >
       <Animated.View entering={FadeInDown.delay(200 + index * 100).duration(400)}>
         <View className="flex-row items-center gap-4">
-          <View style={styles.iconCircle}>
+          <View className="w-16 h-16 rounded-full items-center justify-center" style={{ backgroundColor: COLORS.cream.dark }}>
             <Icon size={48} color={COLORS.coral.default} weight="regular" />
           </View>
           <View className="flex-1">
@@ -112,19 +113,3 @@ export default function PersonaSelectionScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  card: {
-    borderRadius: 32,
-    borderWidth: 2,
-    padding: 20,
-  },
-  iconCircle: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: COLORS.cream.dark,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-});

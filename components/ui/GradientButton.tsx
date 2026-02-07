@@ -94,7 +94,7 @@ export function GradientButton({
           {buttonContent}
         </LinearGradient>
       ) : (
-        <View className={`rounded-full overflow-hidden bg-white border-2 border-coral ${isLarge ? 'min-h-[56px]' : 'min-h-[48px]'}`}>
+        <View className={`rounded-2xl overflow-hidden bg-white border-2 border-coral ${isLarge ? 'min-h-[68px]' : 'min-h-[60px]'}`}>
           {buttonContent}
         </View>
       )}
