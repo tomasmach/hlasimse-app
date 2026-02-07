@@ -54,18 +54,20 @@ export function MockNotification({
 
   return (
     <Animated.View style={[styles.container, animatedStyle]}>
-      <BlurView intensity={80} tint="light" style={styles.blur}>
-        <View className="flex-row items-center px-4 py-3">
-          <View style={styles.appIcon}>
-            <Text className="text-white text-xs font-bold">H</Text>
+      <BlurView intensity={95} tint="light" style={styles.blur}>
+        <View style={styles.innerContainer}>
+          <View className="flex-row items-center px-4 py-3">
+            <View style={styles.appIcon}>
+              <Text className="text-white text-xs font-bold font-lora-bold">H</Text>
+            </View>
+            <View className="flex-1 ml-3">
+              <Text className="text-xs text-muted font-medium uppercase tracking-wider font-lora-medium">
+                Hlásím se
+              </Text>
+              <Text className="text-sm text-charcoal mt-0.5 font-lora">{message}</Text>
+            </View>
+            <Text className="text-xs text-muted font-lora">teď</Text>
           </View>
-          <View className="flex-1 ml-3">
-            <Text className="text-xs text-muted font-medium uppercase tracking-wider">
-              Hlásím se
-            </Text>
-            <Text className="text-sm text-charcoal mt-0.5">{message}</Text>
-          </View>
-          <Text className="text-xs text-muted">teď</Text>
         </View>
       </BlurView>
     </Animated.View>
@@ -81,11 +83,16 @@ const styles = StyleSheet.create({
     zIndex: 100,
     borderRadius: 16,
     overflow: "hidden",
-    ...SHADOWS.floating,
+    borderWidth: 1,
+    borderColor: "#FFFFFF",
+    ...SHADOWS.glowLarge,
   },
   blur: {
     borderRadius: 16,
     overflow: "hidden",
+  },
+  innerContainer: {
+    backgroundColor: "rgba(255, 255, 255, 0.4)",
   },
   appIcon: {
     width: 36,
