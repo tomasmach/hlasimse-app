@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { Link } from "expo-router";
 import { supabase } from "@/lib/supabase";
+import { COLORS } from "@/constants/design";
 
 export default function ForgotPasswordScreen() {
   const [email, setEmail] = useState("");
@@ -92,7 +93,7 @@ export default function ForgotPasswordScreen() {
           <TextInput
             className="bg-white border border-sand rounded-xl px-4 py-3 text-charcoal"
             placeholder="E-mail"
-            placeholderTextColor="#8B7F7A"
+            placeholderTextColor={COLORS.muted}
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
@@ -109,7 +110,7 @@ export default function ForgotPasswordScreen() {
           activeOpacity={0.8}
         >
           {loading ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color={COLORS.white} />
           ) : (
             <Text className="text-white font-lora-semibold text-lg">
               Odeslat odkaz

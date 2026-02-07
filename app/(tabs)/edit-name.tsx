@@ -13,6 +13,7 @@ import { router } from "expo-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useCheckInStore } from "@/stores/checkin";
 import { supabase } from "@/lib/supabase";
+import { COLORS } from "@/constants/design";
 
 export default function EditNameScreen() {
   const { user } = useAuth();
@@ -74,7 +75,7 @@ export default function EditNameScreen() {
             activeOpacity={0.7}
           >
             {isLoading ? (
-              <ActivityIndicator color="#FF6B5B" />
+              <ActivityIndicator color={COLORS.coral.default} />
             ) : (
               <Text className="text-coral text-lg font-lora-semibold">Uložit</Text>
             )}
@@ -93,7 +94,7 @@ export default function EditNameScreen() {
               if (error) setError("");
             }}
             placeholder="Zadejte jméno"
-            placeholderTextColor="#8B7F7A"
+            placeholderTextColor={COLORS.muted}
             className="bg-white rounded-2xl px-4 py-4 text-charcoal text-lg border border-sand"
             autoFocus
             autoCapitalize="words"

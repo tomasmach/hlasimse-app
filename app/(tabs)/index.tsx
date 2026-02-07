@@ -16,12 +16,29 @@ import { Toast } from "@/components/ui";
 import { COLORS, SPACING } from "@/constants/design";
 
 // Time-based greeting helper
-const getGreeting = (): string => {
+function getGreeting(): string {
   const hour = new Date().getHours();
   if (hour >= 5 && hour < 12) return "Dobré ráno";
   if (hour >= 12 && hour < 18) return "Dobré odpoledne";
   return "Dobrý večer";
-};
+}
+
+function CountdownUnit({ value, label, isExpired }: { value: string; label: string; isExpired: boolean }) {
+  return (
+    <View className="items-center min-w-[56px]">
+      <Text style={styles.countdownNumber} className={isExpired ? 'text-coral' : 'text-charcoal'}>
+        {value}
+      </Text>
+      <Text className="text-xs font-lora-medium text-muted -mt-1 uppercase tracking-wide">{label}</Text>
+    </View>
+  );
+}
+
+function CountdownSeparator({ isExpired }: { isExpired: boolean }) {
+  return (
+    <Text style={styles.countdownSeparator} className={isExpired ? 'text-coral' : 'text-charcoal'}>:</Text>
+  );
+}
 
 export default function CheckInScreen() {
   const { user } = useAuth();
@@ -185,33 +202,11 @@ export default function CheckInScreen() {
             {countdown.isExpired ? "Čas překročen o:" : "Další hlášení za:"}
           </Text>
           <View className="flex-row items-start">
-            {/* Hours */}
-            <View className="items-center min-w-[56px]">
-              <Text style={styles.countdownNumber} className={countdown.isExpired ? 'text-coral' : 'text-charcoal'}>
-                {hours}
-              </Text>
-              <Text className="text-xs font-lora-medium text-muted -mt-1 uppercase tracking-wide">hod</Text>
-            </View>
-
-            <Text style={styles.countdownSeparator} className={countdown.isExpired ? 'text-coral' : 'text-charcoal'}>:</Text>
-
-            {/* Minutes */}
-            <View className="items-center min-w-[56px]">
-              <Text style={styles.countdownNumber} className={countdown.isExpired ? 'text-coral' : 'text-charcoal'}>
-                {minutes}
-              </Text>
-              <Text className="text-xs font-lora-medium text-muted -mt-1 uppercase tracking-wide">min</Text>
-            </View>
-
-            <Text style={styles.countdownSeparator} className={countdown.isExpired ? 'text-coral' : 'text-charcoal'}>:</Text>
-
-            {/* Seconds */}
-            <View className="items-center min-w-[56px]">
-              <Text style={styles.countdownNumber} className={countdown.isExpired ? 'text-coral' : 'text-charcoal'}>
-                {seconds}
-              </Text>
-              <Text className="text-xs font-lora-medium text-muted -mt-1 uppercase tracking-wide">sek</Text>
-            </View>
+            <CountdownUnit value={hours} label="hod" isExpired={countdown.isExpired} />
+            <CountdownSeparator isExpired={countdown.isExpired} />
+            <CountdownUnit value={minutes} label="min" isExpired={countdown.isExpired} />
+            <CountdownSeparator isExpired={countdown.isExpired} />
+            <CountdownUnit value={seconds} label="sek" isExpired={countdown.isExpired} />
           </View>
         </Animated.View>
 

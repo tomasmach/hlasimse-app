@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from "react-native";
+import { COLORS } from "@/constants/design";
 
 interface AddGuardianModalProps {
   visible: boolean;
@@ -97,7 +98,7 @@ export function AddGuardianModal({ visible, onClose, onSubmit }: AddGuardianModa
               autoCorrect={false}
               autoFocus
               className="bg-white rounded-xl px-4 py-3 text-charcoal mb-3"
-              placeholderTextColor="#8B7F7A"
+              placeholderTextColor={COLORS.muted}
             />
 
             {error && (
@@ -118,7 +119,7 @@ export function AddGuardianModal({ visible, onClose, onSubmit }: AddGuardianModa
                 className="flex-1 py-3 rounded-xl bg-coral"
               >
                 {isLoading ? (
-                  <ActivityIndicator color="#FFFFFF" />
+                  <ActivityIndicator color={COLORS.white} />
                 ) : (
                   <Text className="text-white text-center font-medium font-lora-medium">Pozvat</Text>
                 )}

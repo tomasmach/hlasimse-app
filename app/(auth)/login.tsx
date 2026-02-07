@@ -12,7 +12,7 @@ import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { supabase } from "@/lib/supabase";
 import { AnimatedInput, GradientButton } from "@/components/ui";
-import { COLORS, GRADIENTS, SPACING } from "@/constants/design";
+import { GRADIENTS, SPACING } from "@/constants/design";
 
 export default function LoginScreen() {
   const [email, setEmail] = useState("");

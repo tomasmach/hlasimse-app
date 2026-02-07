@@ -1,4 +1,5 @@
 import { Stack } from "expo-router";
+import { COLORS } from "@/constants/design";
 
 export default function AuthLayout() {
   return (
@@ -6,7 +7,7 @@ export default function AuthLayout() {
       screenOptions={{
         headerShown: false,
         contentStyle: {
-          backgroundColor: "#FFF8F5",
+          backgroundColor: COLORS.cream.default,
         },
       }}
     />

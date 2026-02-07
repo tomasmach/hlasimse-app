@@ -84,7 +84,7 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     overflow: "hidden",
     borderWidth: 1,
-    borderColor: "#FFFFFF",
+    borderColor: COLORS.white,
     ...SHADOWS.glowLarge,
   },
   blur: {

@@ -18,6 +18,7 @@ import {
   InstrumentSans_700Bold,
 } from "@expo-google-fonts/instrument-sans";
 import { useAuth } from "@/hooks/useAuth";
+import { COLORS } from "@/constants/design";
 import { useOnboardingStore } from "@/stores/onboarding";
 // RevenueCat temporarily disabled
 // import { usePremiumStore } from "@/stores/premium";
@@ -135,7 +136,7 @@ export default function RootLayout() {
   if (!fontsLoaded || isAuthLoading || isOnboardingLoading) {
     return (
       <View className="flex-1 bg-cream items-center justify-center">
-        <ActivityIndicator size="large" color="#FF6B5B" />
+        <ActivityIndicator size="large" color={COLORS.coral.default} />
       </View>
     );
   }

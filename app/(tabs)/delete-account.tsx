@@ -14,6 +14,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabase";
+import { COLORS } from "@/constants/design";
 
 export default function DeleteAccountScreen() {
   const { user, signOut } = useAuth();
@@ -90,7 +91,7 @@ export default function DeleteAccountScreen() {
         {/* Content */}
         <View className="px-6 pt-6">
           <View className="mb-4">
-            <Warning size={80} color="#F43F5E" weight="regular" />
+            <Warning size={80} color={COLORS.error} weight="regular" />
           </View>
           <Text className="text-xl font-lora-bold text-charcoal mb-2">
             Smazat účet
@@ -109,7 +110,7 @@ export default function DeleteAccountScreen() {
               if (error) setError("");
             }}
             placeholder="Heslo"
-            placeholderTextColor="#8B7F7A"
+            placeholderTextColor={COLORS.muted}
             secureTextEntry
             className="bg-white rounded-2xl px-4 py-4 text-charcoal text-lg border border-sand"
             autoCapitalize="none"

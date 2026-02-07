@@ -10,6 +10,7 @@ import { InviteCard } from "@/components/InviteCard";
 import { WatchedProfileCard } from "@/components/WatchedProfileCard";
 import { AddGuardianModal } from "@/components/AddGuardianModal";
 import { EmptyState } from "@/components/EmptyState";
+import { COLORS } from "@/constants/design";
 
 export default function GuardiansScreen() {
   const { user } = useAuth();
@@ -82,7 +83,7 @@ export default function GuardiansScreen() {
   if (!user) {
     return (
       <SafeAreaView className="flex-1 bg-cream items-center justify-center">
-        <ActivityIndicator size="large" color="#FF6B5B" />
+        <ActivityIndicator size="large" color={COLORS.coral.default} />
       </SafeAreaView>
     );
   }
@@ -108,7 +109,7 @@ export default function GuardiansScreen() {
 
           {isLoading && myGuardians.length === 0 ? (
             <View className="bg-white rounded-2xl p-4">
-              <ActivityIndicator color="#FF6B5B" />
+              <ActivityIndicator color={COLORS.coral.default} />
             </View>
           ) : myGuardians.length === 0 ? (
             <View className="bg-white rounded-2xl">

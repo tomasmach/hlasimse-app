@@ -9,7 +9,6 @@ import Animated, {
   withSequence,
   withTiming,
   withSpring,
-  interpolate,
   Easing,
   runOnJS,
 } from "react-native-reanimated";
@@ -41,41 +40,28 @@ export function HeroButton({
   const pressScale = useSharedValue(1);
   const checkmarkScale = useSharedValue(0);
 
-  // Start breathing animation
+  // Start breathing and glow pulse animations
   useEffect(() => {
+    const easing = Easing.inOut(Easing.ease);
+
     breathingScale.value = withRepeat(
       withSequence(
-        withTiming(1.02, {
-          duration: ANIMATION.heroButton.breathingDuration / 2,
-          easing: Easing.inOut(Easing.ease),
-        }),
-        withTiming(1.0, {
-          duration: ANIMATION.heroButton.breathingDuration / 2,
-          easing: Easing.inOut(Easing.ease),
-        })
-      ),
-      -1, // infinite repeat
-      false // no reverse
-    );
-  }, [breathingScale]);
-
-  // Start glow pulse animation
-  useEffect(() => {
-    glowOpacity.value = withRepeat(
-      withSequence(
-        withTiming(0.6, {
-          duration: ANIMATION.heroButton.glowPulseDuration / 2,
-          easing: Easing.inOut(Easing.ease),
-        }),
-        withTiming(0.3, {
-          duration: ANIMATION.heroButton.glowPulseDuration / 2,
-          easing: Easing.inOut(Easing.ease),
-        })
+        withTiming(1.02, { duration: ANIMATION.heroButton.breathingDuration / 2, easing }),
+        withTiming(1.0, { duration: ANIMATION.heroButton.breathingDuration / 2, easing })
       ),
       -1,
       false
     );
-  }, [glowOpacity]);
+
+    glowOpacity.value = withRepeat(
+      withSequence(
+        withTiming(0.6, { duration: ANIMATION.heroButton.glowPulseDuration / 2, easing }),
+        withTiming(0.3, { duration: ANIMATION.heroButton.glowPulseDuration / 2, easing })
+      ),
+      -1,
+      false
+    );
+  }, [breathingScale, glowOpacity]);
 
   // Handle success state
   useEffect(() => {
@@ -113,27 +99,19 @@ export function HeroButton({
     });
 
   // Animated styles
-  const buttonAnimatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [
-        { scale: breathingScale.value * pressScale.value },
-      ],
-    };
-  });
+  const buttonAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: breathingScale.value * pressScale.value }],
+  }));
 
-  const glowAnimatedStyle = useAnimatedStyle(() => {
-    return {
-      opacity: glowOpacity.value,
-      transform: [{ scale: breathingScale.value }],
-    };
-  });
+  const glowAnimatedStyle = useAnimatedStyle(() => ({
+    opacity: glowOpacity.value,
+    transform: [{ scale: breathingScale.value }],
+  }));
 
-  const checkmarkAnimatedStyle = useAnimatedStyle(() => {
-    return {
-      transform: [{ scale: checkmarkScale.value }],
-      opacity: checkmarkScale.value,
-    };
-  });
+  const checkmarkAnimatedStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: checkmarkScale.value }],
+    opacity: checkmarkScale.value,
+  }));
 
   return (
     <View style={styles.container}>
@@ -152,17 +130,12 @@ export function HeroButton({
               disabled && styles.buttonDisabled,
             ]}
           >
-            {/* Content */}
             {isLoading ? (
               <ActivityIndicator size="large" color={COLORS.white} />
-            ) : showSuccess ? (
-              <Animated.View style={checkmarkAnimatedStyle}>
+            ) : (
+              <Animated.View style={showSuccess ? checkmarkAnimatedStyle : undefined}>
                 <Check size={64} color={COLORS.white} weight="bold" />
               </Animated.View>
-            ) : (
-              <View className="items-center justify-center">
-                <Check size={64} color={COLORS.white} weight="bold" />
-              </View>
             )}
           </AnimatedLinearGradient>
         </Animated.View>

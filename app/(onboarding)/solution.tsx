@@ -25,7 +25,7 @@ export default function SolutionScreen() {
           </Text>
         </Animated.View>
 
-        <View className="gap-0">
+        <View>
           {steps.map((step, index) => {
             const Icon = step.icon;
             const isLast = index === steps.length - 1;

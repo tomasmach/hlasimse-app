@@ -1,6 +1,7 @@
 // components/LocationBanner.tsx
 import { View, Text, Pressable, Linking, Platform } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { COLORS } from "@/constants/design";
 
 interface LocationBannerProps {
   onRequestPermission: () => void;
@@ -18,7 +19,7 @@ export function LocationBanner({ onRequestPermission }: LocationBannerProps) {
   return (
     <View className="mx-4 mb-4 bg-peach/30 border border-peach rounded-2xl p-4">
       <View className="flex-row items-center mb-2">
-        <Ionicons name="location-outline" size={20} color="#FF6B5B" />
+        <Ionicons name="location-outline" size={20} color={COLORS.coral.default} />
         <Text className="text-charcoal font-semibold ml-2 font-lora-semibold">
           Poloha není povolena
         </Text>

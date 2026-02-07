@@ -11,6 +11,7 @@ import {
 } from "react-native";
 import { Link } from "expo-router";
 import { supabase } from "@/lib/supabase";
+import { COLORS } from "@/constants/design";
 
 export default function RegisterScreen() {
   const [name, setName] = useState("");
@@ -133,7 +134,7 @@ export default function RegisterScreen() {
           <TextInput
             className="bg-white border border-sand rounded-xl px-4 py-3 text-charcoal"
             placeholder="Jméno"
-            placeholderTextColor="#8B7F7A"
+            placeholderTextColor={COLORS.muted}
             value={name}
             onChangeText={setName}
             autoCapitalize="words"
@@ -144,7 +145,7 @@ export default function RegisterScreen() {
           <TextInput
             className="bg-white border border-sand rounded-xl px-4 py-3 text-charcoal"
             placeholder="E-mail"
-            placeholderTextColor="#8B7F7A"
+            placeholderTextColor={COLORS.muted}
             value={email}
             onChangeText={setEmail}
             keyboardType="email-address"
@@ -156,7 +157,7 @@ export default function RegisterScreen() {
           <TextInput
             className="bg-white border border-sand rounded-xl px-4 py-3 text-charcoal"
             placeholder="Heslo (min. 6 znaků)"
-            placeholderTextColor="#8B7F7A"
+            placeholderTextColor={COLORS.muted}
             value={password}
             onChangeText={setPassword}
             secureTextEntry
@@ -167,7 +168,7 @@ export default function RegisterScreen() {
           <TextInput
             className="bg-white border border-sand rounded-xl px-4 py-3 text-charcoal"
             placeholder="Potvrzení hesla"
-            placeholderTextColor="#8B7F7A"
+            placeholderTextColor={COLORS.muted}
             value={confirmPassword}
             onChangeText={setConfirmPassword}
             secureTextEntry
@@ -183,7 +184,7 @@ export default function RegisterScreen() {
           activeOpacity={0.8}
         >
           {loading ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color={COLORS.white} />
           ) : (
             <Text className="text-white font-lora-semibold text-lg">
               Registrovat

@@ -3,7 +3,6 @@ import { View, Text, StyleSheet } from "react-native";
 import { router } from "expo-router";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { HeartHalf } from "phosphor-react-native";
-import { LinearGradient } from "expo-linear-gradient";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { EMPATHY_CONTENT } from "@/constants/onboarding";
 import { COLORS, SHADOWS } from "@/constants/design";

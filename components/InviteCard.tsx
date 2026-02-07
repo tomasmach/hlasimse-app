@@ -1,5 +1,6 @@
 import { View, Text, Pressable, ActivityIndicator } from "react-native";
 import { InviteWithInviter } from "@/types/database";
+import { COLORS } from "@/constants/design";
 
 interface InviteCardProps {
   invite: InviteWithInviter;
@@ -44,7 +45,7 @@ export function InviteCard({ invite, onAccept, onDecline, isLoading }: InviteCar
           className="flex-1 py-3 rounded-xl bg-coral"
         >
           {isLoading ? (
-            <ActivityIndicator color="#FFFFFF" />
+            <ActivityIndicator color={COLORS.white} />
           ) : (
             <Text className="text-white text-center font-medium font-lora-medium">Přijmout</Text>
           )}
