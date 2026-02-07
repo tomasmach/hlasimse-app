@@ -16,15 +16,15 @@ export function InviteCard({ invite, onAccept, onDecline, isLoading }: InviteCar
     <View className="bg-white rounded-2xl p-4 mb-3">
       <View className="flex-row items-center mb-3">
         <View className="w-10 h-10 rounded-full bg-peach/30 items-center justify-center mr-3">
-          <Text className="text-coral text-lg">
+          <Text className="text-coral text-lg font-lora">
             {safeInitial}
           </Text>
         </View>
         <View className="flex-1">
-          <Text className="text-charcoal font-medium">
+          <Text className="text-charcoal font-medium font-lora-medium">
             {inviterName}
           </Text>
-          <Text className="text-muted text-sm">
+          <Text className="text-muted text-sm font-lora">
             Chce tě jako strážce pro "{invite.check_in_profile?.name || "profil"}"
           </Text>
         </View>
@@ -36,7 +36,7 @@ export function InviteCard({ invite, onAccept, onDecline, isLoading }: InviteCar
           disabled={isLoading}
           className="flex-1 py-3 rounded-xl border border-muted/30"
         >
-          <Text className="text-muted text-center font-medium">Odmítnout</Text>
+          <Text className="text-muted text-center font-medium font-lora-medium">Odmítnout</Text>
         </Pressable>
         <Pressable
           onPress={() => onAccept(invite.id)}
@@ -46,7 +46,7 @@ export function InviteCard({ invite, onAccept, onDecline, isLoading }: InviteCar
           {isLoading ? (
             <ActivityIndicator color="#FFFFFF" />
           ) : (
-            <Text className="text-white text-center font-medium">Přijmout</Text>
+            <Text className="text-white text-center font-medium font-lora-medium">Přijmout</Text>
           )}
         </Pressable>
       </View>

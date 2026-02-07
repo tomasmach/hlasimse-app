@@ -92,20 +92,20 @@ export function WatchedProfileCard({ profile }: WatchedProfileCardProps) {
       <View className="flex-row items-center justify-between">
         <View className="flex-row items-center flex-1">
           <View className={`w-10 h-10 rounded-full items-center justify-center mr-3 ${status.avatarBg}`}>
-            <Text className={`${status.avatarText} text-lg font-medium`}>
+            <Text className={`${status.avatarText} text-lg font-medium font-lora-medium`}>
               {safeInitial}
             </Text>
           </View>
           <View className="flex-1">
-            <Text className="text-charcoal font-medium">{profile.name}</Text>
-            <Text className={`text-sm font-medium ${status.statusTextColor}`}>
+            <Text className="text-charcoal font-medium font-lora-medium">{profile.name}</Text>
+            <Text className={`text-sm font-medium ${status.statusTextColor} font-lora-medium`}>
               {status.statusText}
             </Text>
-            <Text className="text-muted text-xs mt-0.5">
+            <Text className="text-muted text-xs mt-0.5 font-lora">
               {getLastCheckInText()}
             </Text>
             {!isOverdue && (
-              <Text className="text-muted text-xs">
+              <Text className="text-muted text-xs font-lora">
                 {countdown.isExpired ? "Čas vypršel" : `Zbývá: ${countdown.formatted}`}
               </Text>
             )}
@@ -124,7 +124,7 @@ export function WatchedProfileCard({ profile }: WatchedProfileCardProps) {
         >
           <View className="flex-row items-center justify-center">
             <Ionicons name="location" size={18} color={COLORS.error} />
-            <Text className="text-accent text-center font-medium ml-1">
+            <Text className="text-accent text-center font-medium ml-1 font-lora-medium">
               Zobrazit poslední polohu
             </Text>
           </View>

@@ -54,7 +54,7 @@ export function GradientAvatar({
           }}
         >
           <Text
-            className="text-white font-semibold"
+            className="text-white font-lora-semibold"
             style={{ fontSize: config.fontSize }}
           >
             {initial}

@@ -132,7 +132,7 @@ export const AnimatedInput = forwardRef<TextInput, AnimatedInputProps>(
         </View>
 
         {/* Error message */}
-        {error && <Text className="text-error text-xs mt-1">{error}</Text>}
+        {error && <Text className="text-error text-xs mt-1 font-lora">{error}</Text>}
       </View>
     );
   }
