@@ -70,8 +70,7 @@ export default function SignUpScreen() {
 
       await completeOnboarding();
       // Auth listener in root layout will handle navigation to tabs
-    } catch (err) {
-      console.error("Registration error:", err);
+    } catch {
       setError("Nastala neočekávaná chyba. Zkuste to prosím znovu.");
     } finally {
       setLoading(false);

@@ -79,8 +79,7 @@ export default function RegisterScreen() {
       }
 
       setSuccess(true);
-    } catch (err) {
-      console.error("Registration error:", err);
+    } catch {
       setError("Nastala neočekávaná chyba. Zkuste to prosím znovu.");
     } finally {
       setLoading(false);
