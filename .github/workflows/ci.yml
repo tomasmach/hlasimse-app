@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  mobile:
+    name: Mobile checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Run TypeScript checks
+        run: npm run typecheck
+
+      - name: Validate Expo project
+        working-directory: apps/mobile
+        run: npx expo-doctor
+
+      - name: Bundle production JavaScript
+        working-directory: apps/mobile
+        run: npx expo export --platform all --output-dir dist
+
+      - name: Audit production dependencies
+        run: npm audit --omit=dev --audit-level=high
+
+  server:
+    name: Django and PostgreSQL checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:18.4
+        env:
+          POSTGRES_DB: hlasimse_ci
+          POSTGRES_USER: hlasimse
+          POSTGRES_PASSWORD: ci-only-password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U hlasimse -d hlasimse_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+    env:
+      DATABASE_URL: postgresql://hlasimse:ci-only-password@127.0.0.1:5432/hlasimse_ci
+      DJANGO_DEBUG: "true"
+    defaults:
+      run:
+        working-directory: apps/server
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Python
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.14"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@11f9893b081a58869d3b5fccaea48c9e9e46f990 # v8.3.2
+        with:
+          enable-cache: true
+
+      - name: Install locked dependencies
+        run: uv sync --frozen
+
+      - name: Run lint and formatting checks
+        run: uv run ruff check . && uv run ruff format --check .
+
+      - name: Validate migrations and deployment configuration
+        run: >-
+          uv run python manage.py makemigrations --check --dry-run &&
+          uv run python manage.py check &&
+          uv run python manage.py collectstatic --noinput
+
+      - name: Run test suite on PostgreSQL
+        run: uv run pytest
