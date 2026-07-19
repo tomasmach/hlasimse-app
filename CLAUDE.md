@@ -1,121 +1,96 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides repository guidance for coding agents working on Hlásím se.
 
-## Project Overview
+## Product
 
-**Hlásím se** ("I'm checking in") is a React Native mobile app for regular check-ins that alerts guardians when users miss their deadline. Czech version of the "I am not dead yet" concept.
+Hlásím se is a Czech, completely free check-in service. A user confirms they are
+safe before a server-authoritative deadline. If the deadline passes, the server
+creates an incident and attempts to notify accepted guardians.
 
-**Target users:** Seniors living alone, families monitoring elderly relatives, solo travelers/hikers.
+This is safety-adjacent software. It does not replace 112 or 155, and push
+delivery is best-effort. Never present a locally queued offline request as a
+confirmed check-in. The normative behavior and release gates live in
+`docs/feature-contract.md` and `docs/release-checklist.md`.
+
+## Monorepo
+
+```text
+apps/mobile/       Expo Router app for iOS and Android
+apps/server/       Django web, REST API, scheduler and delivery workers
+archive/supabase/  read-only legacy code for migration audit only
+docs/              architecture, migration and operational runbooks
+```
+
+Supabase and RevenueCat are not runtime dependencies. Every supported feature is
+available without payment.
 
 ## Commands
 
+From the repository root:
+
 ```bash
-npm start              # Start Expo dev server
-npm run ios            # Run on iOS simulator
-npm run android        # Run on Android emulator
-npm test               # Run Jest tests
+npm ci
+npm test
+npm run typecheck
+npm run mobile:start
+npm run mobile:ios
+npm run mobile:android
 ```
 
-**Supabase Edge Functions:**
+For the Django server (Python 3.14 and uv are required):
+
 ```bash
-supabase functions deploy check-deadlines   # Deploy deadline checker
-supabase functions serve check-deadlines    # Local development
+cd apps/server
+uv sync --frozen
+uv run python manage.py migrate
+uv run python manage.py runserver
+uv run pytest
+uv run ruff check .
+uv run ruff format --check .
 ```
 
-## Architecture
+Use PostgreSQL for concurrency validation:
 
-### Tech Stack
-- **Expo Router** - File-based routing with layout groups
-- **Supabase** - PostgreSQL with RLS, Auth, Edge Functions, Realtime
-- **Zustand** - State management (stores in `stores/`)
-- **NativeWind** - Tailwind CSS for React Native
-- **TypeScript** - Strict mode enabled
-
-### Directory Structure
-```
-app/                    # Expo Router pages
-├── (auth)/            # Login, register, forgot-password
-├── (onboarding)/      # First-launch intro slides
-├── (tabs)/            # Main app (check-in, guardians, settings)
-stores/                # Zustand stores (auth, checkin, guardians, onboarding)
-hooks/                 # Custom hooks (useAuth, useCountdown, useLocation, useNotifications, useNetworkStatus)
-lib/                   # Supabase client, offline queue
-components/            # Reusable UI components
-types/database.ts      # Database schema types
-supabase/functions/    # Edge Functions (Deno)
-docs/migrations/       # SQL migration files
+```bash
+DATABASE_URL=postgresql:///hlasimse_validation uv run pytest
 ```
 
-### Navigation Flow
-`(onboarding)` → `(auth)` → `(tabs)/profile-setup` → `(tabs)/index`
+Production requires the deadline sweeper, outbox processor and push receipt
+worker to run independently. See the management commands and operational
+runbooks before changing their cadence or retry behavior.
 
-Protected routes checked in root `_layout.tsx`.
+## Architecture rules
 
-### Key Patterns
+- Django/PostgreSQL is the only source of truth for accounts, deadlines,
+  incidents, guardian relationships and delivery audit.
+- Critical transitions are transactional and idempotent. Preserve row locking,
+  database constraints and outbox semantics.
+- The client generates a stable idempotency key for every check-in attempt.
+- Offline requests remain visibly pending and do not advance the displayed
+  authoritative deadline until the API confirms them.
+- Exact location is optional, excluded from push/logs, and visible to a current
+  guardian only during an open incident.
+- A guardian relationship exists only after the invited account accepts it.
+- Public behavior is limited to 5 profiles per account, 5 active guardians per
+  profile and intervals from 1 hour through 7 days.
+- SMS is not part of the product.
 
-**Offline Fallback:**
-- Online-first, but supports offline check-ins for edge cases (hiking, poor signal)
-- `lib/offlineQueue.ts` uses AsyncStorage + AsyncMutex for pending check-ins
-- Network errors queue for later sync; server errors fail immediately
-- Auto-sync on network reconnect via `useNetworkStatus` hook
+## Code conventions
 
-**Atomic Database Operations:**
-- `atomic_check_in()` RPC function for transactional check-in + profile update
-- Prevents race conditions between check-in insert and deadline extension
+- User-facing copy is Czech; code and comments are English.
+- TypeScript stays in strict mode.
+- Mobile UI uses NativeWind and the existing design tokens.
+- Web UI uses semantic Django templates, local assets and progressive
+  enhancement.
+- Accessibility is mandatory for every critical action: readable dynamic text,
+  screen-reader labels, non-color status cues, adequate contrast and reduced
+  motion support.
 
-**Push Notifications Flow:**
-1. App init → request permission → store Expo Push Token in `push_tokens`
-2. Edge Function `check-deadlines` runs via cron (every 5 min)
-3. Missed deadline → create `alerts` record → send push via Expo Push API
-4. Notification tap → deep link to guardians screen
+## Configuration
 
-**Realtime Subscriptions:**
-- Guardian invites use Supabase Realtime for instant UI updates
-- Subscription setup in `stores/guardians.ts`
+Mobile requires `EXPO_PUBLIC_API_URL`. Production values must use HTTPS.
 
-## Database Schema (Key Tables)
-
-- `users` - Extended auth profiles
-- `check_in_profiles` - User's check-in settings (one per user, `owner_id` unique)
-- `check_ins` - Individual check-in records with GPS
-- `guardians` - Many-to-many: who watches whom
-- `guardian_invites` - Pending guardian invitations
-- `alerts` - Missed deadline alerts
-- `push_tokens` - Expo push tokens per user/platform
-
-All tables have RLS policies enabled.
-
-## Development Progress
-
-**Completed (Slices 1-6):**
-- ✅ Expo + Supabase + Zustand setup
-- ✅ Authentication (email/password, Secure Store for JWT)
-- ✅ Onboarding + Check-in profile creation
-- ✅ Check-in with GPS, offline queue, countdown timer
-- ✅ Guardians management with invites (Realtime)
-- ✅ Push notifications to guardians on missed deadline
-
-**Next (Slice 7):** Premium & Payments
-- RevenueCat integration
-- Free/Premium tier distinction
-- Paywall UI
-
-**Future:** SMS alerts, pause mode, Apple Watch app
-
-## Code Conventions
-
-- **Language:** Czech for user-facing strings, English for code/comments
-- **Styling:** NativeWind classes, custom theme in `tailwind.config.js`
-- **Design tokens:** See `styles.md` for color palette (brand-500: `#f97316`, accent: `#f43f5e`)
-- **Border radius:** Extra rounded (2rem) for friendly appearance
-
-## Environment Variables
-
-Required in `.env.local`:
-```
-EXPO_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
-EXPO_PUBLIC_SUPABASE_ANON_KEY=eyJ...
-```
-
-Edge Functions need service role key configured in Supabase dashboard.
+Server configuration is documented in `apps/server/.env.example`. Production
+must use PostgreSQL, HTTPS, a strong secret key, SMTP and valid Expo push
+credentials. Never commit secrets or real user exports.
