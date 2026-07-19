@@ -20,8 +20,6 @@ import {
 import { useAuth } from "@/hooks/useAuth";
 import { COLORS } from "@/constants/design";
 import { useOnboardingStore } from "@/stores/onboarding";
-// RevenueCat temporarily disabled
-// import { usePremiumStore } from "@/stores/premium";
 import { useNotifications } from "@/hooks/useNotifications";
 import { createTokenRegistrationTracker } from "@/utils/pushTokenRegistration";
 
@@ -84,8 +82,6 @@ export default function RootLayout() {
     checkOnboardingStatus,
   } = useOnboardingStore();
   const { requestPermissions, registerToken, expoPushToken, setNotificationResponseHandler } = useNotifications();
-  // RevenueCat temporarily disabled
-  // const { initialize: initializePremium } = usePremiumStore();
   const router = useRouter();
 
   // Create token registration tracker that persists across re-renders
@@ -98,11 +94,6 @@ export default function RootLayout() {
   useEffect(() => {
     checkOnboardingStatus();
   }, []);
-
-  // RevenueCat temporarily disabled
-  // useEffect(() => {
-  //   initializePremium();
-  // }, []);
 
   // Request notification permissions when user is logged in
   useEffect(() => {

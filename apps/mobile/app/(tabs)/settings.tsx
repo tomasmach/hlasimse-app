@@ -66,9 +66,6 @@ export default function SettingsScreen() {
   const { user, signOut } = useAuth();
   const { resetOnboarding } = useOnboardingStore();
   const { profile, clearProfile } = useCheckInStore();
-  // RevenueCat temporarily disabled - all features are free
-  // const { isPremium } = usePremiumStore();
-  // const [paywallVisible, setPaywallVisible] = useState(false);
 
   const handleLogout = () => {
     Alert.alert("Odhlasit se", "Opravdu se chcete odhlasit?", [
@@ -101,7 +98,6 @@ export default function SettingsScreen() {
   };
 
   const handleIntervalPress = () => {
-    // All features are free - go directly to interval picker
     router.push("/interval-picker" as Href);
   };
 
@@ -233,8 +229,6 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* PREDPLATNE Section - temporarily disabled, all features free */}
-
         {/* UCET Section */}
         <View className="mb-6">
           <SectionHeader title="UCET" />
@@ -286,8 +280,6 @@ export default function SettingsScreen() {
           </View>
         )}
       </ScrollView>
-
-      {/* Paywall Modal - temporarily disabled */}
     </SafeAreaView>
   );
 }

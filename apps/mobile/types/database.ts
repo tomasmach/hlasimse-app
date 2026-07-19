@@ -3,9 +3,6 @@ export interface User {
   email: string;
   name: string | null;
   avatar_url: string | null;
-  is_premium: boolean;
-  premium_expires_at: string | null;
-  trial_used: boolean;
   created_at: string;
   updated_at: string;
 }

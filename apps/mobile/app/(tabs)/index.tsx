@@ -14,6 +14,7 @@ import { SuccessOverlay } from "@/components/SuccessOverlay";
 import { HeroButton } from "@/components/HeroButton";
 import { Toast } from "@/components/ui";
 import { COLORS, SPACING } from "@/constants/design";
+import { getCheckInFeedback } from "@/lib/checkInFeedback";
 
 // Time-based greeting helper
 function getGreeting(): string {
@@ -111,7 +112,7 @@ export default function CheckInScreen() {
     }
   }, [showSuccess]);
 
-  const showToastMessage = (type: "info" | "error", message: string) => {
+  const showToastMessage = (type: "warning" | "error", message: string) => {
     setToast({ visible: true, message, type });
   };
 
@@ -125,15 +126,15 @@ export default function CheckInScreen() {
 
     const result = await checkIn(coords);
 
-    if (result.success) {
+    const feedback = getCheckInFeedback(result);
+
+    if (feedback.showServerConfirmation) {
       setShowSuccess(true);
-      if (result.offline) {
-        showToastMessage("info", "Máme to! Pošleme hned, až bude signál.");
-      } else {
-        setShowSuccessOverlay(true);
-      }
-    } else {
-      showToastMessage("error", "Nepodařilo se odeslat. Zkuste to znovu.");
+      setShowSuccessOverlay(true);
+    }
+
+    if (feedback.toast) {
+      showToastMessage(feedback.toast.type, feedback.toast.message);
     }
 
     setIsCheckingIn(false);

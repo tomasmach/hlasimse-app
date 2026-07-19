@@ -213,34 +213,31 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
       console.error("Check-in failed:", error);
 
       if (isNetworkError(error) && !isServerError(error)) {
-        // Network error - queue for offline sync
-        await addToQueue({
-          profileId: profile.id,
-          checkedInAt: now.toISOString(),
-          nextDeadline: nextDeadline.toISOString(),
-          lat: coords?.lat ?? null,
-          lng: coords?.lng ?? null,
-        });
+        try {
+          await addToQueue({
+            profileId: profile.id,
+            checkedInAt: now.toISOString(),
+            nextDeadline: nextDeadline.toISOString(),
+            lat: coords?.lat ?? null,
+            lng: coords?.lng ?? null,
+          });
+        } catch (queueError) {
+          console.error("Failed to store pending check-in:", queueError);
+          set({
+            isLoading: false,
+            lastCheckInWasOffline: false,
+            error: "Check-in could not be safely stored for later sync.",
+          });
+          return { success: false, offline: false };
+        }
 
-        // Optimistically update local state
+        // Keep the server-confirmed deadline visible until synchronization succeeds.
+        // Advancing it locally would falsely imply that guardians are protected.
         set({
-          profile: {
-            ...profile,
-            last_check_in_at: now.toISOString(),
-            next_deadline: nextDeadline.toISOString(),
-            last_known_lat: coords?.lat ?? profile.last_known_lat,
-            last_known_lng: coords?.lng ?? profile.last_known_lng,
-          },
           isLoading: false,
           lastCheckInWasOffline: true,
           error: null,
         });
-
-        try {
-          await scheduleReminders(nextDeadline.toISOString());
-        } catch (notificationError) {
-          console.warn("Failed to schedule reminder notifications:", notificationError);
-        }
 
         await get().refreshPendingCount();
 
@@ -267,7 +264,7 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
 
     for (const pending of queue) {
       try {
-        const { error } = await supabase.rpc("atomic_check_in", {
+        const { data, error } = await supabase.rpc("atomic_check_in", {
           p_profile_id: pending.profileId,
           p_checked_in_at: pending.checkedInAt,
           p_next_deadline: pending.nextDeadline,
@@ -278,7 +275,25 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
 
         if (error) throw error;
 
+        const updatedProfile = Array.isArray(data) ? data[0] : data;
+        if (!updatedProfile) {
+          throw new Error("No profile returned from pending check-in sync");
+        }
+
         await removeFromQueue(pending.id);
+        set({ profile: updatedProfile, lastCheckInWasOffline: false });
+
+        if (updatedProfile.next_deadline) {
+          try {
+            await scheduleReminders(updatedProfile.next_deadline);
+          } catch (notificationError) {
+            console.warn(
+              "Failed to schedule reminder notifications:",
+              notificationError
+            );
+          }
+        }
+
         synced++;
       } catch (error) {
         console.error("Failed to sync pending check-in:", error);

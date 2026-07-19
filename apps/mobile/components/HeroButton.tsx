@@ -11,10 +11,13 @@ import Animated, {
   withSpring,
   Easing,
   runOnJS,
+  cancelAnimation,
+  useReducedMotion,
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { Check } from "phosphor-react-native";
 import { COLORS, GRADIENTS, SHADOWS, ANIMATION } from "@/constants/design";
+import { getHeroButtonAccessibility } from "@/components/heroButtonAccessibility";
 
 const BUTTON_SIZE = 180;
 const GLOW_SIZE = BUTTON_SIZE + 40;
@@ -34,6 +37,7 @@ export function HeroButton({
   showSuccess = false,
   disabled = false,
 }: HeroButtonProps) {
+  const reduceMotion = useReducedMotion();
   // Animation shared values
   const breathingScale = useSharedValue(1);
   const glowOpacity = useSharedValue(0.3);
@@ -42,6 +46,14 @@ export function HeroButton({
 
   // Start breathing and glow pulse animations
   useEffect(() => {
+    if (reduceMotion) {
+      cancelAnimation(breathingScale);
+      cancelAnimation(glowOpacity);
+      breathingScale.value = 1;
+      glowOpacity.value = 0.3;
+      return;
+    }
+
     const easing = Easing.inOut(Easing.ease);
 
     breathingScale.value = withRepeat(
@@ -61,17 +73,25 @@ export function HeroButton({
       -1,
       false
     );
-  }, [breathingScale, glowOpacity]);
+    return () => {
+      cancelAnimation(breathingScale);
+      cancelAnimation(glowOpacity);
+    };
+  }, [breathingScale, glowOpacity, reduceMotion]);
 
   // Handle success state
   useEffect(() => {
     if (showSuccess) {
-      checkmarkScale.value = withSpring(1, ANIMATION.spring.bouncy);
+      checkmarkScale.value = reduceMotion
+        ? 1
+        : withSpring(1, ANIMATION.spring.bouncy);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     } else {
-      checkmarkScale.value = withSpring(0, ANIMATION.spring.default);
+      checkmarkScale.value = reduceMotion
+        ? 0
+        : withSpring(0, ANIMATION.spring.default);
     }
-  }, [showSuccess, checkmarkScale]);
+  }, [showSuccess, checkmarkScale, reduceMotion]);
 
   // Haptic feedback functions
   const triggerPressHaptic = () => {
@@ -88,11 +108,15 @@ export function HeroButton({
   const tapGesture = Gesture.Tap()
     .enabled(!disabled && !isLoading)
     .onBegin(() => {
-      pressScale.value = withTiming(0.92, { duration: ANIMATION.timing.fast });
+      pressScale.value = reduceMotion
+        ? 1
+        : withTiming(0.92, { duration: ANIMATION.timing.fast });
       runOnJS(triggerPressHaptic)();
     })
     .onFinalize((_, success) => {
-      pressScale.value = withSpring(1, ANIMATION.spring.default);
+      pressScale.value = reduceMotion
+        ? 1
+        : withSpring(1, ANIMATION.spring.default);
       if (success) {
         runOnJS(triggerOnPress)();
       }
@@ -113,6 +137,16 @@ export function HeroButton({
     opacity: checkmarkScale.value,
   }));
 
+  const accessibility = getHeroButtonAccessibility({
+    disabled,
+    isLoading,
+    showSuccess,
+  });
+
+  const handleAccessibilityAction = () => {
+    triggerOnPress();
+  };
+
   return (
     <View style={styles.container}>
       {/* Glow effect behind button */}
@@ -120,7 +154,19 @@ export function HeroButton({
 
       {/* Main button */}
       <GestureDetector gesture={tapGesture}>
-        <Animated.View style={[styles.buttonWrapper, buttonAnimatedStyle]}>
+        <Animated.View
+          style={[styles.buttonWrapper, buttonAnimatedStyle]}
+          accessible
+          focusable
+          accessibilityRole="button"
+          accessibilityLabel={accessibility.label}
+          accessibilityHint={accessibility.hint}
+          accessibilityState={accessibility.state}
+          accessibilityValue={accessibility.value}
+          accessibilityActions={[{ name: "activate", label: "Odeslat hlášení" }]}
+          onAccessibilityTap={triggerOnPress}
+          onAccessibilityAction={handleAccessibilityAction}
+        >
           <AnimatedLinearGradient
             colors={GRADIENTS.coral}
             start={{ x: 0, y: 0 }}
