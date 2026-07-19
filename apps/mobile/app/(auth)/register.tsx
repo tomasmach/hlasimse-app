@@ -9,18 +9,19 @@ import {
   ScrollView,
   ActivityIndicator,
 } from "react-native";
-import { Link } from "expo-router";
-import { supabase } from "@/lib/supabase";
+import { Link, router } from "expo-router";
+import { register } from "@/lib/auth";
+import { useAuthStore } from "@/stores/auth";
 import { COLORS } from "@/constants/design";
 
 export default function RegisterScreen() {
+  const setUser = useAuthStore((state) => state.setUser);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
 
   const validateForm = (): string | null => {
     if (!name.trim()) {
@@ -32,8 +33,8 @@ export default function RegisterScreen() {
     if (!password) {
       return "Vyplňte prosím heslo.";
     }
-    if (password.length < 6) {
-      return "Heslo musí mít alespoň 6 znaků.";
+    if (password.length < 10) {
+      return "Heslo musí mít alespoň 10 znaků.";
     }
     if (password !== confirmPassword) {
       return "Hesla se neshodují.";
@@ -52,63 +53,15 @@ export default function RegisterScreen() {
     setError(null);
 
     try {
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-        options: {
-          data: {
-            name: name.trim(),
-          },
-        },
-      });
-
-      if (signUpError) {
-        if (signUpError.message.includes("invalid email")) {
-          setError("Neplatný formát e-mailu.");
-        } else {
-          setError("Registrace se nezdařila. Zkuste to prosím znovu.");
-        }
-        return;
-      }
-
-      // When email confirmations are enabled, Supabase returns an obfuscated user
-      // with empty identities array instead of an error for existing emails
-      if (data.user?.identities?.length === 0) {
-        setError("Tento e-mail je již zaregistrován.");
-        return;
-      }
-
-      setSuccess(true);
+      setUser(await register({ email, password, firstName: name }));
+      router.replace("/(tabs)");
     } catch (err) {
       console.error("Registration error:", err);
-      setError("Nastala neočekávaná chyba. Zkuste to prosím znovu.");
+      setError(err instanceof Error ? err.message : "Registrace se nezdařila.");
     } finally {
       setLoading(false);
     }
   };
-
-  if (success) {
-    return (
-      <View className="flex-1 bg-cream justify-center px-6">
-        <View className="bg-success/10 border border-success rounded-xl p-6 items-center">
-          <Text className="text-charcoal text-xl font-bold mb-3 font-lora">
-            Registrace úspěšná!
-          </Text>
-          <Text className="text-muted text-center mb-4 font-lora">
-            Na váš e-mail jsme odeslali potvrzovací odkaz. Klikněte na něj pro
-            aktivaci účtu.
-          </Text>
-          <Link href="/(auth)/login" asChild>
-            <TouchableOpacity className="bg-coral rounded-xl py-3 px-6">
-              <Text className="text-white font-lora-semibold">
-                Zpět na přihlášení
-              </Text>
-            </TouchableOpacity>
-          </Link>
-        </View>
-      </View>
-    );
-  }
 
   return (
     <KeyboardAvoidingView
@@ -156,7 +109,7 @@ export default function RegisterScreen() {
 
           <TextInput
             className="bg-white border border-sand rounded-xl px-4 py-3 text-charcoal"
-            placeholder="Heslo (min. 6 znaků)"
+            placeholder="Heslo (min. 10 znaků)"
             placeholderTextColor={COLORS.muted}
             value={password}
             onChangeText={setPassword}

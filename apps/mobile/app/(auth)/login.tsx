@@ -10,11 +10,14 @@ import {
 import { Link, router } from "expo-router";
 import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
-import { supabase } from "@/lib/supabase";
+import { login } from "@/lib/auth";
+import { ApiError } from "@/lib/api";
+import { useAuthStore } from "@/stores/auth";
 import { AnimatedInput, GradientButton } from "@/components/ui";
 import { GRADIENTS, SPACING } from "@/constants/design";
 
 export default function LoginScreen() {
+  const setUser = useAuthStore((state) => state.setUser);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -30,26 +33,11 @@ export default function LoginScreen() {
     setError(null);
 
     try {
-      const { error: signInError } = await supabase.auth.signInWithPassword({
-        email: email.trim(),
-        password,
-      });
-
-      if (signInError) {
-        if (signInError.message.includes("Invalid login credentials")) {
-          setError("Nesprávný e-mail nebo heslo.");
-        } else if (signInError.message.includes("Email not confirmed")) {
-          setError("E-mail nebyl potvrzen. Zkontrolujte svou schránku.");
-        } else {
-          setError("Přihlášení se nezdařilo. Zkuste to prosím znovu.");
-        }
-        return;
-      }
-
+      setUser(await login(email, password));
       router.replace("/(tabs)");
     } catch (err) {
       console.error("Login error:", err);
-      setError("Nastala neočekávaná chyba. Zkuste to prosím znovu.");
+      setError(err instanceof ApiError && err.status === 401 ? "Nesprávný e-mail nebo heslo." : err instanceof Error ? err.message : "Přihlášení se nezdařilo.");
     } finally {
       setLoading(false);
     }

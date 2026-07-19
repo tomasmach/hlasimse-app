@@ -1,0 +1,102 @@
+import { apiRequest, isNetworkError } from "@/lib/api";
+import {
+  clearStoredUserId,
+  clearTokens,
+  getStoredUserId,
+  getStoredUser,
+  getTokens,
+  saveTokens,
+  setStoredUserId,
+  setStoredUser,
+} from "@/lib/authStorage";
+import { clearQueue } from "@/lib/offlineQueue";
+import { getInstallationId } from "@/lib/installation";
+import { deactivateCurrentPushDevice } from "@/lib/pushDevices";
+import type { AuthTokens, AuthUser } from "@/types/api";
+
+async function bindAccount(user: AuthUser): Promise<void> {
+  const previousUserId = await getStoredUserId();
+  if (previousUserId && previousUserId !== user.id) {
+    await clearQueue(previousUserId, await getInstallationId());
+  }
+  await setStoredUserId(user.id);
+  await setStoredUser(user);
+}
+
+export async function login(email: string, password: string): Promise<AuthUser> {
+  const tokens = await apiRequest<AuthTokens>("/api/v1/auth/token/", {
+    method: "POST",
+    body: { email: email.trim().toLowerCase(), password },
+    auth: false,
+  });
+  await saveTokens(tokens);
+  try {
+    const user = await apiRequest<AuthUser>("/api/v1/auth/me/");
+    await bindAccount(user);
+    return user;
+  } catch (error) {
+    await clearTokens();
+    throw error;
+  }
+}
+
+export async function register(input: {
+  email: string;
+  password: string;
+  firstName: string;
+  lastName?: string;
+}): Promise<AuthUser> {
+  await apiRequest<AuthUser>("/api/v1/auth/register/", {
+    method: "POST",
+    auth: false,
+    body: {
+      email: input.email.trim().toLowerCase(),
+      password: input.password,
+      first_name: input.firstName.trim(),
+      last_name: input.lastName?.trim() || "",
+    },
+  });
+  return login(input.email, input.password);
+}
+
+export async function restoreUser(): Promise<AuthUser | null> {
+  if (!(await getTokens())) return null;
+  const cachedUser = await getStoredUser();
+  try {
+    const user = await apiRequest<AuthUser>("/api/v1/auth/me/");
+    await bindAccount(user);
+    return user;
+  } catch (error) {
+    if (isNetworkError(error) && cachedUser) return cachedUser;
+    await clearTokens();
+    return null;
+  }
+}
+
+export async function clearLocalSession(options: { purgeQueue: boolean }): Promise<void> {
+  const userId = await getStoredUserId();
+  if (options.purgeQueue && userId) await clearQueue(userId, await getInstallationId());
+  await Promise.all([clearTokens(), clearStoredUserId()]);
+}
+
+export async function logout(): Promise<void> {
+  const tokens = await getTokens();
+  if (tokens?.refresh) {
+    try {
+      await deactivateCurrentPushDevice();
+    } catch {
+      // Device cleanup is retried when this installation registers again.
+    }
+    try {
+      const currentTokens = await getTokens();
+      if (!currentTokens?.refresh) throw new Error("Session already cleared");
+      await apiRequest<void>("/api/v1/auth/logout/", {
+        method: "POST",
+        body: { refresh: currentTokens.refresh },
+      });
+    } catch {
+      // Local logout remains available if token revocation cannot reach the server.
+    }
+  }
+  await clearLocalSession({ purgeQueue: true });
+}

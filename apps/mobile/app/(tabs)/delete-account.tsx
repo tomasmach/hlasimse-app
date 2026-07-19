@@ -13,7 +13,7 @@ import { Warning } from "phosphor-react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/lib/supabase";
+import { apiRequest } from "@/lib/api";
 import { COLORS } from "@/constants/design";
 
 export default function DeleteAccountScreen() {
@@ -32,27 +32,10 @@ export default function DeleteAccountScreen() {
     setError("");
 
     try {
-      // Re-authenticate with password
-      const { error: authError } = await supabase.auth.signInWithPassword({
-        email: user?.email || "",
-        password,
+      await apiRequest<void>("/api/v1/account/", {
+        method: "DELETE",
+        body: { password, confirmed: true },
       });
-
-      if (authError) {
-        setError("Nesprávné heslo");
-        setIsLoading(false);
-        return;
-      }
-
-      // Delete user data via Edge Function with service role
-      const { error: deleteError } = await supabase.functions.invoke(
-        "delete-user",
-        {
-          body: { userId: user?.id },
-        }
-      );
-
-      if (deleteError) throw deleteError;
 
       // Show alert first, then sign out on OK press
       Alert.alert("Účet smazán", "Váš účet byl úspěšně smazán.", [

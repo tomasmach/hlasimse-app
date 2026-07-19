@@ -48,9 +48,12 @@ export default function CheckInScreen() {
     isLoading,
     hasFetched,
     pendingCount,
+    pendingItems,
     fetchProfile,
     checkIn,
     syncPendingCheckIns,
+    retryPendingCheckIn,
+    deletePendingCheckIn,
   } = useCheckInStore();
   const countdown = useCountdown(profile?.next_deadline ?? null);
   const { permissionStatus, getCurrentPosition, requestPermission } =
@@ -166,6 +169,9 @@ export default function CheckInScreen() {
           pendingCount={pendingCount}
           onSync={handleSync}
           isSyncing={isSyncing}
+          failedItems={pendingItems.filter((item) => item.status === "failed")}
+          onRetry={(id) => void retryPendingCheckIn(id)}
+          onDelete={(id) => void deletePendingCheckIn(id)}
         />
       </View>
 

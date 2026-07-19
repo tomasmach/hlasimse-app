@@ -12,12 +12,11 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { useAuth } from "@/hooks/useAuth";
 import { useCheckInStore } from "@/stores/checkin";
-import { supabase } from "@/lib/supabase";
 import { COLORS } from "@/constants/design";
 
 export default function EditNameScreen() {
   const { user } = useAuth();
-  const { profile, fetchProfile } = useCheckInStore();
+  const { profile, updateProfile } = useCheckInStore();
   const [name, setName] = useState(profile?.name || "");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
@@ -37,14 +36,7 @@ export default function EditNameScreen() {
     setError("");
 
     try {
-      const { error: updateError } = await supabase
-        .from("check_in_profiles")
-        .update({ name: name.trim() })
-        .eq("id", profile.id);
-
-      if (updateError) throw updateError;
-
-      await fetchProfile(user.id);
+      await updateProfile({ name: name.trim() });
       router.back();
     } catch (err: any) {
       setError(err.message || "Nepodařilo se uložit");

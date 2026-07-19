@@ -8,5 +8,7 @@ module.exports = {
     '^@/(.*)$': '<rootDir>/$1',
     '^react-native$': '<rootDir>/__mocks__/react-native.js',
     '^expo-notifications$': '<rootDir>/__mocks__/expo-notifications.js',
+    '^expo-secure-store$': '<rootDir>/__mocks__/expo-secure-store.js',
+    '^expo/virtual/env$': '<rootDir>/__mocks__/expo-env.js',
   },
 };

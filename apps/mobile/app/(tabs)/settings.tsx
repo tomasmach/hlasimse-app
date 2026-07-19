@@ -2,7 +2,6 @@ import { View, Text, TouchableOpacity, Alert, ScrollView } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from "@expo/vector-icons";
 import { router, Href } from "expo-router";
-import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/hooks/useAuth";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { useCheckInStore } from "@/stores/checkin";
@@ -65,7 +64,7 @@ function Divider() {
 export default function SettingsScreen() {
   const { user, signOut } = useAuth();
   const { resetOnboarding } = useOnboardingStore();
-  const { profile, clearProfile } = useCheckInStore();
+  const { profile } = useCheckInStore();
 
   const handleLogout = () => {
     Alert.alert("Odhlasit se", "Opravdu se chcete odhlasit?", [
@@ -121,79 +120,16 @@ export default function SettingsScreen() {
 
   const handleDevReset = () => {
     Alert.alert(
-      "DEV Reset (uplny fresh start)",
-      "Vymaze vsechna data + ucet + odhlasi te. Aplikace pujde do onboarding screenu jako pri prvnim spusteni.",
+      "DEV Reset",
+      "Vymaže lokální onboarding a bezpečně vás odhlásí. Serverová data zůstanou zachována.",
       [
         { text: "Zrusit", style: "cancel" },
         {
           text: "Reset All",
           style: "destructive",
           onPress: async () => {
-            if (!user?.id) return;
-
-            try {
-              // Delete all user data
-              // 1. Check-ins (must delete first due to FK)
-              const { data: profiles } = await supabase
-                .from("check_in_profiles")
-                .select("id")
-                .eq("owner_id", user.id);
-
-              if (profiles && profiles.length > 0) {
-                const profileIds = profiles.map((p) => p.id);
-                await supabase
-                  .from("check_ins")
-                  .delete()
-                  .in("check_in_profile_id", profileIds);
-              }
-
-              // 2. Alerts (via check_in_profile FK)
-              const { data: guardians } = await supabase
-                .from("guardians")
-                .select("check_in_profile_id")
-                .eq("user_id", user.id);
-
-              if (guardians && guardians.length > 0) {
-                const profileIds = guardians.map((g) => g.check_in_profile_id);
-                await supabase
-                  .from("alerts")
-                  .delete()
-                  .in("check_in_profile_id", profileIds);
-              }
-
-              // 3. Guardians (both as user and as guardian)
-              await supabase.from("guardians").delete().eq("user_id", user.id);
-              await supabase
-                .from("guardians")
-                .delete()
-                .eq("guardian_user_id", user.id);
-
-              // 4. Check-in profiles
-              await supabase
-                .from("check_in_profiles")
-                .delete()
-                .eq("owner_id", user.id);
-
-              // Clear local state
-              clearProfile();
-              await resetOnboarding();
-
-              // Delete auth account (if function exists)
-              try {
-                await supabase.rpc("delete_current_user");
-              } catch {
-                // Function may not exist yet, continue anyway
-              }
-
-              // Sign out (this will trigger navigation to onboarding)
-              await signOut();
-            } catch (error) {
-              console.error("Error during dev reset:", error);
-              Alert.alert(
-                "Chyba",
-                "Nepodarilo se smazat data. Zkuste to prosim znovu."
-              );
-            }
+            await resetOnboarding();
+            await signOut();
           },
         },
       ]

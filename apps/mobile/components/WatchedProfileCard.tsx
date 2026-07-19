@@ -1,4 +1,4 @@
-import { View, Text, Pressable, Linking } from "react-native";
+import { View, Text, Pressable, Linking, Alert } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { formatDistanceToNow } from "date-fns";
 import { cs } from "date-fns/locale";
@@ -8,9 +8,10 @@ import { COLORS } from "@/constants/design";
 
 interface WatchedProfileCardProps {
   profile: WatchedProfile;
+  onStopWatching?: (membershipId: string) => void;
 }
 
-export function WatchedProfileCard({ profile }: WatchedProfileCardProps) {
+export function WatchedProfileCard({ profile, onStopWatching }: WatchedProfileCardProps) {
   const countdown = useCountdown(profile.next_deadline);
   const hasAlert = profile.has_active_alert;
   const safeInitial = profile.name.length > 0 ? profile.name[0].toUpperCase() : "?";
@@ -128,6 +129,18 @@ export function WatchedProfileCard({ profile }: WatchedProfileCardProps) {
               Zobrazit poslední polohu
             </Text>
           </View>
+        </Pressable>
+      )}
+      {profile.membership_id && onStopWatching && (
+        <Pressable
+          onPress={() => Alert.alert("Přestat hlídat?", `Přestanete dostávat upozornění pro profil ${profile.name}.`, [
+            { text: "Zrušit", style: "cancel" },
+            { text: "Přestat hlídat", style: "destructive", onPress: () => onStopWatching(profile.membership_id!) },
+          ])}
+          className="mt-3 py-2"
+          accessibilityRole="button"
+        >
+          <Text className="text-muted text-center font-lora-medium">Přestat hlídat</Text>
         </Pressable>
       )}
     </View>

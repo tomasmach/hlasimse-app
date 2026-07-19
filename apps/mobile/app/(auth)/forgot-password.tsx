@@ -10,7 +10,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { Link } from "expo-router";
-import { supabase } from "@/lib/supabase";
+import { apiRequest } from "@/lib/api";
 import { COLORS } from "@/constants/design";
 
 export default function ForgotPasswordScreen() {
@@ -28,18 +28,18 @@ export default function ForgotPasswordScreen() {
     setLoading(true);
     setError(null);
 
-    const { error: resetError } = await supabase.auth.resetPasswordForEmail(
-      email.trim()
-    );
-
-    setLoading(false);
-
-    if (resetError) {
+    try {
+      await apiRequest("/api/v1/auth/password-reset/", {
+        method: "POST",
+        auth: false,
+        body: { email: email.trim().toLowerCase() },
+      });
+      setSuccess(true);
+    } catch {
       setError("Odeslání odkazu se nezdařilo. Zkuste to prosím znovu.");
-      return;
+    } finally {
+      setLoading(false);
     }
-
-    setSuccess(true);
   };
 
   if (success) {

@@ -27,6 +27,7 @@ export default function GuardiansScreen() {
     acceptInvite,
     declineInvite,
     removeGuardian,
+    stopWatching,
     subscribeToInvites,
     unsubscribeFromInvites,
   } = useGuardiansStore();
@@ -177,7 +178,7 @@ export default function GuardiansScreen() {
             </View>
           ) : (
             watchedProfiles.map((watchedProfile) => (
-              <WatchedProfileCard key={watchedProfile.id} profile={watchedProfile} />
+              <WatchedProfileCard key={watchedProfile.id} profile={watchedProfile} onStopWatching={(id) => void stopWatching(id)} />
             ))
           )}
         </View>

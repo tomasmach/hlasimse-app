@@ -1,62 +1,41 @@
 import { useEffect } from "react";
-import { supabase } from "@/lib/supabase";
+import { clearLocalSession, logout, restoreUser } from "@/lib/auth";
+import { setUnauthorizedHandler } from "@/lib/api";
+import { cancelAllReminders } from "@/lib/reminderNotifications";
 import { useAuthStore } from "@/stores/auth";
 import { useCheckInStore } from "@/stores/checkin";
-import { cancelAllReminders } from "@/lib/reminderNotifications";
+import { useGuardiansStore } from "@/stores/guardians";
+
+async function clearRuntimeState(purgeQueue: boolean): Promise<void> {
+  await clearLocalSession({ purgeQueue });
+  await cancelAllReminders();
+  useCheckInStore.getState().clearProfile();
+  useGuardiansStore.getState().reset();
+  useAuthStore.getState().setUser(null);
+}
 
 export function useAuth() {
-  const { session, user, isLoading, setSession, setUser, setIsLoading } =
-    useAuthStore();
-  const { clearProfile } = useCheckInStore();
+  const { user, isLoading, initialized, setUser, setIsLoading, setInitialized } = useAuthStore();
 
   const signOut = async () => {
-    try {
-      // Get current user before signing out
-      const {
-        data: { user: currentUser },
-      } = await supabase.auth.getUser();
-
-      if (currentUser) {
-        // Remove all push tokens for this user
-        try {
-          await supabase.from("push_tokens").delete().eq("user_id", currentUser.id);
-        } catch (tokenError) {
-          console.error("Error removing push tokens:", tokenError);
-          // Don't throw - allow sign out to continue
-        }
-      }
-
-      await cancelAllReminders();
-
-      const { error } = await supabase.auth.signOut();
-      if (error) throw error;
-    } catch (error) {
-      console.error("Error signing out:", error);
-      throw error;
-    }
+    await logout();
+    await cancelAllReminders();
+    useCheckInStore.getState().clearProfile();
+    useGuardiansStore.getState().reset();
+    setUser(null);
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setIsLoading(false);
-    });
+    setUnauthorizedHandler(() => clearRuntimeState(true));
+    if (!initialized) {
+      restoreUser()
+        .then(setUser)
+        .finally(() => {
+          setIsLoading(false);
+          setInitialized(true);
+        });
+    }
+  }, [initialized, setInitialized, setIsLoading, setUser]);
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-
-      // Clear profile on logout
-      if (!session) {
-        clearProfile();
-      }
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
-
-  return { session, user, isLoading, signOut };
+  return { session: user ? { user } : null, user, isLoading, signOut };
 }

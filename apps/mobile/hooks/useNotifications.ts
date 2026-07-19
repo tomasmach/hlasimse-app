@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import { Platform } from "react-native";
-import { supabase } from "@/lib/supabase";
 import Constants from "expo-constants";
+import { registerPushDevice } from "@/lib/pushDevices";
 
 // Configure how notifications are handled when app is in foreground
 Notifications.setNotificationHandler({
@@ -69,7 +69,7 @@ export function useNotifications(): UseNotificationsResult {
     };
   }, []);
 
-  const requestPermissions = async (): Promise<boolean> => {
+  const requestPermissions = useCallback(async (): Promise<boolean> => {
     if (!Device.isDevice) {
       console.warn("Push notifications only work on physical devices");
       return false;
@@ -127,39 +127,26 @@ export function useNotifications(): UseNotificationsResult {
     }
 
     return true;
-  };
+  }, []);
 
-  const registerToken = async (userId: string): Promise<void> => {
+  const registerToken = useCallback(async (_userId: string): Promise<void> => {
     if (!expoPushToken) {
       console.warn("No push token available to register");
       return;
     }
 
-    const platform = Platform.OS as "ios" | "android";
-
-    // Upsert token - update if exists, insert if not
-    const { error } = await supabase.from("push_tokens").upsert(
-      {
-        user_id: userId,
-        token: expoPushToken,
-        platform,
-        updated_at: new Date().toISOString(),
-      },
-      {
-        onConflict: "user_id,token",
-      }
-    );
-
-    if (error) {
+    try {
+      await registerPushDevice(expoPushToken);
+    } catch (error) {
       console.error("Failed to register push token:", error);
     }
-  };
+  }, [expoPushToken]);
 
-  const setNotificationResponseHandler = (
+  const setNotificationResponseHandler = useCallback((
     handler: (data: Record<string, unknown>) => void
   ) => {
     responseHandlerRef.current = handler;
-  };
+  }, []);
 
   return {
     expoPushToken,

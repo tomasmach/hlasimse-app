@@ -2,83 +2,81 @@ export interface User {
   id: string;
   email: string;
   name: string | null;
-  avatar_url: string | null;
-  created_at: string;
-  updated_at: string;
 }
 
 export interface CheckInProfile {
   id: string;
-  owner_id: string;
   name: string;
-  avatar_url: string | null;
+  interval_seconds: number;
+  enabled: boolean;
+  is_paused: boolean;
+  paused_until: string | null;
+  last_checked_in_at: string | null;
+  next_deadline_at: string | null;
+  deadline_generation: number;
+  created_at: string;
+  updated_at: string;
+  // Compatibility aliases used by the current UI until the multi-profile redesign.
   interval_hours: number;
   next_deadline: string | null;
   last_check_in_at: string | null;
-  last_known_lat: number | null;
-  last_known_lng: number | null;
-  is_paused: boolean;
-  paused_until: string | null;
   is_active: boolean;
+}
+
+export interface CheckInReceipt {
+  id: string;
+  idempotency_key: string;
+  accepted_at: string;
+  deadline_generation: number;
+  next_deadline_at: string | null;
+}
+
+export interface GuardianWithUser {
+  id: string;
+  email: string;
+  display_name: string;
+  status: "active" | "revoked";
   created_at: string;
-  updated_at: string;
+  user: Pick<User, "id" | "email" | "name">;
 }
 
-export interface Guardian {
+export interface InviteWithInviter {
   id: string;
-  check_in_profile_id: string;
-  user_id: string;
+  profile_id: string;
+  profile_name: string;
+  owner_display_name: string;
+  status: "pending" | "accepted" | "declined" | "expired" | "revoked";
+  expires_at: string;
   created_at: string;
-}
-
-export interface CheckIn {
-  id: string;
-  check_in_profile_id: string;
-  checked_in_at: string;
-  lat: number | null;
-  lng: number | null;
-  was_offline: boolean;
-  synced_at: string | null;
-}
-
-export interface Alert {
-  id: string;
-  check_in_profile_id: string;
-  triggered_at: string;
-  resolved_at: string | null;
-  alert_type: "push" | "sms";
-  notified_guardians: string[];
-}
-
-export interface PushToken {
-  id: string;
-  user_id: string;
-  token: string;
-  platform: "ios" | "android";
-  created_at: string;
-  updated_at: string;
-}
-
-export interface GuardianInvite {
-  id: string;
-  check_in_profile_id: string;
-  inviter_id: string;
-  invitee_id: string;
-  status: "pending" | "accepted" | "declined";
-  created_at: string;
-  responded_at: string | null;
-}
-
-// Rozšířené typy pro UI
-export interface GuardianWithUser extends Guardian {
-  user: Pick<User, "id" | "email" | "name" | "avatar_url">;
-}
-
-export interface InviteWithInviter extends GuardianInvite {
-  inviter: Pick<User, "id" | "email" | "name" | "avatar_url">;
+  inviter: Pick<User, "id" | "email" | "name">;
   check_in_profile: Pick<CheckInProfile, "id" | "name">;
 }
 
-export interface WatchedProfile extends CheckInProfile {
+export interface WatchedProfile {
+  id: string;
+  membership_id: string | null;
+  name: string;
+  owner_display_name: string;
+  enabled: boolean;
+  is_paused: boolean;
+  paused_until: string | null;
+  last_checked_in_at: string | null;
+  next_deadline_at: string | null;
+  deadline_generation: number;
+  open_alert_count: number;
+  next_deadline: string | null;
+  last_check_in_at: string | null;
   has_active_alert: boolean;
+  last_known_lat: null;
+  last_known_lng: null;
+}
+
+export function normalizeProfile(profile: Omit<CheckInProfile, "interval_hours" | "next_deadline" | "last_check_in_at" | "is_active">): CheckInProfile {
+  return {
+    ...profile,
+    interval_hours: profile.interval_seconds / 3600,
+    next_deadline: profile.next_deadline_at,
+    last_check_in_at: profile.last_checked_in_at,
+    is_active: profile.enabled,
+  };
 }

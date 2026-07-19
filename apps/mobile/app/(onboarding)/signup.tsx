@@ -10,13 +10,15 @@ import {
 } from "react-native";
 import { router } from "expo-router";
 import Animated, { FadeInDown } from "react-native-reanimated";
-import { supabase } from "@/lib/supabase";
+import { register } from "@/lib/auth";
+import { useAuthStore } from "@/stores/auth";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { AnimatedInput } from "@/components/ui/AnimatedInput";
 import { GradientButton } from "@/components/ui";
 import { ProgressDots } from "@/components/onboarding/ProgressDots";
 
 export default function SignUpScreen() {
+  const setUser = useAuthStore((state) => state.setUser);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -37,8 +39,8 @@ export default function SignUpScreen() {
       setError("Vyplňte prosím e-mail.");
       return;
     }
-    if (password.length < 6) {
-      setError("Heslo musí mít alespoň 6 znaků.");
+    if (password.length < 10) {
+      setError("Heslo musí mít alespoň 10 znaků.");
       return;
     }
 
@@ -46,33 +48,13 @@ export default function SignUpScreen() {
     setError(null);
 
     try {
-      const { data, error: signUpError } = await supabase.auth.signUp({
-        email: email.trim(),
-        password,
-        options: {
-          data: { name: name.trim() },
-        },
-      });
-
-      if (signUpError) {
-        if (signUpError.message.includes("invalid email")) {
-          setError("Neplatný formát e-mailu.");
-        } else {
-          setError("Registrace se nezdařila. Zkuste to prosím znovu.");
-        }
-        return;
-      }
-
-      if (data.user?.identities?.length === 0) {
-        setError("Tento e-mail je již zaregistrován.");
-        return;
-      }
-
+      const user = await register({ email, password, firstName: name });
       await completeOnboarding();
-      // Auth listener in root layout will handle navigation to tabs
+      setUser(user);
+      router.replace("/(tabs)");
     } catch (err) {
       console.error("Registration error:", err);
-      setError("Nastala neočekávaná chyba. Zkuste to prosím znovu.");
+      setError(err instanceof Error ? err.message : "Registrace se nezdařila.");
     } finally {
       setLoading(false);
     }
@@ -136,7 +118,7 @@ export default function SignUpScreen() {
 
           <AnimatedInput
             ref={passwordRef}
-            label="Heslo (min. 6 znaků)"
+            label="Heslo (min. 10 znaků)"
             value={password}
             onChangeText={setPassword}
             secureTextEntry

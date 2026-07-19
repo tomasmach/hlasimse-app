@@ -23,8 +23,8 @@ export default function ProfileSetupScreen() {
 
   // Pre-fill name from user metadata if available
   useEffect(() => {
-    if (user?.user_metadata?.name) {
-      setName(user.user_metadata.name);
+    if (user?.first_name) {
+      setName(user.first_name);
     }
   }, [user]);
 

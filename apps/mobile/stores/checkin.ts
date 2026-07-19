@@ -1,331 +1,215 @@
-// stores/checkin.ts
 import { create } from "zustand";
-import { supabase } from "@/lib/supabase";
-import { CheckInProfile } from "@/types/database";
-import {
-  addToQueue,
-  getQueue,
-  removeFromQueue,
-  getQueueCount,
-} from "@/lib/offlineQueue";
+import { ApiError, apiRequest, isNetworkError } from "@/lib/api";
+import { createIdempotencyKey, getInstallationId } from "@/lib/installation";
+import { addToQueue, getQueue, getQueueCount, PendingCheckIn, removeFromQueue, updateQueueItem } from "@/lib/offlineQueue";
 import { scheduleReminders } from "@/lib/reminderNotifications";
+import { useAuthStore } from "@/stores/auth";
+import { CheckInProfile, CheckInReceipt, normalizeProfile } from "@/types/database";
+
+type ServerProfile = Omit<CheckInProfile, "interval_hours" | "next_deadline" | "last_check_in_at" | "is_active">;
 
 interface CheckInState {
   profile: CheckInProfile | null;
+  profiles: CheckInProfile[];
   isLoading: boolean;
   hasFetched: boolean;
   error: string | null;
   pendingCount: number;
+  failedPendingCount: number;
+  pendingItems: PendingCheckIn[];
   lastCheckInWasOffline: boolean;
-  fetchProfile: (userId: string) => Promise<void>;
-  createProfile: (
-    userId: string,
-    name: string
-  ) => Promise<CheckInProfile | null>;
-  checkIn: (coords?: { lat: number; lng: number } | null) => Promise<{
-    success: boolean;
-    offline: boolean;
-  }>;
+  fetchProfile: (userId?: string) => Promise<void>;
+  createProfile: (userId: string, name: string) => Promise<CheckInProfile | null>;
+  updateProfile: (values: Partial<Pick<CheckInProfile, "name" | "interval_seconds" | "enabled" | "is_paused" | "paused_until">>) => Promise<CheckInProfile>;
+  checkIn: (coords?: { lat: number; lng: number; accuracy?: number | null } | null) => Promise<{ success: boolean; offline: boolean }>;
   syncPendingCheckIns: () => Promise<{ synced: number; failed: number }>;
   refreshPendingCount: () => Promise<void>;
+  retryPendingCheckIn: (id: string) => Promise<void>;
+  deletePendingCheckIn: (id: string) => Promise<void>;
   clearProfile: () => void;
 }
 
-// Checks if an error has a string `code` property (typical of Supabase/server errors)
-function isServerError(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    typeof (error as { code: unknown }).code === "string"
-  );
+async function schedule(profile: CheckInProfile): Promise<void> {
+  if (profile.next_deadline_at) {
+    try {
+      await scheduleReminders(profile.next_deadline_at);
+    } catch (error) {
+      console.warn("Failed to schedule local reminders", error);
+    }
+  }
 }
 
-// Checks if an error is a network/connectivity error (should be queued for offline retry)
-function isNetworkError(error: unknown): boolean {
-  if (error instanceof TypeError) return true;
-  if (error instanceof Error) {
-    const msg = error.message.toLowerCase();
-    return msg.includes("fetch") || msg.includes("network");
-  }
-  return false;
+async function identity(): Promise<{ userId: string; installationId: string } | null> {
+  const userId = useAuthStore.getState().user?.id;
+  if (!userId) return null;
+  return { userId, installationId: await getInstallationId() };
 }
 
 export const useCheckInStore = create<CheckInState>((set, get) => ({
   profile: null,
+  profiles: [],
   isLoading: false,
   hasFetched: false,
   error: null,
   pendingCount: 0,
+  failedPendingCount: 0,
+  pendingItems: [],
   lastCheckInWasOffline: false,
 
-  fetchProfile: async (userId: string) => {
+  fetchProfile: async () => {
+    set({ isLoading: true, error: null });
     try {
-      set({ isLoading: true, error: null });
-
-      const { data, error } = await supabase
-        .from("check_in_profiles")
-        .select("*")
-        .eq("owner_id", userId)
-        .single();
-
-      if (error) {
-        if (error.code === "PGRST116") {
-          set({ profile: null, isLoading: false, hasFetched: true });
-          return;
-        }
-        throw error;
-      }
-
-      set({ profile: data, isLoading: false, hasFetched: true });
-
-      if (data.next_deadline) {
-        try {
-          await scheduleReminders(data.next_deadline);
-        } catch (notificationError) {
-          console.warn("Failed to schedule reminder notifications:", notificationError);
-        }
-      }
-
+      const serverProfiles = await apiRequest<ServerProfile[]>("/api/v1/profiles/");
+      const profiles = serverProfiles.map(normalizeProfile);
+      const selected = profiles[0] || null;
+      set({ profiles, profile: selected, isLoading: false, hasFetched: true });
+      if (selected) await schedule(selected);
       await get().refreshPendingCount();
     } catch (error) {
-      console.error("Error fetching check-in profile:", error);
-      set({
-        error:
-          error instanceof Error ? error.message : "Failed to fetch profile",
-        isLoading: false,
-        hasFetched: true,
-      });
+      set({ error: error instanceof Error ? error.message : "Profil se nepodařilo načíst.", isLoading: false, hasFetched: true });
     }
   },
 
-  createProfile: async (userId: string, name: string) => {
+  createProfile: async (_userId, name) => {
+    set({ isLoading: true, error: null });
     try {
-      set({ isLoading: true, error: null });
-
-      const { data: existingProfile } = await supabase
-        .from("check_in_profiles")
-        .select("*")
-        .eq("owner_id", userId)
-        .maybeSingle();
-
-      if (existingProfile) {
-        set({ profile: existingProfile, isLoading: false });
-        return existingProfile;
-      }
-
-      const now = new Date();
-      const nextDeadline = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-
-      const { data, error } = await supabase
-        .from("check_in_profiles")
-        .insert({
-          owner_id: userId,
-          name: name,
-          interval_hours: 24,
-          next_deadline: nextDeadline.toISOString(),
-          is_active: true,
-          is_paused: false,
-        })
-        .select()
-        .single();
-
-      if (error) {
-        if (error.code === "23505") {
-          const { data: existing } = await supabase
-            .from("check_in_profiles")
-            .select("*")
-            .eq("owner_id", userId)
-            .single();
-
-          if (existing) {
-            set({ profile: existing, isLoading: false });
-            return existing;
-          }
-        }
-        throw error;
-      }
-
-      set({ profile: data, isLoading: false });
-      return data;
+      const created = normalizeProfile(await apiRequest<ServerProfile>("/api/v1/profiles/", {
+        method: "POST",
+        body: { name, interval_seconds: 86400, enabled: true },
+      }));
+      set((state) => ({ profile: created, profiles: [...state.profiles, created], isLoading: false, hasFetched: true }));
+      return created;
     } catch (error) {
-      console.error("Error creating check-in profile:", error);
-      set({
-        error:
-          error instanceof Error ? error.message : "Failed to create profile",
-        isLoading: false,
-      });
+      set({ error: error instanceof Error ? error.message : "Profil se nepodařilo vytvořit.", isLoading: false });
       return null;
     }
   },
 
-  checkIn: async (coords = null) => {
-    const { profile } = get();
+  updateProfile: async (values) => {
+    const profile = get().profile;
+    if (!profile) throw new Error("Profil nebyl načten.");
+    const updated = normalizeProfile(await apiRequest<ServerProfile>(`/api/v1/profiles/${profile.id}/`, {
+      method: "PATCH",
+      body: values,
+    }));
+    set((state) => ({ profile: updated, profiles: state.profiles.map((item) => item.id === updated.id ? updated : item) }));
+    await schedule(updated);
+    return updated;
+  },
 
-    if (!profile) {
-      set({ error: "No profile found" });
+  checkIn: async (coords = null) => {
+    const profile = get().profile;
+    const account = await identity();
+    if (!profile || !account) {
+      set({ error: "Profil nebo účet nebyl načten." });
       return { success: false, offline: false };
     }
-
-    const now = new Date();
-    const nextDeadline = new Date(
-      now.getTime() + profile.interval_hours * 60 * 60 * 1000
-    );
-
+    const clientRecordedAt = new Date().toISOString();
+    const installationId = account.installationId;
+    const queuedInput = {
+      ...account,
+      installationId,
+      profileId: profile.id,
+      clientRecordedAt,
+      latitude: coords?.lat ?? null,
+      longitude: coords?.lng ?? null,
+      locationAccuracyMeters: coords?.accuracy ?? null,
+      status: "pending" as const,
+      error: null,
+    };
+    const idempotencyKey = createIdempotencyKey();
+    set({ isLoading: true, error: null });
     try {
-      set({ isLoading: true, error: null });
-
-      const { data, error } = await supabase.rpc("atomic_check_in", {
-        p_profile_id: profile.id,
-        p_checked_in_at: now.toISOString(),
-        p_next_deadline: nextDeadline.toISOString(),
-        p_was_offline: false,
-        p_lat: coords?.lat ?? null,
-        p_lng: coords?.lng ?? null,
+      await apiRequest<CheckInReceipt>(`/api/v1/profiles/${profile.id}/check-in/`, {
+        method: "POST",
+        headers: { "Idempotency-Key": idempotencyKey },
+        body: {
+          client_recorded_at: clientRecordedAt,
+          ...(coords ? { latitude: coords.lat, longitude: coords.lng, ...(coords.accuracy != null ? { location_accuracy_meters: coords.accuracy } : {}) } : {}),
+        },
       });
-
-      if (error) {
-        throw error;
-      }
-
-      const updatedProfile = Array.isArray(data) ? data[0] : data;
-
-      if (!updatedProfile) {
-        throw new Error("No profile returned from check-in");
-      }
-
-      set({
-        profile: updatedProfile,
-        isLoading: false,
-        lastCheckInWasOffline: false,
-      });
-
-      if (updatedProfile.next_deadline) {
-        try {
-          await scheduleReminders(updatedProfile.next_deadline);
-        } catch (notificationError) {
-          console.warn("Failed to schedule reminder notifications:", notificationError);
-        }
-      }
-
+      await get().fetchProfile();
+      set({ isLoading: false, lastCheckInWasOffline: false });
       return { success: true, offline: false };
     } catch (error) {
-      console.error("Check-in failed:", error);
-
-      if (isNetworkError(error) && !isServerError(error)) {
+      if (isNetworkError(error)) {
         try {
-          await addToQueue({
-            profileId: profile.id,
-            checkedInAt: now.toISOString(),
-            nextDeadline: nextDeadline.toISOString(),
-            lat: coords?.lat ?? null,
-            lng: coords?.lng ?? null,
-          });
+          await addToQueue({ ...queuedInput, id: idempotencyKey });
+          set({ isLoading: false, lastCheckInWasOffline: true, error: null });
+          await get().refreshPendingCount();
+          return { success: true, offline: true };
         } catch (queueError) {
-          console.error("Failed to store pending check-in:", queueError);
-          set({
-            isLoading: false,
-            lastCheckInWasOffline: false,
-            error: "Check-in could not be safely stored for later sync.",
-          });
+          set({ isLoading: false, lastCheckInWasOffline: false, error: queueError instanceof Error ? queueError.message : "Hlášení se nepodařilo bezpečně uložit." });
           return { success: false, offline: false };
         }
-
-        // Keep the server-confirmed deadline visible until synchronization succeeds.
-        // Advancing it locally would falsely imply that guardians are protected.
-        set({
-          isLoading: false,
-          lastCheckInWasOffline: true,
-          error: null,
-        });
-
-        await get().refreshPendingCount();
-
-        return { success: true, offline: true };
       }
-
-      // Server or validation error - do not queue, report failure
-      set({
-        isLoading: false,
-        error:
-          error instanceof Error
-            ? error.message
-            : "Check-in failed. Please try again.",
-      });
-
+      set({ isLoading: false, error: error instanceof Error ? error.message : "Hlášení se nezdařilo." });
       return { success: false, offline: false };
     }
   },
 
   syncPendingCheckIns: async () => {
-    const queue = await getQueue();
+    const account = await identity();
+    if (!account) return { synced: 0, failed: 0 };
+    const queue = await getQueue(account.userId, account.installationId);
     let synced = 0;
     let failed = 0;
-
-    for (const pending of queue) {
+    for (const item of queue.filter((queued) => queued.status === "pending")) {
       try {
-        const { data, error } = await supabase.rpc("atomic_check_in", {
-          p_profile_id: pending.profileId,
-          p_checked_in_at: pending.checkedInAt,
-          p_next_deadline: pending.nextDeadline,
-          p_was_offline: true,
-          p_lat: pending.lat,
-          p_lng: pending.lng,
+        await apiRequest<CheckInReceipt>(`/api/v1/profiles/${item.profileId}/check-in/`, {
+          method: "POST",
+          headers: { "Idempotency-Key": item.id },
+          body: {
+            client_recorded_at: item.clientRecordedAt,
+            ...(item.latitude != null && item.longitude != null ? {
+              latitude: item.latitude,
+              longitude: item.longitude,
+              ...(item.locationAccuracyMeters != null ? { location_accuracy_meters: item.locationAccuracyMeters } : {}),
+            } : {}),
+          },
         });
-
-        if (error) throw error;
-
-        const updatedProfile = Array.isArray(data) ? data[0] : data;
-        if (!updatedProfile) {
-          throw new Error("No profile returned from pending check-in sync");
-        }
-
-        await removeFromQueue(pending.id);
-        set({ profile: updatedProfile, lastCheckInWasOffline: false });
-
-        if (updatedProfile.next_deadline) {
-          try {
-            await scheduleReminders(updatedProfile.next_deadline);
-          } catch (notificationError) {
-            console.warn(
-              "Failed to schedule reminder notifications:",
-              notificationError
-            );
-          }
-        }
-
-        synced++;
+        await removeFromQueue(account.userId, account.installationId, item.id);
+        synced += 1;
       } catch (error) {
-        console.error("Failed to sync pending check-in:", error);
-
-        if (isServerError(error)) {
-          // Remove from queue - retrying won't help
-          console.warn("Removing non-retriable check-in from queue:", pending.id);
-          await removeFromQueue(pending.id);
+        failed += 1;
+        if (error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 401 && error.status !== 429) {
+          await updateQueueItem(account.userId, account.installationId, item.id, {
+            status: "failed",
+            error: error.message || "Server hlášení odmítl.",
+          });
         }
-
-        failed++;
       }
     }
-
+    if (synced) await get().fetchProfile();
     await get().refreshPendingCount();
-
+    set({ lastCheckInWasOffline: (await getQueueCount(account.userId, account.installationId)) > 0 });
     return { synced, failed };
   },
 
   refreshPendingCount: async () => {
-    const count = await getQueueCount();
-    set({ pendingCount: count });
-  },
-
-  clearProfile: () => {
+    const account = await identity();
+    const items = account ? await getQueue(account.userId, account.installationId) : [];
     set({
-      profile: null,
-      isLoading: false,
-      hasFetched: false,
-      error: null,
-      pendingCount: 0,
-      lastCheckInWasOffline: false,
+      pendingItems: items,
+      pendingCount: items.filter((item) => item.status === "pending").length,
+      failedPendingCount: items.filter((item) => item.status === "failed").length,
     });
   },
+
+  retryPendingCheckIn: async (id) => {
+    const account = await identity();
+    if (!account) return;
+    await updateQueueItem(account.userId, account.installationId, id, { status: "pending", error: null });
+    await get().refreshPendingCount();
+    await get().syncPendingCheckIns();
+  },
+
+  deletePendingCheckIn: async (id) => {
+    const account = await identity();
+    if (!account) return;
+    await removeFromQueue(account.userId, account.installationId, id);
+    await get().refreshPendingCount();
+  },
+
+  clearProfile: () => set({ profile: null, profiles: [], isLoading: false, hasFetched: false, error: null, pendingCount: 0, failedPendingCount: 0, pendingItems: [], lastCheckInWasOffline: false }),
 }));

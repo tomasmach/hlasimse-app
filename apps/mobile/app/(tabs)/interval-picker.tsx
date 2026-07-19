@@ -5,7 +5,6 @@ import { router } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
 import { useAuth } from "@/hooks/useAuth";
 import { useCheckInStore } from "@/stores/checkin";
-import { supabase } from "@/lib/supabase";
 import { COLORS } from "@/constants/design";
 
 const INTERVAL_OPTIONS = [
@@ -17,7 +16,7 @@ const INTERVAL_OPTIONS = [
 
 export default function IntervalPickerScreen() {
   const { user } = useAuth();
-  const { profile, fetchProfile, pendingCount } = useCheckInStore();
+  const { profile, updateProfile, pendingCount } = useCheckInStore();
   const [selectedHours, setSelectedHours] = useState(
     profile?.interval_hours || 24
   );
@@ -37,30 +36,7 @@ export default function IntervalPickerScreen() {
         return;
       }
 
-      // Calculate new deadline based on last check-in or current time
-      const now = new Date();
-      const baseTime = profile.last_check_in_at
-        ? new Date(profile.last_check_in_at)
-        : now;
-      let newDeadline = new Date(baseTime.getTime() + hours * 60 * 60 * 1000);
-
-      // If new deadline would be in the past, calculate from now instead
-      if (newDeadline <= now) {
-        newDeadline = new Date(now.getTime() + hours * 60 * 60 * 1000);
-      }
-
-      const { error: supabaseError } = await supabase
-        .from("check_in_profiles")
-        .update({
-          interval_hours: hours,
-          next_deadline: newDeadline.toISOString(),
-        })
-        .eq("id", profile.id);
-
-      if (supabaseError) throw supabaseError;
-
-      // Fetch updated profile and reschedule reminder notifications
-      await fetchProfile(user.id);
+      await updateProfile({ interval_seconds: hours * 3600 });
 
       setSelectedHours(hours);
     } catch (err) {

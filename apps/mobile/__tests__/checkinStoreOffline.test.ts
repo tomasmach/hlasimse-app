@@ -1,137 +1,92 @@
-import type { CheckInProfile } from "../types/database";
+import * as SecureStore from "expo-secure-store";
+import { NetworkError } from "@/lib/api";
+import { useAuthStore } from "@/stores/auth";
+import type { CheckInProfile } from "@/types/database";
 
-jest.mock("@/lib/supabase", () => ({
-  supabase: { rpc: jest.fn() },
-}));
+jest.mock("@/lib/api", () => {
+  class TestNetworkError extends Error {}
+  return {
+    NetworkError: TestNetworkError,
+    ApiError: class TestApiError extends Error {
+      constructor(code: number, _body?: unknown, message = "Rejected") {
+        super(message);
+        Object.defineProperty(this, "status", { value: code });
+      }
+    },
+    isNetworkError: (error: unknown) => error instanceof TestNetworkError,
+    apiRequest: jest.fn(),
+  };
+});
+jest.mock("@/lib/reminderNotifications", () => ({ scheduleReminders: jest.fn() }));
 
-jest.mock("@/lib/offlineQueue", () => ({
-  addToQueue: jest.fn(),
-  getQueue: jest.fn(),
-  removeFromQueue: jest.fn(),
-  getQueueCount: jest.fn(),
-}));
+import { apiRequest } from "@/lib/api";
+import { useCheckInStore } from "@/stores/checkin";
 
-jest.mock("@/lib/reminderNotifications", () => ({
-  scheduleReminders: jest.fn(),
-}));
-
-import { supabase } from "../lib/supabase";
-import {
-  addToQueue,
-  getQueue,
-  getQueueCount,
-  removeFromQueue,
-} from "../lib/offlineQueue";
-import { scheduleReminders } from "../lib/reminderNotifications";
-import { useCheckInStore } from "../stores/checkin";
-
-const mockRpc = supabase.rpc as jest.Mock;
-const mockAddToQueue = addToQueue as jest.Mock;
-const mockGetQueue = getQueue as jest.Mock;
-const mockRemoveFromQueue = removeFromQueue as jest.Mock;
-const mockGetQueueCount = getQueueCount as jest.Mock;
-const mockScheduleReminders = scheduleReminders as jest.Mock;
-const mockConsoleError = jest
-  .spyOn(console, "error")
-  .mockImplementation(() => undefined);
-
+const mockApiRequest = apiRequest as jest.Mock;
 const confirmedProfile: CheckInProfile = {
-  id: "profile-1",
-  owner_id: "user-1",
+  id: "11111111-1111-4111-8111-111111111111",
   name: "Jana",
-  avatar_url: null,
+  interval_seconds: 86400,
+  enabled: true,
+  is_paused: false,
+  paused_until: null,
+  last_checked_in_at: "2026-07-18T12:00:00.000Z",
+  next_deadline_at: "2026-07-19T12:00:00.000Z",
+  deadline_generation: 1,
+  created_at: "2026-01-01T00:00:00.000Z",
+  updated_at: "2026-07-18T12:00:00.000Z",
   interval_hours: 24,
   next_deadline: "2026-07-19T12:00:00.000Z",
   last_check_in_at: "2026-07-18T12:00:00.000Z",
-  last_known_lat: null,
-  last_known_lng: null,
-  is_paused: false,
-  paused_until: null,
   is_active: true,
-  created_at: "2026-01-01T00:00:00.000Z",
-  updated_at: "2026-07-18T12:00:00.000Z",
 };
 
 beforeEach(() => {
   jest.clearAllMocks();
-  mockGetQueueCount.mockResolvedValue(1);
-  mockRemoveFromQueue.mockResolvedValue(undefined);
-  mockScheduleReminders.mockResolvedValue(undefined);
-  useCheckInStore.setState({
-    profile: confirmedProfile,
-    isLoading: false,
-    hasFetched: true,
-    error: null,
-    pendingCount: 0,
-    lastCheckInWasOffline: false,
-  });
-});
-
-afterAll(() => {
-  mockConsoleError.mockRestore();
+  (SecureStore as unknown as { __reset(): void }).__reset();
+  useAuthStore.setState({ user: { id: "user-1", email: "a@example.test", first_name: "A", last_name: "", date_joined: "" } });
+  useCheckInStore.setState({ profile: confirmedProfile, profiles: [confirmedProfile], isLoading: false, hasFetched: true, error: null, pendingCount: 0, failedPendingCount: 0, pendingItems: [], lastCheckInWasOffline: false });
 });
 
 describe("offline check-in safety", () => {
-  it("queues a network failure without advancing the server-confirmed deadline", async () => {
-    mockRpc.mockRejectedValue(new TypeError("Network request failed"));
-    mockAddToQueue.mockResolvedValue({ id: "pending-1" });
-
+  it("queues a network failure without advancing the confirmed deadline", async () => {
+    mockApiRequest.mockRejectedValueOnce(new NetworkError());
     const result = await useCheckInStore.getState().checkIn();
     const state = useCheckInStore.getState();
-
     expect(result).toEqual({ success: true, offline: true });
-    expect(mockAddToQueue).toHaveBeenCalledTimes(1);
-    expect(state.profile?.next_deadline).toBe(confirmedProfile.next_deadline);
-    expect(state.profile?.last_check_in_at).toBe(
-      confirmedProfile.last_check_in_at
-    );
-    expect(state.lastCheckInWasOffline).toBe(true);
+    expect(state.profile?.next_deadline_at).toBe(confirmedProfile.next_deadline_at);
     expect(state.pendingCount).toBe(1);
-    expect(mockScheduleReminders).not.toHaveBeenCalled();
+    expect(state.lastCheckInWasOffline).toBe(true);
   });
 
-  it("reports failure when the pending check-in cannot be stored safely", async () => {
-    mockRpc.mockRejectedValue(new TypeError("Network request failed"));
-    mockAddToQueue.mockRejectedValue(new Error("Storage unavailable"));
-
+  it("does not queue an explicit server rejection", async () => {
+    mockApiRequest.mockRejectedValueOnce(new Error("Validation failed"));
     const result = await useCheckInStore.getState().checkIn();
-    const state = useCheckInStore.getState();
-
     expect(result).toEqual({ success: false, offline: false });
-    expect(state.isLoading).toBe(false);
-    expect(state.lastCheckInWasOffline).toBe(false);
-    expect(state.profile?.next_deadline).toBe(confirmedProfile.next_deadline);
+    expect(useCheckInStore.getState().pendingCount).toBe(0);
   });
 
-  it("updates the deadline only after the server confirms synchronization", async () => {
-    const syncedProfile = {
-      ...confirmedProfile,
-      next_deadline: "2026-07-20T12:00:00.000Z",
-      last_check_in_at: "2026-07-19T12:00:00.000Z",
-    };
-    mockGetQueue.mockResolvedValue([
-      {
-        id: "pending-1",
-        profileId: confirmedProfile.id,
-        checkedInAt: syncedProfile.last_check_in_at,
-        nextDeadline: syncedProfile.next_deadline,
-        lat: null,
-        lng: null,
-      },
-    ]);
-    mockRpc.mockResolvedValue({ data: syncedProfile, error: null });
-    mockGetQueueCount.mockResolvedValue(0);
+  it("reuses the queued UUID as the Idempotency-Key during synchronization", async () => {
+    mockApiRequest.mockRejectedValueOnce(new NetworkError());
+    await useCheckInStore.getState().checkIn();
+    const initialHeaders = mockApiRequest.mock.calls[0][1].headers;
+    mockApiRequest.mockReset();
+    mockApiRequest.mockResolvedValueOnce({ id: "receipt" }).mockResolvedValueOnce([]);
+    await useCheckInStore.getState().syncPendingCheckIns();
+    expect(mockApiRequest.mock.calls[0][1].headers["Idempotency-Key"]).toBe(initialHeaders["Idempotency-Key"]);
+    expect(useCheckInStore.getState().pendingCount).toBe(0);
+  });
 
-    const result = await useCheckInStore.getState().syncPendingCheckIns();
+  it("keeps a server-rejected queued check-in visible as failed", async () => {
+    const { ApiError } = jest.requireMock("@/lib/api");
+    mockApiRequest.mockRejectedValueOnce(new NetworkError());
+    await useCheckInStore.getState().checkIn();
+    mockApiRequest.mockReset();
+    mockApiRequest.mockRejectedValueOnce(new ApiError(409, null, "Deadline už vypršel"));
+    await useCheckInStore.getState().syncPendingCheckIns();
     const state = useCheckInStore.getState();
-
-    expect(result).toEqual({ synced: 1, failed: 0 });
-    expect(mockRemoveFromQueue).toHaveBeenCalledWith("pending-1");
-    expect(state.profile?.next_deadline).toBe(syncedProfile.next_deadline);
     expect(state.pendingCount).toBe(0);
-    expect(state.lastCheckInWasOffline).toBe(false);
-    expect(mockScheduleReminders).toHaveBeenCalledWith(
-      syncedProfile.next_deadline
-    );
+    expect(state.failedPendingCount).toBe(1);
+    expect(state.pendingItems[0].error).toBe("Deadline už vypršel");
   });
 });

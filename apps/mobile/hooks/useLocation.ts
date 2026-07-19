@@ -7,6 +7,7 @@ export type PermissionStatus = "granted" | "denied" | "undetermined" | null;
 interface LocationCoords {
   lat: number;
   lng: number;
+  accuracy: number | null;
 }
 
 interface UseLocationResult {
@@ -72,6 +73,7 @@ export function useLocation(): UseLocationResult {
           return {
             lat: location.coords.latitude,
             lng: location.coords.longitude,
+            accuracy: location.coords.accuracy,
           };
         }
         return null;
