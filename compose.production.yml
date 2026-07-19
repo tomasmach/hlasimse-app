@@ -1,0 +1,176 @@
+name: hlasimse-production-like
+
+x-app-environment: &app-environment
+  DJANGO_DEBUG: "false"
+  DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is required}
+  DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?DJANGO_ALLOWED_HOSTS is required}
+  DJANGO_SECURE_SSL_REDIRECT: ${DJANGO_SECURE_SSL_REDIRECT:-true}
+  DJANGO_STATIC_MANIFEST: "true"
+  DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
+  APP_BASE_URL: ${APP_BASE_URL:?APP_BASE_URL is required}
+  EXPO_ACCESS_TOKEN: ${EXPO_ACCESS_TOKEN:?EXPO_ACCESS_TOKEN is required}
+  DJANGO_EMAIL_BACKEND: django.core.mail.backends.smtp.EmailBackend
+  EMAIL_HOST: mailpit
+  EMAIL_PORT: "1025"
+  EMAIL_HOST_USER: local-compose
+  EMAIL_HOST_PASSWORD: local-compose
+  EMAIL_USE_TLS: "false"
+  EMAIL_USE_SSL: "false"
+  EMAIL_TIMEOUT: "10"
+  DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:?DEFAULT_FROM_EMAIL is required}
+  SERVER_EMAIL: ${SERVER_EMAIL:?SERVER_EMAIL is required}
+  GUNICORN_WORKERS: ${GUNICORN_WORKERS:-2}
+  GUNICORN_THREADS: ${GUNICORN_THREADS:-4}
+  GUNICORN_FORWARDED_ALLOW_IPS: ${GUNICORN_FORWARDED_ALLOW_IPS:-127.0.0.1}
+
+x-app: &app
+  image: hlasimse-server:${IMAGE_TAG:-local}
+  build:
+    context: ./apps/server
+    dockerfile: Dockerfile
+  environment: *app-environment
+  depends_on:
+    postgres:
+      condition: service_healthy
+    mailpit:
+      condition: service_started
+  networks:
+    - backend
+  init: true
+  read_only: true
+  tmpfs:
+    - /tmp:size=64m,mode=1777
+  cap_drop:
+    - ALL
+  security_opt:
+    - no-new-privileges:true
+  shm_size: 64mb
+  stop_grace_period: 40s
+  restart: unless-stopped
+
+services:
+  postgres:
+    image: postgres:18.4-bookworm@sha256:1961f96e6029a02c3812d7cb329a3b03a3ac2bb067058dec17b0f5596aca9296
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB is required}
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER is required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    networks:
+      - backend
+    shm_size: 256mb
+    restart: unless-stopped
+
+  mailpit:
+    image: axllent/mailpit:v1.30.0@sha256:0059ef81e492a7192af3816281eed6859eb078bd7bdc58b76757c13e10e53a7d
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    ports:
+      - "127.0.0.1:8025:8025"
+    networks:
+      - backend
+    read_only: true
+    tmpfs:
+      - /tmp:size=32m,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+
+  migrate:
+    <<: *app
+    command:
+      [
+        "/bin/sh",
+        "-ec",
+        "python manage.py migrate --noinput && python manage.py createcachetable",
+      ]
+    profiles: ["ops"]
+    restart: "no"
+
+  web:
+    <<: *app
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; request = urllib.request.Request('http://127.0.0.1:8000/health/ready/', headers={'X-Forwarded-Proto': 'https'}); urllib.request.urlopen(request, timeout=3).read()",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 4
+      start_period: 30s
+
+  sweep:
+    <<: *app
+    command: ["python", "manage.py", "sweep_deadlines", "--watch", "--poll-interval", "15"]
+    healthcheck: &worker-healthcheck
+      test:
+        [
+          "CMD",
+          "python",
+          "manage.py",
+          "check_delivery_health",
+          "--heartbeat-max-age-seconds",
+          "90",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 75s
+
+  outbox:
+    <<: *app
+    command: ["python", "manage.py", "process_outbox", "--watch", "--poll-interval", "2"]
+    healthcheck: *worker-healthcheck
+
+  receipts:
+    <<: *app
+    command:
+      [
+        "python",
+        "manage.py",
+        "fetch_push_receipts",
+        "--watch",
+        "--poll-interval",
+        "30",
+        "--error-backoff",
+        "30",
+      ]
+    healthcheck: *worker-healthcheck
+
+  delivery-health:
+    <<: *app
+    command: ["python", "manage.py", "check_delivery_health"]
+    profiles: ["ops"]
+    restart: "no"
+
+  delivery-monitor:
+    <<: *app
+    command:
+      [
+        "/bin/sh",
+        "-ec",
+        "while :; do sleep 30; python manage.py check_delivery_health --heartbeat-max-age-seconds 90; done",
+      ]
+    healthcheck:
+      disable: true
+
+volumes:
+  postgres-data:
+
+networks:
+  backend:

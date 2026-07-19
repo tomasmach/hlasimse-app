@@ -52,6 +52,8 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+if not DEBUG:
+    MIDDLEWARE.insert(1, "whitenoise.middleware.WhiteNoiseMiddleware")
 
 ROOT_URLCONF = "config.urls"
 TEMPLATES = [
@@ -85,6 +87,22 @@ DATABASES = {
 if not DEBUG and DATABASES["default"]["ENGINE"] != "django.db.backends.postgresql":
     raise ImproperlyConfigured("Production DATABASE_URL must use PostgreSQL")
 
+CACHES = {
+    "default": (
+        {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "hlasimse-development",
+        }
+        if DEBUG
+        else {
+            "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+            "LOCATION": "hlasimse_cache",
+            "TIMEOUT": 300,
+            "OPTIONS": {"MAX_ENTRIES": 100_000, "CULL_FREQUENCY": 10},
+        }
+    )
+}
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},
@@ -99,6 +117,17 @@ USE_TZ = True
 STATIC_URL = "/static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_DIRS = [BASE_DIR / "static"]
+STATIC_MANIFEST = env_bool("DJANGO_STATIC_MANIFEST", default=not DEBUG)
+STORAGES = {
+    "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+    "staticfiles": {
+        "BACKEND": (
+            "whitenoise.storage.CompressedManifestStaticFilesStorage"
+            if STATIC_MANIFEST
+            else "django.contrib.staticfiles.storage.StaticFilesStorage"
+        )
+    },
+}
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 AUTH_USER_MODEL = "core.User"
 LOGIN_URL = "accounts:login"
@@ -127,7 +156,7 @@ SIMPLE_JWT = {
 }
 
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
-SECURE_SSL_REDIRECT = not DEBUG or env_bool("DJANGO_SECURE_SSL_REDIRECT", default=False)
+SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", default=not DEBUG)
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 SECURE_HSTS_SECONDS = 31_536_000 if not DEBUG else 0
@@ -139,6 +168,10 @@ SECURE_CONTENT_TYPE_NOSNIFF = True
 EXPO_ACCESS_TOKEN = os.getenv("EXPO_ACCESS_TOKEN", "")
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 EXPO_RECEIPTS_URL = "https://exp.host/--/api/v2/push/getReceipts"
+if not DEBUG and not EXPO_ACCESS_TOKEN:
+    raise ImproperlyConfigured(
+        "Production requires EXPO_ACCESS_TOKEN and Expo enhanced push security"
+    )
 
 APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000").rstrip("/")
 EMAIL_BACKEND = os.getenv(
