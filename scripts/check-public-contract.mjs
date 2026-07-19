@@ -37,7 +37,8 @@ const RULES = [
   },
   {
     label: "billing, paywall, or paid-tier runtime",
-    pattern: /revenuecat|react-native-purchases|\bpaywall\b|\bpremium\b|předplatn/giu,
+    pattern:
+      /revenuecat|react-native-purchases|@revenuecat|Purchases\.|usePremiumStore|<Paywall|showPaywall|isPremium|PREMIUM_ENTITLEMENT|Hlásím se Premium|aktivní předplatné|upgradovat|obnovit nákup/giu,
   },
   {
     label: "SMS feature claim or integration",

@@ -4,11 +4,11 @@
     "slug": "hlasim-se",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/images/icon-v2.png",
     "scheme": "hlasimse",
     "userInterfaceStyle": "automatic",
     "ios": {
-      "supportsTablet": true,
+      "supportsTablet": false,
       "bundleIdentifier": "com.anonymous.hlasimse",
       "infoPlist": {
         "NSUserNotificationsUsageDescription": "Potřebujeme oprávnění k notifikacím, abychom vás mohli upozornit, když se někdo neohlásí včas."
@@ -16,8 +16,9 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "foregroundImage": "./assets/images/adaptive-icon-v2.png",
+        "monochromeImage": "./assets/images/adaptive-icon-v2.png",
+        "backgroundColor": "#FFF8F5"
       },
       "predictiveBackGestureEnabled": false,
       "package": "com.anonymous.hlasimse"
@@ -25,7 +26,7 @@
     "web": {
       "bundler": "metro",
       "output": "single",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon-v2.png"
     },
     "plugins": [
       "expo-router",
@@ -33,7 +34,7 @@
       [
         "expo-notifications",
         {
-          "icon": "./assets/images/icon.png",
+          "icon": "./assets/images/adaptive-icon-v2.png",
           "color": "#FF6B5B"
         }
       ],
@@ -41,9 +42,9 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/splash-icon-v2.png",
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#FFF8F5"
         }
       ],
       "expo-status-bar",
