@@ -14,8 +14,8 @@ type DemoPhase = "initial" | "loading" | "success" | "notification" | "cta";
 export default function DemoScreen() {
   const { selectedPersona } = useOnboardingStore();
   const [phase, setPhase] = useState<DemoPhase>("initial");
-  const successTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  const notificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notificationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handlePress = useCallback(() => {
     if (phase !== "initial") return;

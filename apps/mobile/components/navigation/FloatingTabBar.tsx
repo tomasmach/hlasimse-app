@@ -7,7 +7,7 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import { House, UsersThree, GearSix, IconProps } from "phosphor-react-native";
-import { BottomTabBarProps } from "@react-navigation/bottom-tabs";
+import type { BottomTabBarProps } from "expo-router/js-tabs";
 import { COLORS, ANIMATION, SHADOWS } from "@/constants/design";
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
