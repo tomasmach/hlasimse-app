@@ -1,0 +1,19 @@
+{% extends "core/auth/auth_base.html" %}
+{% block title %}Vytvoření účtu — Hlásím se{% endblock %}
+{% block auth_content %}
+<header class="form-heading"><p class="eyebrow">Všechno zdarma</p><h1>Začněte prvním bezpečným krokem.</h1><p>Účet, profily, strážci i upozornění. Bez plateb a bez zamčených funkcí.</p></header>
+<form method="post" class="form-stack" novalidate>
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="form-alert" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+  {% for field in form %}
+    <div class="field{% if field.errors %} field--error{% endif %}">
+      <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
+      {% if field.help_text %}<p class="field-help" id="{{ field.auto_id }}_helptext">{{ field.help_text|safe }}</p>{% endif %}
+      {% for error in field.errors %}<p class="field-error" role="alert">{{ error }}</p>{% endfor %}
+    </div>
+  {% endfor %}
+  <label class="check-field"><input type="checkbox" name="terms" required><span>Souhlasím s <a href="/obchodni-podminky/">podmínkami používání</a> a seznámil/a jsem se s <a href="/ochrana-soukromi/">ochranou soukromí</a>.</span></label>
+  <button class="button button--coral button--wide" type="submit">Vytvořit účet zdarma</button>
+</form>
+<p class="auth-switch">Už účet máte? <a href="{% url 'accounts:login' %}">Přihlásit se</a></p>
+{% endblock %}

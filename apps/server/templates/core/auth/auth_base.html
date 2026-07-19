@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% block body_class %}auth-page{% endblock %}
+{% block shell %}
+<main id="hlavni-obsah" class="auth-shell" tabindex="-1">
+  <a class="brand auth-brand" href="{% url 'core:landing' %}" aria-label="Hlásím se, domovská stránka">
+    <span class="brand__mark" aria-hidden="true"><span></span><span></span></span><span>Hlásím se</span>
+  </a>
+  <section class="auth-panel">
+    <div class="auth-panel__content">{% block auth_content %}{% endblock %}</div>
+  </section>
+  <aside class="auth-art" aria-hidden="true">
+    <div class="auth-art__copy"><p>Jeden drobný návyk.</p><strong>Víc klidu pro všechny, kterým na vás záleží.</strong></div>
+    <div class="auth-rings"><span></span><span></span><span></span></div>
+  </aside>
+</main>
+{% endblock %}
