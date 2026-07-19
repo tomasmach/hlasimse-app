@@ -5,6 +5,7 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 from rest_framework import serializers
 
+from .audit import record_audit_event
 from .models import (
     AlertAcknowledgement,
     AlertIncident,
@@ -250,6 +251,7 @@ class InvitationAcceptSerializer(serializers.Serializer):
 class WatchedProfileSerializer(serializers.ModelSerializer):
     owner_display_name = serializers.SerializerMethodField()
     open_alert_count = serializers.SerializerMethodField()
+    membership_id = serializers.SerializerMethodField()
 
     class Meta:
         model = CheckInProfile
@@ -264,6 +266,7 @@ class WatchedProfileSerializer(serializers.ModelSerializer):
             "next_deadline_at",
             "deadline_generation",
             "open_alert_count",
+            "membership_id",
         )
         read_only_fields = fields
 
@@ -272,6 +275,19 @@ class WatchedProfileSerializer(serializers.ModelSerializer):
 
     def get_open_alert_count(self, obj):
         return obj.incidents.filter(status=AlertIncident.Status.OPEN).count()
+
+    def get_membership_id(self, obj):
+        request = self.context.get("request")
+        if request is None or not request.user.is_authenticated:
+            return None
+        return (
+            obj.guardians.filter(
+                guardian=request.user,
+                status=GuardianMembership.Status.ACTIVE,
+            )
+            .values_list("id", flat=True)
+            .first()
+        )
 
 
 class PushDeviceSerializer(serializers.ModelSerializer):
@@ -288,7 +304,7 @@ class PushDeviceSerializer(serializers.ModelSerializer):
         read_only_fields = ("id", "active", "last_seen_at")
         extra_kwargs = {
             "installation_id": {"validators": []},
-            "expo_push_token": {"validators": []},
+            "expo_push_token": {"validators": [], "write_only": True},
         }
 
     def create(self, validated_data):
@@ -306,6 +322,8 @@ class PushDeviceSerializer(serializers.ModelSerializer):
                 .filter(expo_push_token=submitted_token)
                 .first()
             )
+            was_active = device.active if device is not None else False
+            previous_user_id = device.user_id if device is not None else None
             if token_device is not None and (device is None or token_device.pk != device.pk):
                 raise serializers.ValidationError(
                     {"expo_push_token": "Push token už patří jiné instalaci."}
@@ -343,6 +361,17 @@ class PushDeviceSerializer(serializers.ModelSerializer):
                         "last_seen_at",
                         "updated_at",
                     ]
+                )
+            if not was_active or previous_user_id != user.id:
+                record_audit_event(
+                    event_type="device.activated",
+                    aggregate_type="push_device",
+                    aggregate_id=device.id,
+                    actor=user,
+                    metadata={
+                        "platform": device.platform,
+                        "rebound": previous_user_id is not None and previous_user_id != user.id,
+                    },
                 )
         return device
 

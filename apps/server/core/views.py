@@ -65,8 +65,10 @@ from .services import (
     accept_invitation,
     accessible_incidents,
     create_invitation,
+    deactivate_push_device,
     perform_check_in,
     respond_to_invitation,
+    revoke_guardian_membership,
 )
 
 logger = logging.getLogger(__name__)
@@ -257,8 +259,7 @@ class ProfileViewSet(viewsets.ModelViewSet):
         membership = get_object_or_404(
             self.get_object().guardians, pk=guardian_id, status=GuardianMembership.Status.ACTIVE
         )
-        membership.status = GuardianMembership.Status.REVOKED
-        membership.save(update_fields=["status", "updated_at"])
+        revoke_guardian_membership(membership=membership, actor=request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["get", "post"])
@@ -419,15 +420,13 @@ class ReceivedInvitationDecisionView(APIView):
 
 class GuardianSelfRevokeView(APIView):
     def post(self, request, membership_id):
-        with transaction.atomic():
-            membership = get_object_or_404(
-                GuardianMembership.objects.select_for_update(),
-                pk=membership_id,
-                guardian=request.user,
-                status=GuardianMembership.Status.ACTIVE,
-            )
-            membership.status = GuardianMembership.Status.REVOKED
-            membership.save(update_fields=["status", "updated_at"])
+        membership = get_object_or_404(
+            GuardianMembership,
+            pk=membership_id,
+            guardian=request.user,
+            status=GuardianMembership.Status.ACTIVE,
+        )
+        revoke_guardian_membership(membership=membership, actor=request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 
@@ -457,8 +456,7 @@ class PushDeviceViewSet(
         return PushDevice.objects.filter(user=self.request.user)
 
     def perform_destroy(self, instance):
-        instance.active = False
-        instance.save(update_fields=["active", "updated_at"])
+        deactivate_push_device(device=instance, actor=self.request.user)
 
 
 class AlertIncidentViewSet(
@@ -467,6 +465,12 @@ class AlertIncidentViewSet(
     viewsets.GenericViewSet,
 ):
     serializer_class = AlertIncidentSerializer
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        response = super().finalize_response(request, response, *args, **kwargs)
+        response["Cache-Control"] = "no-store, private"
+        response["Pragma"] = "no-cache"
+        return response
 
     def get_queryset(self):
         return accessible_incidents(self.request.user).select_related("profile")

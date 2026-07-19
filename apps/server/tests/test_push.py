@@ -15,6 +15,7 @@ from core.management.commands import fetch_push_receipts as receipt_command
 from core.models import (
     AlertIncident,
     AlertRecipient,
+    AuditEvent,
     CheckIn,
     DeliveryAttempt,
     OutboxEvent,
@@ -170,6 +171,9 @@ def test_partial_multi_device_failure_keeps_success_and_deactivates_bad_device(p
     assert attempts[1].status == DeliveryAttempt.Status.PERMANENT_FAILURE
     assert first.active is True
     assert second.active is False
+    deactivation = AuditEvent.objects.get(event_type="device.deactivated", aggregate_id=second.id)
+    assert deactivation.actor is None
+    assert deactivation.actor_kind == AuditEvent.ActorKind.SYSTEM
 
 
 def test_retry_is_deduplicated_by_event_and_device(profile, other_user):

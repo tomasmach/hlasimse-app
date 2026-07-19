@@ -17,10 +17,9 @@ from django.contrib.auth.views import (
     PasswordResetDoneView,
     PasswordResetView,
 )
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.mail import send_mail
 from django.core.paginator import Paginator
-from django.db import transaction
 from django.db.models import Count, Max, Q
 from django.db.models.functions import TruncDate
 from django.http import Http404, HttpResponse
@@ -57,11 +56,12 @@ from .models import (
     PushDevice,
 )
 from .services import (
-    MAX_GUARDIANS_PER_PROFILE,
     accessible_incidents,
     create_invitation,
     create_profile,
     perform_check_in,
+    respond_to_invitation,
+    revoke_guardian_membership,
     update_profile,
 )
 
@@ -459,8 +459,7 @@ def guardian_remove_view(request, pk):
         profile__owner=request.user,
         status=GuardianMembership.Status.ACTIVE,
     )
-    membership.status = GuardianMembership.Status.REVOKED
-    membership.save(update_fields=["status", "updated_at"])
+    revoke_guardian_membership(membership=membership, actor=request.user)
     messages.success(request, "Strážce byl odebrán.")
     return redirect("guardians:list")
 
@@ -471,49 +470,17 @@ def guardian_respond_view(request, pk):
     decision = request.POST.get("decision")
     if decision not in {"accept", "decline"}:
         return HttpResponse(status=400)
-    with transaction.atomic():
-        invitation_ref = get_object_or_404(
-            GuardianInvitation,
-            pk=pk,
-            normalized_email=request.user.email.lower(),
+    try:
+        respond_to_invitation(
+            invitation_id=pk,
+            user=request.user,
+            decision=decision,
         )
-        CheckInProfile.objects.select_for_update().get(pk=invitation_ref.profile_id)
-        invitation = GuardianInvitation.objects.select_for_update().get(pk=invitation_ref.pk)
-        if invitation.status != GuardianInvitation.Status.PENDING:
-            raise Http404
-        if invitation.expires_at <= timezone.now():
-            invitation.status = GuardianInvitation.Status.EXPIRED
-            invitation.save(update_fields=["status", "updated_at"])
-            messages.error(request, "Pozvánka už vypršela.")
-            return redirect("guardians:list")
-        if decision == "decline":
-            invitation.status = GuardianInvitation.Status.REVOKED
-            invitation.save(update_fields=["status", "updated_at"])
-        else:
-            membership = GuardianMembership.objects.filter(
-                profile=invitation.profile,
-                guardian=request.user,
-            ).first()
-            activating = membership is None or membership.status != GuardianMembership.Status.ACTIVE
-            active_count = GuardianMembership.objects.filter(
-                profile=invitation.profile,
-                status=GuardianMembership.Status.ACTIVE,
-            ).count()
-            if activating and active_count >= MAX_GUARDIANS_PER_PROFILE:
-                messages.error(request, "Profil už má maximální počet aktivních strážců.")
-                return redirect("guardians:list")
-            if membership is None:
-                GuardianMembership.objects.create(
-                    profile=invitation.profile,
-                    guardian=request.user,
-                    status=GuardianMembership.Status.ACTIVE,
-                )
-            elif membership.status != GuardianMembership.Status.ACTIVE:
-                membership.status = GuardianMembership.Status.ACTIVE
-                membership.save(update_fields=["status", "updated_at"])
-            invitation.status = GuardianInvitation.Status.ACCEPTED
-            invitation.accepted_by = request.user
-            invitation.save(update_fields=["status", "accepted_by", "updated_at"])
+    except PermissionDenied as error:
+        raise Http404 from error
+    except ValidationError as error:
+        messages.error(request, "; ".join(error.messages))
+        return redirect("guardians:list")
     messages.success(
         request,
         "Pozvánka byla přijata." if decision == "accept" else "Pozvánka byla odmítnuta.",

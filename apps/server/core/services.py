@@ -10,6 +10,7 @@ from django.db import IntegrityError, connection, transaction
 from django.db.models import Exists, OuterRef, Q
 from django.utils import timezone
 
+from .audit import record_audit_event
 from .models import (
     AlertIncident,
     AlertRecipient,
@@ -18,6 +19,7 @@ from .models import (
     GuardianInvitation,
     GuardianMembership,
     OutboxEvent,
+    PushDevice,
 )
 
 MAX_PROFILES_PER_USER = 5
@@ -66,6 +68,18 @@ def create_profile(
         )
         profile.full_clean()
         profile.save()
+        record_audit_event(
+            event_type="profile.created",
+            aggregate_type="check_in_profile",
+            aggregate_id=profile.id,
+            actor=owner,
+            metadata={
+                "enabled": profile.enabled,
+                "is_paused": profile.is_paused,
+                "interval_seconds": profile.interval_seconds,
+                "deadline_generation": profile.deadline_generation,
+            },
+        )
         return profile
 
 
@@ -77,7 +91,7 @@ def _recipient_payload(incident: AlertIncident) -> dict[str, list[str]]:
 
 
 def _materialize_due_incident_locked(
-    *, profile: CheckInProfile, now
+    *, profile: CheckInProfile, now, actor=None
 ) -> tuple[AlertIncident | None, bool, bool]:
     """Materialize the current missed generation while the profile row is locked."""
     if (
@@ -87,6 +101,16 @@ def _materialize_due_incident_locked(
         or profile.next_deadline_at > now
     ):
         return None, False, False
+
+    existing_open = AlertIncident.objects.filter(
+        profile=profile,
+        status=AlertIncident.Status.OPEN,
+    ).first()
+    if (
+        existing_open is not None
+        and existing_open.deadline_generation != profile.deadline_generation
+    ):
+        return existing_open, False, False
 
     incident, created = AlertIncident.objects.get_or_create(
         profile=profile,
@@ -111,6 +135,17 @@ def _materialize_due_incident_locked(
                 )
                 for guardian_id in guardian_ids
             ]
+        )
+        record_audit_event(
+            event_type="incident.opened",
+            aggregate_type="alert_incident",
+            aggregate_id=incident.id,
+            actor=actor,
+            metadata={
+                "profile_id": str(profile.id),
+                "deadline_generation": profile.deadline_generation,
+                "recipient_count": len(guardian_ids),
+            },
         )
     _, event_created = OutboxEvent.objects.get_or_create(
         deduplication_key=f"alert-opened:{profile.id}:{profile.deadline_generation}",
@@ -147,6 +182,15 @@ def _resume_expired_pause_locked(*, profile: CheckInProfile, now) -> bool:
             "updated_at",
         ]
     )
+    record_audit_event(
+        event_type="profile.resumed",
+        aggregate_type="check_in_profile",
+        aggregate_id=profile.id,
+        metadata={
+            "automatic": True,
+            "deadline_generation": profile.deadline_generation,
+        },
+    )
     return True
 
 
@@ -155,8 +199,11 @@ def update_profile(*, profile: CheckInProfile, values: dict) -> CheckInProfile:
         locked = CheckInProfile.objects.select_for_update().get(pk=profile.pk)
         now = timezone.now()
         _resume_expired_pause_locked(profile=locked, now=now)
-        _materialize_due_incident_locked(profile=locked, now=now)
+        _materialize_due_incident_locked(profile=locked, now=now, actor=locked.owner)
 
+        actual_changed_fields = {
+            field for field, value in values.items() if value != getattr(locked, field)
+        }
         interval_changed = (
             "interval_seconds" in values and values["interval_seconds"] != locked.interval_seconds
         )
@@ -185,6 +232,33 @@ def update_profile(*, profile: CheckInProfile, values: dict) -> CheckInProfile:
             )
         locked.full_clean()
         locked.save()
+        changed_fields = sorted(actual_changed_fields)
+        if pause_changed:
+            record_audit_event(
+                event_type="profile.paused" if locked.is_paused else "profile.resumed",
+                aggregate_type="check_in_profile",
+                aggregate_id=locked.id,
+                actor=locked.owner,
+                metadata={
+                    "automatic": False,
+                    "deadline_generation": locked.deadline_generation,
+                    "has_scheduled_resume": locked.paused_until is not None,
+                },
+            )
+        non_pause_fields = [
+            field for field in changed_fields if field not in {"is_paused", "paused_until"}
+        ]
+        if non_pause_fields:
+            record_audit_event(
+                event_type="profile.updated",
+                aggregate_type="check_in_profile",
+                aggregate_id=locked.id,
+                actor=locked.owner,
+                metadata={
+                    "changed_fields": non_pause_fields,
+                    "deadline_generation": locked.deadline_generation,
+                },
+            )
         return locked
 
 
@@ -207,7 +281,7 @@ def perform_check_in(
         if not locked.enabled:
             raise ValidationError({"profile": "Kontrolní profil není aktivní."})
 
-        _materialize_due_incident_locked(profile=locked, now=now)
+        _materialize_due_incident_locked(profile=locked, now=now, actor=locked.owner)
 
         locked.deadline_generation += 1
         locked.last_checked_in_at = now
@@ -256,6 +330,17 @@ def perform_check_in(
                     "updated_at",
                 ]
             )
+            record_audit_event(
+                event_type="incident.resolved",
+                aggregate_type="alert_incident",
+                aggregate_id=incident.id,
+                actor=locked.owner,
+                metadata={
+                    "profile_id": str(locked.id),
+                    "check_in_id": str(check_in.id),
+                    "resolution": "confirmed_check_in",
+                },
+            )
             OutboxEvent.objects.get_or_create(
                 deduplication_key=f"alert-resolved:{incident.id}",
                 defaults={
@@ -284,6 +369,18 @@ def perform_check_in(
                         locked.next_deadline_at.isoformat() if locked.next_deadline_at else None
                     ),
                 },
+            },
+        )
+        record_audit_event(
+            event_type="checkin.confirmed",
+            aggregate_type="check_in",
+            aggregate_id=check_in.id,
+            actor=locked.owner,
+            metadata={
+                "profile_id": str(locked.id),
+                "deadline_generation": locked.deadline_generation,
+                "resolved_incident_count": len(open_incidents),
+                "has_optional_position": latitude is not None,
             },
         )
         return CheckInResult(check_in, locked, True)
@@ -338,6 +435,13 @@ def create_invitation(
             aggregate_id=invitation.id,
             deduplication_key=f"guardian-invitation:{invitation.id}",
             payload={"invitation_id": str(invitation.id)},
+        )
+        record_audit_event(
+            event_type="guardian.invitation_created",
+            aggregate_type="guardian_invitation",
+            aggregate_id=invitation.id,
+            actor=invited_by,
+            metadata={"profile_id": str(profile.id), "expires_in_days": 7},
         )
     return invitation, raw_token
 
@@ -398,6 +502,16 @@ def _accept_invitation_locked(
     invitation.status = GuardianInvitation.Status.ACCEPTED
     invitation.accepted_by = user
     invitation.save(update_fields=["status", "accepted_by", "updated_at"])
+    record_audit_event(
+        event_type="guardian.invitation_accepted",
+        aggregate_type="guardian_invitation",
+        aggregate_id=invitation.id,
+        actor=user,
+        metadata={
+            "profile_id": str(invitation.profile_id),
+            "membership_id": str(membership.id),
+        },
+    )
     return membership
 
 
@@ -432,7 +546,52 @@ def respond_to_invitation(*, invitation_id, user, decision: str):
             raise ValidationError({"invitation": "Pozvánka vypršela."})
         invitation.status = GuardianInvitation.Status.REVOKED
         invitation.save(update_fields=["status", "updated_at"])
+        record_audit_event(
+            event_type="guardian.invitation_declined",
+            aggregate_type="guardian_invitation",
+            aggregate_id=invitation.id,
+            actor=user,
+            metadata={"profile_id": str(invitation.profile_id)},
+        )
         return invitation, None
+
+
+def revoke_guardian_membership(*, membership: GuardianMembership, actor) -> bool:
+    with transaction.atomic():
+        CheckInProfile.objects.select_for_update().get(pk=membership.profile_id)
+        locked = GuardianMembership.objects.select_for_update().get(pk=membership.pk)
+        if locked.status == GuardianMembership.Status.REVOKED:
+            return False
+        locked.status = GuardianMembership.Status.REVOKED
+        locked.save(update_fields=["status", "updated_at"])
+        record_audit_event(
+            event_type="guardian.membership_revoked",
+            aggregate_type="guardian_membership",
+            aggregate_id=locked.id,
+            actor=actor,
+            metadata={
+                "profile_id": str(locked.profile_id),
+                "self_revoked": actor.id == locked.guardian_id,
+            },
+        )
+        return True
+
+
+def deactivate_push_device(*, device: PushDevice, actor) -> bool:
+    with transaction.atomic():
+        locked = PushDevice.objects.select_for_update().get(pk=device.pk)
+        if not locked.active:
+            return False
+        locked.active = False
+        locked.save(update_fields=["active", "updated_at"])
+        record_audit_event(
+            event_type="device.deactivated",
+            aggregate_type="push_device",
+            aggregate_id=locked.id,
+            actor=actor,
+            metadata={"platform": locked.platform},
+        )
+        return True
 
 
 def sweep_expired_deadlines(*, now=None, limit: int = 500) -> tuple[int, int]:

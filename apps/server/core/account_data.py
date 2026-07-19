@@ -2,6 +2,7 @@ import uuid
 
 from django.db import transaction
 
+from .audit import record_audit_event
 from .models import (
     AlertIncident,
     AlertRecipient,
@@ -271,5 +272,20 @@ def delete_account_safely(*, user_id, password: str) -> None:
             paused_until=None,
             next_deadline_at=None,
         )
+        for device in PushDevice.objects.filter(user=user, active=True).only("id", "platform"):
+            record_audit_event(
+                event_type="device.deactivated",
+                aggregate_type="push_device",
+                aggregate_id=device.id,
+                actor=user,
+                metadata={"platform": device.platform, "account_deletion": True},
+            )
         PushDevice.objects.filter(user=user).update(active=False)
+        record_audit_event(
+            event_type="account.deleted",
+            aggregate_type="account",
+            aggregate_id=user.id,
+            actor=user,
+            metadata={"method": "self_service"},
+        )
         user.delete()

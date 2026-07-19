@@ -8,7 +8,16 @@ from django.db import close_old_connections, connection, connections
 from django.utils import timezone
 from rest_framework.test import APIClient
 
-from core.models import AlertIncident, CheckIn, GuardianInvitation, GuardianMembership, User
+from core.models import (
+    AlertIncident,
+    AuditEvent,
+    CheckIn,
+    GuardianInvitation,
+    GuardianMembership,
+    OutboxEvent,
+    User,
+)
+from core.reconciliation import reconcile_domain_state
 from core.serializers import RegisterSerializer
 from core.services import (
     accept_invitation,
@@ -133,6 +142,30 @@ def test_simultaneous_sweep_and_checkin_cannot_skip_a_late_incident():
     assert incident.status == AlertIncident.Status.RESOLVED
     assert incident.resolved_by_check_in == profile.check_ins.get()
     assert AlertIncident.objects.filter(profile=profile).count() == 1
+
+
+def test_concurrent_reconciliation_materializes_one_incident_and_audit_event():
+    owner = User.objects.create_user(email="reconcile@example.cz", password="Long-pass-123")
+    profile = create_profile(owner=owner, name="Reconcile", interval_seconds=3_600)
+    profile.next_deadline_at = timezone.now() - timedelta(minutes=1)
+    profile.save(update_fields=["next_deadline_at", "updated_at"])
+
+    def reconcile(_number):
+        return reconcile_domain_state(repair=True).repairs
+
+    run_two_workers(reconcile)
+
+    incident = AlertIncident.objects.get(profile=profile)
+    assert (
+        OutboxEvent.objects.filter(
+            deduplication_key=f"alert-opened:{profile.id}:{profile.deadline_generation}"
+        ).count()
+        == 1
+    )
+    assert (
+        AuditEvent.objects.filter(event_type="incident.opened", aggregate_id=incident.id).count()
+        == 1
+    )
 
 
 def test_registration_rejects_case_insensitive_duplicate_as_validation_error(monkeypatch):

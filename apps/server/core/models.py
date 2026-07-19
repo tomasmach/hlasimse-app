@@ -31,6 +31,14 @@ class UUIDModel(models.Model):
         abstract = True
 
 
+class ImmutableAuditEventQuerySet(models.QuerySet):
+    def update(self, **kwargs):
+        raise TypeError("Audit events are immutable.")
+
+    def delete(self):
+        raise TypeError("Audit events are immutable.")
+
+
 class User(AbstractBaseUser, PermissionsMixin):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     email = models.EmailField(unique=True)
@@ -213,7 +221,12 @@ class AlertIncident(UUIDModel):
         constraints = [
             models.UniqueConstraint(
                 fields=["profile", "deadline_generation"], name="unique_incident_generation"
-            )
+            ),
+            models.UniqueConstraint(
+                fields=["profile"],
+                condition=Q(status="open"),
+                name="unique_open_incident_per_profile",
+            ),
         ]
 
     def __str__(self) -> str:
@@ -356,3 +369,47 @@ class WorkerHeartbeat(models.Model):
 
     def __str__(self) -> str:
         return f"{self.worker_name} at {self.last_seen_at.isoformat()}"
+
+
+class AuditEvent(models.Model):
+    class ActorKind(models.TextChoices):
+        USER = "user", "User"
+        SYSTEM = "system", "System"
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    occurred_at = models.DateTimeField(default=timezone.now, db_index=True, editable=False)
+    event_type = models.CharField(max_length=80, db_index=True, editable=False)
+    actor_kind = models.CharField(max_length=16, choices=ActorKind, editable=False)
+    actor = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="audit_events",
+        editable=False,
+    )
+    aggregate_type = models.CharField(max_length=80, db_index=True, editable=False)
+    aggregate_id = models.UUIDField(db_index=True, editable=False)
+    metadata = models.JSONField(default=dict, blank=True, editable=False)
+
+    objects = ImmutableAuditEventQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["occurred_at", "id"]
+        indexes = [
+            models.Index(fields=["aggregate_type", "aggregate_id", "occurred_at"]),
+        ]
+
+    def __str__(self) -> str:
+        return f"{self.event_type}: {self.aggregate_type}/{self.aggregate_id}"
+
+    def save(self, *args, **kwargs):
+        if not self._state.adding:
+            raise TypeError("Audit events are immutable.")
+        from .audit import validate_audit_metadata
+
+        validate_audit_metadata(self.metadata)
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise TypeError("Audit events are immutable.")

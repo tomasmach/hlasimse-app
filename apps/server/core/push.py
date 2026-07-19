@@ -19,6 +19,7 @@ from .models import (
     PushDevice,
     WorkerHeartbeat,
 )
+from .services import deactivate_push_device
 
 ALERT_EVENT_TYPES = {"alert.opened", "alert.resolved", "alert.retry"}
 PROCESSABLE_EVENT_TYPES = ALERT_EVENT_TYPES | {"checkin.accepted", "guardian.invited"}
@@ -537,7 +538,7 @@ def process_one_outbox_event(*, client: httpx.Client | None = None) -> bool:
                     update_fields=["status", "next_retry_at", "response_data", "updated_at"]
                 )
                 if code == "DeviceNotRegistered":
-                    PushDevice.objects.filter(pk=device.id).update(active=False)
+                    deactivate_push_device(device=device, actor=None)
             else:
                 retry_needed = _mark_attempt_retryable(attempt, ticket) or retry_needed
         if invalid_credentials:
@@ -669,7 +670,9 @@ def fetch_push_receipts(*, client: httpx.Client | None = None, limit: int = 1000
                     attempt.status = DeliveryAttempt.Status.PERMANENT_FAILURE
                     attempt.next_retry_at = None
                     if code == "DeviceNotRegistered" and attempt.device_id:
-                        PushDevice.objects.filter(pk=attempt.device_id).update(active=False)
+                        device = PushDevice.objects.filter(pk=attempt.device_id).first()
+                        if device is not None:
+                            deactivate_push_device(device=device, actor=None)
                     if attempt.outbox_event_id:
                         event_ids_to_finish.add(attempt.outbox_event_id)
                 else:
