@@ -38,6 +38,9 @@ jobs:
       - name: Run TypeScript checks
         run: npm run typecheck
 
+      - name: Check public product contract
+        run: npm run check:public-contract
+
       - name: Validate Expo project
         working-directory: apps/mobile
         run: npx expo-doctor
