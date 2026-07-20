@@ -77,7 +77,7 @@ tags:
 - tapOn:
     id: "tab-activity"
 - extendedWaitUntil:
-    visible: "Aktivní incident"
+    visible: "Aktivní incident profilu E2E bezpečnostní profil"
     timeout: 15000
 - tapOn: "Aktivní incident profilu E2E bezpečnostní profil"
 - extendedWaitUntil:
