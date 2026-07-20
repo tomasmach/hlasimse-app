@@ -34,7 +34,33 @@ def delivery_health(*, heartbeat_max_age: timedelta = timedelta(minutes=5)) -> d
         status=OutboxEvent.Status.FAILED,
         event_type="guardian.invited",
     ).count()
-    unsupported_pending_events = 0
+    retrying_verification_events = (
+        OutboxEvent.objects.filter(
+            status=OutboxEvent.Status.PENDING,
+            event_type="user.email_verification",
+        )
+        .exclude(last_error="")
+        .count()
+    )
+    failed_verification_events = OutboxEvent.objects.filter(
+        status=OutboxEvent.Status.FAILED,
+        event_type="user.email_verification",
+    ).count()
+    supported_event_types = {
+        "alert.opened",
+        "alert.resolved",
+        "alert.retry",
+        "checkin.accepted",
+        "guardian.invited",
+        "user.email_verification",
+    }
+    unsupported_pending_events = (
+        OutboxEvent.objects.filter(
+            status__in=[OutboxEvent.Status.PENDING, OutboxEvent.Status.PROCESSING]
+        )
+        .exclude(event_type__in=supported_event_types)
+        .count()
+    )
     retrying_alert_events = (
         OutboxEvent.objects.filter(
             status=OutboxEvent.Status.PENDING,
@@ -52,6 +78,7 @@ def delivery_health(*, heartbeat_max_age: timedelta = timedelta(minutes=5)) -> d
             failed_events,
             unsupported_pending_events,
             retrying_invitation_events,
+            retrying_verification_events,
             retrying_alert_events,
             dead_letters,
         ]
@@ -65,6 +92,8 @@ def delivery_health(*, heartbeat_max_age: timedelta = timedelta(minutes=5)) -> d
         "unsupported_pending_events": unsupported_pending_events,
         "retrying_invitation_events": retrying_invitation_events,
         "failed_invitation_events": failed_invitation_events,
+        "retrying_verification_events": retrying_verification_events,
+        "failed_verification_events": failed_verification_events,
         "retrying_alert_events": retrying_alert_events,
         "dead_letter_deliveries": dead_letters,
     }

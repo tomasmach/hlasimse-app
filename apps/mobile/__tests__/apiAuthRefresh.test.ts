@@ -12,7 +12,7 @@ const json = (body: unknown, status = 200) => new Response(JSON.stringify(body),
 });
 
 it("restores the encrypted cached user during a cold offline start", async () => {
-  const cached = { id: "cached-user", email: "cached@example.test", first_name: "Jana", last_name: "", date_joined: "" };
+  const cached = { id: "cached-user", email: "cached@example.test", first_name: "Jana", last_name: "", date_joined: "", email_verified_at: "2026-07-19T00:00:00Z" };
   await setStoredUser(cached);
   jest.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("Network request failed"));
   await expect(restoreUser()).resolves.toEqual(cached);
@@ -67,7 +67,7 @@ it("purges the previous account queue on account switch and the current queue on
   jest.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
     if (url.endsWith("/auth/token/")) return json({ access: "new-access", refresh: "new-refresh" });
-    if (url.endsWith("/auth/me/")) return json({ id: "new-user", email: "new@example.test", first_name: "New", last_name: "", date_joined: "" });
+    if (url.endsWith("/auth/me/")) return json({ id: "new-user", email: "new@example.test", first_name: "New", last_name: "", date_joined: "", email_verified_at: "2026-07-19T00:00:00Z" });
     if (url.endsWith("/push-devices/")) return json([]);
     if (url.endsWith("/auth/logout/")) return new Response(null, { status: 204 });
     return json({}, 404);

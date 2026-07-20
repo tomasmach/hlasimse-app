@@ -11,8 +11,14 @@ import {
 } from "@/lib/authStorage";
 import { clearQueue } from "@/lib/offlineQueue";
 import { getInstallationId } from "@/lib/installation";
+import { clearConfirmedProfiles } from "@/lib/profileCache";
 import { deactivateCurrentPushDevice } from "@/lib/pushDevices";
-import type { AuthTokens, AuthUser } from "@/types/api";
+import type {
+  AuthTokens,
+  AuthUser,
+  EmailVerificationResult,
+  RegistrationResult,
+} from "@/types/api";
 
 async function bindAccount(user: AuthUser): Promise<void> {
   const previousUserId = await getStoredUserId();
@@ -45,8 +51,8 @@ export async function register(input: {
   password: string;
   firstName: string;
   lastName?: string;
-}): Promise<AuthUser> {
-  await apiRequest<AuthUser>("/api/v1/auth/register/", {
+}): Promise<RegistrationResult> {
+  return apiRequest<RegistrationResult>("/api/v1/auth/register/", {
     method: "POST",
     auth: false,
     body: {
@@ -56,7 +62,22 @@ export async function register(input: {
       last_name: input.lastName?.trim() || "",
     },
   });
-  return login(input.email, input.password);
+}
+
+export async function resendEmailVerification(email: string): Promise<RegistrationResult> {
+  return apiRequest<RegistrationResult>("/api/v1/auth/email-verification/resend/", {
+    method: "POST",
+    auth: false,
+    body: { email: email.trim().toLowerCase() },
+  });
+}
+
+export async function confirmEmailVerification(token: string): Promise<EmailVerificationResult> {
+  return apiRequest<EmailVerificationResult>("/api/v1/auth/email-verification/confirm/", {
+    method: "POST",
+    auth: false,
+    body: { token },
+  });
 }
 
 export async function restoreUser(): Promise<AuthUser | null> {
@@ -75,7 +96,10 @@ export async function restoreUser(): Promise<AuthUser | null> {
 
 export async function clearLocalSession(options: { purgeQueue: boolean }): Promise<void> {
   const userId = await getStoredUserId();
-  if (options.purgeQueue && userId) await clearQueue(userId, await getInstallationId());
+  if (userId) {
+    if (options.purgeQueue) await clearQueue(userId, await getInstallationId());
+    await clearConfirmedProfiles(userId);
+  }
   await Promise.all([clearTokens(), clearStoredUserId()]);
 }
 

@@ -32,6 +32,12 @@ from .account_data import (
     build_account_export,
     delete_account_safely,
 )
+from .email_verification import (
+    GENERIC_SENT_MESSAGE,
+    register_unverified_user,
+    resend_verification,
+    verify_signed_token,
+)
 from .models import (
     AlertAcknowledgement,
     AlertIncident,
@@ -47,6 +53,8 @@ from .serializers import (
     CheckInHistorySerializer,
     CheckInInputSerializer,
     CheckInReceiptSerializer,
+    EmailVerificationConfirmSerializer,
+    EmailVerificationRequestSerializer,
     GuardianSerializer,
     InvitationAcceptSerializer,
     InvitationCreateSerializer,
@@ -74,9 +82,61 @@ from .services import (
 logger = logging.getLogger(__name__)
 
 
+class RegistrationThrottle(SimpleRateThrottle):
+    rate = "5/hour"
+    scope = "registration"
+
+    def get_cache_key(self, request, view):
+        return self.cache_format % {"scope": self.scope, "ident": self.get_ident(request)}
+
+
 class RegisterView(generics.CreateAPIView):
     permission_classes = (permissions.AllowAny,)
     serializer_class = RegisterSerializer
+    throttle_classes = (RegistrationThrottle,)
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        values = serializer.validated_data
+        register_unverified_user(
+            email=values["email"],
+            password=values["password"],
+            first_name=values.get("first_name", ""),
+            last_name=values.get("last_name", ""),
+        )
+        return Response(
+            {"detail": GENERIC_SENT_MESSAGE, "verification_required": True},
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+class EmailVerificationResendView(APIView):
+    permission_classes = (permissions.AllowAny,)
+    authentication_classes = ()
+
+    def post(self, request):
+        serializer = EmailVerificationRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        resend_verification(email=serializer.validated_data["email"])
+        return Response(
+            {"detail": GENERIC_SENT_MESSAGE, "verification_required": True},
+            status=status.HTTP_202_ACCEPTED,
+        )
+
+
+class EmailVerificationConfirmView(APIView):
+    permission_classes = (permissions.AllowAny,)
+    authentication_classes = ()
+
+    def post(self, request):
+        serializer = EmailVerificationConfirmSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        result = verify_signed_token(serializer.validated_data["token"])
+        response_status = status.HTTP_200_OK
+        if result.status in {"invalid", "expired"}:
+            response_status = status.HTTP_400_BAD_REQUEST
+        return Response({"status": result.status}, status=response_status)
 
 
 class MeView(generics.RetrieveUpdateAPIView):

@@ -12,13 +12,13 @@ from core.models import (
     AlertIncident,
     AuditEvent,
     CheckIn,
+    EmailVerificationChallenge,
     GuardianInvitation,
     GuardianMembership,
     OutboxEvent,
     User,
 )
 from core.reconciliation import reconcile_domain_state
-from core.serializers import RegisterSerializer
 from core.services import (
     accept_invitation,
     create_invitation,
@@ -168,20 +168,14 @@ def test_concurrent_reconciliation_materializes_one_incident_and_audit_event():
     )
 
 
-def test_registration_rejects_case_insensitive_duplicate_as_validation_error(monkeypatch):
+def test_concurrent_registration_is_non_enumerating_and_idempotent():
     create_barrier = Barrier(2)
-    original_create = RegisterSerializer.create
-
-    def synchronized_create(serializer, validated_data):
-        create_barrier.wait(timeout=10)
-        return original_create(serializer, validated_data)
-
-    monkeypatch.setattr(RegisterSerializer, "create", synchronized_create)
 
     def register(number):
         client = APIClient()
         client.raise_request_exception = False
         email = "CaseSensitive@example.cz" if number == 0 else "casesensitive@example.cz"
+        create_barrier.wait(timeout=10)
         return client.post(
             "/api/v1/auth/register/",
             {"email": email, "password": "Safely-testing-123"},
@@ -189,5 +183,7 @@ def test_registration_rejects_case_insensitive_duplicate_as_validation_error(mon
 
     statuses = run_two_workers(register)
 
-    assert sorted(statuses) == [201, 400]
+    assert statuses == [202, 202]
     assert User.objects.filter(email="casesensitive@example.cz").count() == 1
+    assert EmailVerificationChallenge.objects.count() == 1
+    assert OutboxEvent.objects.filter(event_type="user.email_verification").count() == 1

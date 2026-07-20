@@ -4,6 +4,16 @@ export interface AuthUser {
   first_name: string;
   last_name: string;
   date_joined: string;
+  email_verified_at: string;
+}
+
+export interface RegistrationResult {
+  detail: string;
+  verification_required: true;
+}
+
+export interface EmailVerificationResult {
+  status: "verified" | "already_verified" | "expired" | "invalid";
 }
 
 export interface AuthTokens {

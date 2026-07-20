@@ -1,0 +1,24 @@
+{% extends "core/auth/auth_base.html" %}
+{% block title %}Ověření e-mailu — Hlásím se{% endblock %}
+{% block auth_content %}
+<header class="form-heading">
+  {% if verification_status == "verified" %}
+    <h1>E-mail je ověřený.</h1>
+    <p>Teď se můžete bezpečně přihlásit a dokončit nastavení.</p>
+  {% elif verification_status == "already_verified" %}
+    <h1>E-mail už je ověřený.</h1>
+    <p>Odkaz už byl použit. K účtu se můžete přihlásit.</p>
+  {% elif verification_status == "expired" %}
+    <h1>Odkaz vypršel.</h1>
+    <p>Ověřovací odkazy platí 24 hodin. Nechte si poslat nový.</p>
+  {% else %}
+    <h1>Odkaz není platný.</h1>
+    <p>Mohl být nahrazen novějším odkazem nebo účet už neexistuje.</p>
+  {% endif %}
+</header>
+{% if verification_status == "verified" or verification_status == "already_verified" %}
+  <a class="button button--coral button--wide" href="{% url 'accounts:login' %}">Přihlásit se</a>
+{% else %}
+  <a class="button button--coral button--wide" href="{% url 'accounts:resend-verification' %}">Poslat nový odkaz</a>
+{% endif %}
+{% endblock %}

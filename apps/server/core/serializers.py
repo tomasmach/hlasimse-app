@@ -25,6 +25,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         model = get_user_model()
         fields = ("id", "email", "password", "first_name", "last_name")
         read_only_fields = ("id",)
+        extra_kwargs = {"email": {"validators": []}}
 
     def validate_email(self, value):
         return value.strip().lower()
@@ -43,11 +44,29 @@ class RegisterSerializer(serializers.ModelSerializer):
             ) from exc
 
 
+class EmailVerificationRequestSerializer(serializers.Serializer):
+    email = serializers.EmailField(write_only=True)
+
+    def validate_email(self, value):
+        return value.strip().lower()
+
+
+class EmailVerificationConfirmSerializer(serializers.Serializer):
+    token = serializers.CharField(write_only=True, max_length=1024, trim_whitespace=False)
+
+
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
         model = get_user_model()
-        fields = ("id", "email", "first_name", "last_name", "date_joined")
-        read_only_fields = ("id", "email", "date_joined")
+        fields = (
+            "id",
+            "email",
+            "first_name",
+            "last_name",
+            "date_joined",
+            "email_verified_at",
+        )
+        read_only_fields = ("id", "email", "date_joined", "email_verified_at")
 
     def validate_first_name(self, value):
         return value.strip()

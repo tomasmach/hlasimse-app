@@ -4,7 +4,7 @@ from datetime import timedelta
 
 from django.conf import settings
 from django.contrib import messages
-from django.contrib.auth import login, logout
+from django.contrib.auth import logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import PasswordResetForm
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -36,10 +36,16 @@ from .account_data import (
     AccountPasswordInvalid,
     delete_account_safely,
 )
+from .email_verification import (
+    register_unverified_user,
+    resend_verification,
+    verify_signed_token,
+)
 from .forms import (
     AccountSettingsForm,
     CheckInProfileForm,
     DeleteAccountForm,
+    EmailVerificationResendForm,
     ExportDataForm,
     GuardianInvitationForm,
     LoginForm,
@@ -136,11 +142,36 @@ def register_view(request):
         return redirect("core:dashboard")
     form = RegisterForm(request.POST if request.method == "POST" else None)
     if request.method == "POST" and form.is_valid():
-        user = form.save()
-        login(request, user)
-        messages.success(request, "Účet byl vytvořen. Teď nastavte první profil.")
-        return redirect("checkins:profile-create")
+        register_unverified_user(
+            email=form.cleaned_data["email"],
+            password=form.cleaned_data["password1"],
+            first_name=form.cleaned_data["first_name"],
+            last_name=form.cleaned_data["last_name"],
+        )
+        return redirect("accounts:verification-sent")
     return render(request, "core/auth/register.html", {"form": form})
+
+
+def verification_sent_view(request):
+    return render(request, "core/auth/verification_sent.html")
+
+
+def resend_verification_view(request):
+    form = EmailVerificationResendForm(request.POST if request.method == "POST" else None)
+    if request.method == "POST" and form.is_valid():
+        resend_verification(email=form.cleaned_data["email"])
+        return redirect("accounts:verification-sent")
+    return render(request, "core/auth/resend_verification.html", {"form": form})
+
+
+def verify_email_view(request, token):
+    result = verify_signed_token(token)
+    return render(
+        request,
+        "core/auth/verify_email_result.html",
+        {"verification_status": result.status},
+        status=200,
+    )
 
 
 def _notification_health(profiles):

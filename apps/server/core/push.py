@@ -10,10 +10,16 @@ from django.db import connection, transaction
 from django.db.models import Q
 from django.utils import timezone
 
-from .email_delivery import InvitationEmailDeliveryError, send_guardian_invitation_email
+from .email_delivery import (
+    InvitationEmailDeliveryError,
+    VerificationEmailDeliveryError,
+    send_guardian_invitation_email,
+    send_verification_email,
+)
 from .models import (
     AlertIncident,
     DeliveryAttempt,
+    EmailVerificationChallenge,
     GuardianInvitation,
     OutboxEvent,
     PushDevice,
@@ -22,7 +28,11 @@ from .models import (
 from .services import deactivate_push_device
 
 ALERT_EVENT_TYPES = {"alert.opened", "alert.resolved", "alert.retry"}
-PROCESSABLE_EVENT_TYPES = ALERT_EVENT_TYPES | {"checkin.accepted", "guardian.invited"}
+PROCESSABLE_EVENT_TYPES = ALERT_EVENT_TYPES | {
+    "checkin.accepted",
+    "guardian.invited",
+    "user.email_verification",
+}
 PERMANENT_DEVICE_ERRORS = {"DeviceNotRegistered", "MessageTooBig"}
 GLOBAL_CONFIGURATION_ERRORS = {"InvalidCredentials"}
 MAX_DELIVERY_ATTEMPTS = 5
@@ -390,6 +400,38 @@ def process_one_outbox_event(*, client: httpx.Client | None = None) -> bool:
             _schedule_event_retry(event, str(exc))
         else:
             _mark_event_processed(event, note="Guardian invitation email accepted by SMTP")
+        return True
+
+    if event.event_type == "user.email_verification":
+        challenge = (
+            EmailVerificationChallenge.objects.select_related("user")
+            .filter(pk=event.aggregate_id)
+            .first()
+        )
+        if challenge is None:
+            _mark_event_processed(event, note="Verification was deleted before email delivery")
+            return True
+        now = timezone.now()
+        if challenge.user.email_verified_at is not None or challenge.used_at is not None:
+            _mark_event_processed(event, note="Email was already verified")
+            return True
+        if challenge.cancelled_at is not None:
+            _mark_event_processed(event, note="Verification was replaced before email delivery")
+            return True
+        if challenge.expires_at <= now:
+            EmailVerificationChallenge.objects.filter(
+                pk=challenge.pk,
+                used_at__isnull=True,
+                cancelled_at__isnull=True,
+            ).update(cancelled_at=now, updated_at=now)
+            _mark_event_processed(event, note="Verification expired before email delivery")
+            return True
+        try:
+            send_verification_email(challenge=challenge, event=event)
+        except VerificationEmailDeliveryError as exc:
+            _schedule_event_retry(event, str(exc))
+        else:
+            _mark_event_processed(event, note="Verification email accepted by SMTP")
         return True
 
     if event.event_type == "alert.resolved":

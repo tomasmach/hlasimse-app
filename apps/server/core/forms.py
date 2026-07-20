@@ -1,12 +1,17 @@
 from django import forms
 from django.contrib.auth import get_user_model
-from django.contrib.auth.forms import AuthenticationForm, UserCreationForm
+from django.contrib.auth.forms import AuthenticationForm
+from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 
 from .models import MAX_INTERVAL_SECONDS, MIN_INTERVAL_SECONDS, CheckInProfile
 
 
 class LoginForm(AuthenticationForm):
+    error_messages = {
+        "invalid_login": ("E-mail nebo heslo není správné, případně e-mail ještě nebyl ověřený."),
+        "inactive": "Tento účet není aktivní.",
+    }
     username = forms.EmailField(
         label="E-mail",
         widget=forms.EmailInput(attrs={"autocomplete": "email", "autofocus": True}),
@@ -18,29 +23,50 @@ class LoginForm(AuthenticationForm):
     )
 
 
-class RegisterForm(UserCreationForm):
+class RegisterForm(forms.Form):
     email = forms.EmailField(
         label="E-mail",
         widget=forms.EmailInput(attrs={"autocomplete": "email", "autofocus": True}),
     )
     first_name = forms.CharField(label="Jméno", max_length=150, required=False)
     last_name = forms.CharField(label="Příjmení", max_length=150, required=False)
-
-    class Meta:
-        model = get_user_model()
-        fields = ("email", "first_name", "last_name", "password1", "password2")
+    password1 = forms.CharField(
+        label="Heslo",
+        strip=False,
+        widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}),
+    )
+    password2 = forms.CharField(
+        label="Heslo znovu",
+        strip=False,
+        widget=forms.PasswordInput(attrs={"autocomplete": "new-password"}),
+    )
 
     def clean_email(self):
-        email = get_user_model().objects.normalize_email(self.cleaned_data["email"]).lower()
-        if get_user_model().objects.filter(email__iexact=email).exists():
-            raise ValidationError("Účet s tímto e-mailem už existuje.")
-        return email
+        return get_user_model().objects.normalize_email(self.cleaned_data["email"]).lower()
 
     def clean(self):
         cleaned_data = super().clean()
+        password = cleaned_data.get("password1")
+        if password and password != cleaned_data.get("password2"):
+            self.add_error("password2", "Hesla se neshodují.")
+        elif password:
+            try:
+                validate_password(password)
+            except ValidationError as exc:
+                self.add_error("password1", exc)
         if not self.data.get("terms"):
             raise ValidationError("Pro vytvoření účtu je nutné přijmout podmínky.")
         return cleaned_data
+
+
+class EmailVerificationResendForm(forms.Form):
+    email = forms.EmailField(
+        label="E-mail",
+        widget=forms.EmailInput(attrs={"autocomplete": "email", "autofocus": True}),
+    )
+
+    def clean_email(self):
+        return get_user_model().objects.normalize_email(self.cleaned_data["email"]).lower()
 
 
 INTERVAL_CHOICES = (

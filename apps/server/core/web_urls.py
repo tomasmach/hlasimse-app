@@ -13,6 +13,21 @@ core_patterns = (
 account_patterns = (
     [
         path("registrace/", web_views.register_view, name="register"),
+        path(
+            "overeni-emailu/odeslano/",
+            web_views.verification_sent_view,
+            name="verification-sent",
+        ),
+        path(
+            "overeni-emailu/odeslat-znovu/",
+            web_views.resend_verification_view,
+            name="resend-verification",
+        ),
+        path(
+            "overeni-emailu/<str:token>/",
+            web_views.verify_email_view,
+            name="verify-email",
+        ),
         path("prihlaseni/", web_views.SessionLoginView.as_view(), name="login"),
         path("odhlaseni/", web_views.SessionLogoutView.as_view(), name="logout"),
         path("obnova-hesla/", web_views.SecurePasswordResetView.as_view(), name="password_reset"),

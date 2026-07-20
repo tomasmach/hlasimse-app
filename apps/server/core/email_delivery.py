@@ -5,10 +5,15 @@ from django.conf import settings
 from django.core.mail import EmailMultiAlternatives, get_connection
 from django.utils.html import escape
 
-from .models import GuardianInvitation, OutboxEvent
+from .email_verification import verification_url
+from .models import EmailVerificationChallenge, GuardianInvitation, OutboxEvent
 
 
 class InvitationEmailDeliveryError(RuntimeError):
+    """A transient SMTP failure that is safe for the outbox worker to retry."""
+
+
+class VerificationEmailDeliveryError(RuntimeError):
     """A transient SMTP failure that is safe for the outbox worker to retry."""
 
 
@@ -57,4 +62,42 @@ def send_guardian_invitation_email(*, invitation: GuardianInvitation, event: Out
     if sent_count != 1:
         raise InvitationEmailDeliveryError(
             f"SMTP invitation delivery returned unexpected count: {sent_count}"
+        )
+
+
+def send_verification_email(*, challenge: EmailVerificationChallenge, event: OutboxEvent) -> None:
+    """Send the minimum necessary one-time ownership verification link."""
+    verify_url = verification_url(challenge)
+    subject = "Ověřte svůj e-mail pro Hlásím se"
+    text_body = (
+        "Dobrý den,\n\n"
+        "pro dokončení registrace ověřte svůj e-mail tímto jednorázovým odkazem:\n\n"
+        f"{verify_url}\n\n"
+        "Odkaz platí 24 hodin. Pokud jste účet nevytvářeli, e-mail ignorujte."
+    )
+    escaped_url = escape(verify_url)
+    html_body = (
+        "<p>Dobrý den,</p>"
+        "<p>Pro dokončení registrace ověřte svůj e-mail tímto jednorázovým odkazem.</p>"
+        f'<p><a href="{escaped_url}">Ověřit e-mail</a></p>'
+        "<p>Odkaz platí 24 hodin. Pokud jste účet nevytvářeli, e-mail ignorujte.</p>"
+    )
+    message = EmailMultiAlternatives(
+        subject=subject,
+        body=text_body,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        to=[challenge.user.email],
+        connection=get_connection(fail_silently=False),
+        headers={"Message-ID": f"<email-verification-{event.id}@hlasim.se>"},
+    )
+    message.attach_alternative(html_body, "text/html")
+    try:
+        sent_count = message.send(fail_silently=False)
+    except (smtplib.SMTPException, OSError, TimeoutError) as exc:
+        raise VerificationEmailDeliveryError(
+            f"SMTP verification delivery failed: {type(exc).__name__}"
+        ) from exc
+    if sent_count != 1:
+        raise VerificationEmailDeliveryError(
+            f"SMTP verification delivery returned unexpected count: {sent_count}"
         )

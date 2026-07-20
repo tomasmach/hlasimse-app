@@ -389,6 +389,8 @@ def perform_check_in(
 def create_invitation(
     *, profile: CheckInProfile, invited_by, email: str
 ) -> tuple[GuardianInvitation, str]:
+    if invited_by.email_verified_at is None:
+        raise PermissionDenied("Před pozváním strážce je nutné ověřit e-mail.")
     normalized_email = email.strip().lower()
     if normalized_email == invited_by.email.lower():
         raise ValidationError({"email": "Vlastník profilu nemůže být jeho strážcem."})
@@ -447,6 +449,8 @@ def create_invitation(
 
 
 def accept_invitation(*, raw_token: str, user) -> GuardianMembership:
+    if user.email_verified_at is None:
+        raise PermissionDenied("Před přijetím pozvánky je nutné ověřit e-mail.")
     digest = hashlib.sha256(raw_token.encode()).hexdigest()
     with transaction.atomic():
         invitation_ref = (
@@ -517,6 +521,8 @@ def _accept_invitation_locked(
 
 def respond_to_invitation(*, invitation_id, user, decision: str):
     """Accept or decline a received invitation without exposing its bearer token."""
+    if user.email_verified_at is None:
+        raise PermissionDenied("Před odpovědí na pozvánku je nutné ověřit e-mail.")
     if decision not in {"accept", "decline"}:
         raise ValidationError({"decision": "Neplatná odpověď na pozvánku."})
     with transaction.atomic():

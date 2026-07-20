@@ -7,7 +7,7 @@ from django.core.exceptions import ValidationError
 from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
 from django.db.models import Q
-from django.db.models.functions import Mod
+from django.db.models.functions import Lower, Mod
 from django.db.models.lookups import Exact
 from django.utils import timezone
 
@@ -47,14 +47,58 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_staff = models.BooleanField(default=False)
     is_active = models.BooleanField(default=True)
     date_joined = models.DateTimeField(default=timezone.now)
+    email_verified_at = models.DateTimeField(null=True, blank=True)
 
     objects = UserManager()
 
     USERNAME_FIELD = "email"
     REQUIRED_FIELDS: list[str] = []
 
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                Lower("email"),
+                name="unique_user_email_case_insensitive",
+            ),
+        ]
+
     def __str__(self) -> str:
         return self.email
+
+    @property
+    def is_email_verified(self) -> bool:
+        return self.email_verified_at is not None
+
+
+class EmailVerificationChallenge(UUIDModel):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name="email_verification_challenges",
+    )
+    expires_at = models.DateTimeField(db_index=True)
+    last_delivery_requested_at = models.DateTimeField(default=timezone.now)
+    used_at = models.DateTimeField(null=True, blank=True)
+    cancelled_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["user"],
+                condition=Q(used_at__isnull=True, cancelled_at__isnull=True),
+                name="unique_active_email_verification",
+            ),
+        ]
+
+    def __str__(self) -> str:
+        return f"Verification challenge {self.id}"
+
+    @property
+    def is_pending(self) -> bool:
+        return (
+            self.used_at is None and self.cancelled_at is None and self.expires_at > timezone.now()
+        )
 
 
 class CheckInProfile(UUIDModel):

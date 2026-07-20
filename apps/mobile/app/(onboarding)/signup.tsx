@@ -11,14 +11,12 @@ import {
 import { router } from "expo-router";
 import Animated, { FadeInDown } from "react-native-reanimated";
 import { register } from "@/lib/auth";
-import { useAuthStore } from "@/stores/auth";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { AnimatedInput } from "@/components/ui/AnimatedInput";
 import { GradientButton } from "@/components/ui";
 import { ProgressDots } from "@/components/onboarding/ProgressDots";
 
 export default function SignUpScreen() {
-  const setUser = useAuthStore((state) => state.setUser);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -48,10 +46,9 @@ export default function SignUpScreen() {
     setError(null);
 
     try {
-      const user = await register({ email, password, firstName: name });
+      await register({ email, password, firstName: name });
       await completeOnboarding();
-      setUser(user);
-      router.replace("/(tabs)");
+      router.replace({ pathname: "/(auth)/verify-email", params: { email: email.trim() } });
     } catch (err) {
       console.error("Registration error:", err);
       setError(err instanceof Error ? err.message : "Registrace se nezdařila.");
@@ -100,6 +97,8 @@ export default function SignUpScreen() {
             returnKeyType="next"
             onSubmitEditing={() => emailRef.current?.focus()}
             editable={!loading}
+            testID="onboarding-register-name-input"
+            accessibilityLabel="Jméno"
           />
 
           <AnimatedInput
@@ -114,6 +113,8 @@ export default function SignUpScreen() {
             returnKeyType="next"
             onSubmitEditing={() => passwordRef.current?.focus()}
             editable={!loading}
+            testID="onboarding-register-email-input"
+            accessibilityLabel="E-mail"
           />
 
           <AnimatedInput
@@ -127,6 +128,8 @@ export default function SignUpScreen() {
             returnKeyType="done"
             onSubmitEditing={handleSignUp}
             editable={!loading}
+            testID="onboarding-register-password-input"
+            accessibilityLabel="Heslo"
           />
         </View>
 
@@ -135,6 +138,8 @@ export default function SignUpScreen() {
           onPress={handleSignUp}
           loading={loading}
           size="lg"
+          testID="onboarding-register-submit-button"
+          accessibilityLabel="Vytvořit účet"
         />
 
         <View className="flex-row justify-center mt-6">

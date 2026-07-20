@@ -7,8 +7,8 @@ import {
   Platform,
   ScrollView,
 } from "react-native";
-import { Link, router } from "expo-router";
-import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import { Link, router, useLocalSearchParams } from "expo-router";
+import Animated, { FadeIn, FadeInDown, ReduceMotion } from "react-native-reanimated";
 import { LinearGradient } from "expo-linear-gradient";
 import { login } from "@/lib/auth";
 import { ApiError } from "@/lib/api";
@@ -17,8 +17,9 @@ import { AnimatedInput, GradientButton } from "@/components/ui";
 import { GRADIENTS, SPACING } from "@/constants/design";
 
 export default function LoginScreen() {
+  const params = useLocalSearchParams<{ email?: string }>();
   const setUser = useAuthStore((state) => state.setUser);
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(typeof params.email === "string" ? params.email : "");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -37,7 +38,13 @@ export default function LoginScreen() {
       router.replace("/(tabs)");
     } catch (err) {
       console.error("Login error:", err);
-      setError(err instanceof ApiError && err.status === 401 ? "Nesprávný e-mail nebo heslo." : err instanceof Error ? err.message : "Přihlášení se nezdařilo.");
+      setError(
+        err instanceof ApiError && err.status === 401
+          ? "E-mail nebo heslo není správné, případně e-mail ještě nebyl ověřený."
+          : err instanceof Error
+            ? err.message
+            : "Přihlášení se nezdařilo.",
+      );
     } finally {
       setLoading(false);
     }
@@ -47,6 +54,7 @@ export default function LoginScreen() {
     <KeyboardAvoidingView
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       className="flex-1 bg-cream"
+      testID="login-screen"
     >
       <ScrollView
         contentContainerStyle={{
@@ -60,10 +68,13 @@ export default function LoginScreen() {
       >
         {/* Header */}
         <Animated.View
-          entering={FadeIn.delay(100)}
+          entering={FadeIn.delay(100).reduceMotion(ReduceMotion.System)}
           className="items-center mb-12"
         >
-          <Text className="text-[40px] font-extrabold text-charcoal font-lora">
+          <Text
+            className="font-display text-[40px] font-extrabold text-charcoal"
+            accessibilityRole="header"
+          >
             Hlásím se
           </Text>
           <LinearGradient
@@ -80,8 +91,10 @@ export default function LoginScreen() {
         {/* Error */}
         {error && (
           <Animated.View
-            entering={FadeInDown}
+            entering={FadeInDown.reduceMotion(ReduceMotion.System)}
             className="bg-error/[0.15] border border-error rounded-2xl p-4 mb-6"
+            accessibilityRole="alert"
+            testID="login-error"
           >
             <Text className="text-error text-center text-[15px] font-lora">
               {error}
@@ -91,7 +104,7 @@ export default function LoginScreen() {
 
         {/* Form */}
         <Animated.View
-          entering={FadeIn.delay(200)}
+          entering={FadeIn.delay(200).reduceMotion(ReduceMotion.System)}
           className="mb-8"
         >
           <AnimatedInput
@@ -102,6 +115,8 @@ export default function LoginScreen() {
             autoCapitalize="none"
             autoComplete="email"
             editable={!loading}
+            testID="login-email-input"
+            accessibilityLabel="E-mail"
           />
 
           <AnimatedInput
@@ -111,6 +126,8 @@ export default function LoginScreen() {
             secureTextEntry
             autoComplete="password"
             editable={!loading}
+            testID="login-password-input"
+            accessibilityLabel="Heslo"
           />
 
           <Link href="/(auth)/forgot-password" asChild>
@@ -124,7 +141,7 @@ export default function LoginScreen() {
 
         {/* CTA */}
         <Animated.View
-          entering={FadeIn.delay(300)}
+          entering={FadeIn.delay(300).reduceMotion(ReduceMotion.System)}
           className="gap-6"
         >
           <GradientButton
@@ -132,6 +149,8 @@ export default function LoginScreen() {
             onPress={handleLogin}
             loading={loading}
             disabled={loading}
+            testID="login-submit-button"
+            accessibilityLabel="Přihlásit se"
           />
 
           <View className="flex-row justify-center">
@@ -144,6 +163,21 @@ export default function LoginScreen() {
               </TouchableOpacity>
             </Link>
           </View>
+          <TouchableOpacity
+            className="items-center"
+            disabled={loading || !email.trim()}
+            onPress={() =>
+              router.push({ pathname: "/(auth)/verify-email", params: { email: email.trim() } })
+            }
+            accessibilityRole="button"
+            accessibilityLabel="Poslat ověřovací e-mail znovu"
+            accessibilityState={{ disabled: loading || !email.trim() }}
+            testID="login-resend-verification-button"
+          >
+            <Text className="font-body text-[14px] text-muted">
+              E-mail ještě není ověřený? <Text className="font-body-semibold text-coral">Poslat odkaz znovu</Text>
+            </Text>
+          </TouchableOpacity>
         </Animated.View>
       </ScrollView>
     </KeyboardAvoidingView>

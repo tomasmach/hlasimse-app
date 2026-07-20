@@ -1,4 +1,5 @@
 from django.contrib.auth.base_user import BaseUserManager
+from django.utils import timezone
 
 
 class UserManager(BaseUserManager):
@@ -8,6 +9,9 @@ class UserManager(BaseUserManager):
         if not email:
             raise ValueError("Email is required")
         email = self.normalize_email(email).lower()
+        # Accounts created by trusted code, fixtures, and the admin are verified by
+        # default. Public registration explicitly passes email_verified_at=None.
+        extra_fields.setdefault("email_verified_at", timezone.now())
         user = self.model(email=email, **extra_fields)
         user.set_password(password)
         user.save(using=self._db)

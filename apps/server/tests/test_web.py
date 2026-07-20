@@ -50,7 +50,7 @@ def test_public_pages_render_and_private_page_requires_session(client):
     assert reverse("accounts:login") in response.url
 
 
-def test_registration_creates_session_and_requires_terms(client):
+def test_registration_requires_terms_and_redirects_to_verification(client):
     payload = {
         "email": "new@example.cz",
         "first_name": "Alena",
@@ -65,8 +65,9 @@ def test_registration_creates_session_and_requires_terms(client):
     created = client.post(reverse("accounts:register"), {**payload, "terms": "on"})
 
     assert created.status_code == 302
-    assert created.url == reverse("checkins:profile-create")
-    assert "_auth_user_id" in client.session
+    assert created.url == reverse("accounts:verification-sent")
+    assert "_auth_user_id" not in client.session
+    assert User.objects.get(email="new@example.cz").email_verified_at is None
 
 
 def test_login_and_logout_use_session_and_logout_is_post_only(client, user):

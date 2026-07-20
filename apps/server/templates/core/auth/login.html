@@ -17,4 +17,5 @@
   <button class="button button--coral button--wide" type="submit">Přihlásit se</button>
 </form>
 <p class="auth-switch">Ještě nemáte účet? <a href="{% url 'accounts:register' %}">Vytvořit účet zdarma</a></p>
+<p class="auth-switch">Čekáte na ověřovací e-mail? <a href="{% url 'accounts:resend-verification' %}">Poslat odkaz znovu</a></p>
 {% endblock %}
