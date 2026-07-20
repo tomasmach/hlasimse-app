@@ -9,6 +9,7 @@ const { resolve } = require("path") as {
 };
 
 const mobileRoot = resolve(__dirname, "..");
+const repoRoot = resolve(mobileRoot, "../..");
 const interactionFiles = [
   "components/auth/AuthButton.tsx",
   "components/navigation/FloatingTabBar.tsx",
@@ -35,6 +36,7 @@ it("keeps server-confirmed check-in feedback visible until an explicit action", 
   const source = readFileSync(resolve(mobileRoot, "components/SuccessOverlay.tsx"), "utf8");
   expect(source).toContain("<Modal");
   expect(source).toContain('testID="checkin-success-overlay"');
+  expect(source).toContain('testID="checkin-success-summary"');
   expect(source).toContain("accessibilityViewIsModal");
   expect(source).toContain("importantForAccessibility=\"yes\"");
   expect(source).toContain("accessible\n");
@@ -49,6 +51,28 @@ it("keeps server-confirmed check-in feedback visible until an explicit action", 
   expect(source).toContain("const textTimer = setTimeout");
   expect(source).not.toContain("autoDismissTimer");
   expect(source).not.toContain("setTimeout(handleDismiss");
+});
+
+it("targets the accessible server-confirmation summary by stable native id", () => {
+  const flowPaths = [
+    ".maestro/flows/07_android_location_denied.yaml",
+    ".maestro/flows/10_owner_online_core.yaml",
+    ".maestro/flows/50_ios_location_denied.yaml",
+    ".maestro/flows/55_ios_upgrade_preserves_state.yaml",
+  ];
+
+  for (const path of flowPaths) {
+    const source = readFileSync(resolve(repoRoot, path), "utf8");
+    expect(source).toContain('id: "checkin-success-summary"');
+    expect(source).not.toContain('assertVisible: "Check-in potvrzen serverem"');
+  }
+});
+
+it("derives simulator HTTP access from the native E2E application identity", () => {
+  const source = readFileSync(resolve(mobileRoot, "lib/api.ts"), "utf8");
+  expect(source).toContain('Platform.OS === "android" && Application.applicationId?.endsWith(".e2e") === true');
+  expect(source).toContain('Platform.OS === "ios" && Application.applicationId?.endsWith(".e2e") === true');
+  expect(source).not.toContain("EXPO_PUBLIC_E2E");
 });
 
 it("keeps check-in queueing available from the last confirmed offline profile", () => {

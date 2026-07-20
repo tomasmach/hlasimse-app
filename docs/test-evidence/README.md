@@ -37,9 +37,9 @@ exact device type and runtime from available-device JSON, creates a unique fresh
 the same pair, and uses the new UDID for the complete journey, including the in-place same-bundle
 install. `run.properties` distinguishes the template and active device and records
 `device_origin=fresh-runner-created` plus `device_owned=true`. Cleanup publishes/redacts evidence
-and stops the isolated backend/PostgreSQL first, then shuts down and deletes only the exact
-runner-created UDID. The template and all unrelated simulators remain untouched even after a
-failed run. `E2E_IOS_REUSE_TEMPLATE=true` exists only for explicit local diagnosis; runs marked
+only after it deletes the exact runner-created UDID, removes the runner-owned build directory,
+and stops the isolated backend/PostgreSQL. The template and all unrelated simulators remain
+untouched even after a failed run. `E2E_IOS_REUSE_TEMPLATE=true` exists only for explicit local diagnosis; runs marked
 `device_origin=diagnostic-template-reuse` and `run_mode=diagnostic-template-reuse` are not accepted
 as fresh-device release evidence.
 

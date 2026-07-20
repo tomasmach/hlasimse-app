@@ -85,20 +85,52 @@ e2e_record_property() {
 e2e_finalize_run_properties() {
   local duplicate_keys
   local sorted_properties
-  duplicate_keys="$(cut -d= -f1 "${E2E_RUN_PROPERTIES_STAGING}" | LC_ALL=C sort | uniq -d)"
+  local credential_scan_status
+  if [[ ! -f "${E2E_RUN_PROPERTIES_STAGING}" ]]; then
+    e2e_log "Run metadata staging file is missing."
+    return 1
+  fi
+  if ! duplicate_keys="$(cut -d= -f1 "${E2E_RUN_PROPERTIES_STAGING}" | LC_ALL=C sort | uniq -d)"; then
+    e2e_log "Failed to inspect run metadata keys."
+    return 1
+  fi
   if [[ -n "${duplicate_keys}" ]]; then
     e2e_log "Refusing duplicate run metadata keys: ${duplicate_keys//$'\n'/, }."
     return 1
   fi
-  if [[ -n "${E2E_RUN_CREDENTIAL:-}" ]] \
-    && grep -Fq -- "${E2E_RUN_CREDENTIAL}" "${E2E_RUN_PROPERTIES_STAGING}"; then
-    e2e_log "Refusing to publish run metadata containing the generated credential."
+  if [[ -n "${E2E_RUN_CREDENTIAL:-}" ]]; then
+    if grep -Fq -- "${E2E_RUN_CREDENTIAL}" "${E2E_RUN_PROPERTIES_STAGING}"; then
+      credential_scan_status=0
+    else
+      credential_scan_status=$?
+    fi
+    if [[ "${credential_scan_status}" -eq 0 ]]; then
+      e2e_log "Refusing to publish run metadata containing the generated credential."
+      return 1
+    fi
+    if [[ "${credential_scan_status}" -ne 1 ]]; then
+      e2e_log "Failed to scan run metadata for the generated credential."
+      return 1
+    fi
+  fi
+  if ! sorted_properties="$(mktemp "${E2E_ARTIFACT_DIR}/run.properties.sorted.XXXXXX")"; then
+    e2e_log "Failed to allocate sorted run metadata staging."
     return 1
   fi
-  sorted_properties="$(mktemp "${E2E_ARTIFACT_DIR}/run.properties.sorted.XXXXXX")"
-  LC_ALL=C sort -t= -k1,1 "${E2E_RUN_PROPERTIES_STAGING}" >"${sorted_properties}"
-  mv -f -- "${sorted_properties}" "${E2E_RUN_PROPERTIES}"
-  rm -f -- "${E2E_RUN_PROPERTIES_STAGING}"
+  if ! LC_ALL=C sort -t= -k1,1 "${E2E_RUN_PROPERTIES_STAGING}" >"${sorted_properties}"; then
+    rm -f -- "${sorted_properties}" || true
+    e2e_log "Failed to sort run metadata."
+    return 1
+  fi
+  if ! mv -f -- "${sorted_properties}" "${E2E_RUN_PROPERTIES_STAGING}"; then
+    rm -f -- "${sorted_properties}" || true
+    e2e_log "Failed to replace run metadata staging with its sorted form."
+    return 1
+  fi
+  if ! mv -f -- "${E2E_RUN_PROPERTIES_STAGING}" "${E2E_RUN_PROPERTIES}"; then
+    e2e_log "Failed to publish finalized run metadata."
+    return 1
+  fi
 }
 
 e2e_capture_source_status() {
@@ -389,6 +421,11 @@ e2e_cleanup() {
   local source_clean_end="false"
   local git_commit_end
   local git_tree_end
+  local backend_cleanup_completed="true"
+  local metro_cleanup_completed="true"
+  local postgres_cleanup_completed="true"
+  local metadata_write_failed="false"
+  local finished_at
   if [[ $# -gt 0 ]]; then
     exit_code="$1"
   fi
@@ -400,9 +437,23 @@ e2e_cleanup() {
       exit_code=1
     fi
   fi
-  e2e_stop_backend || true
-  e2e_stop_metro || true
-  e2e_stop_postgres || true
+  if ! e2e_stop_backend; then
+    backend_cleanup_completed="false"
+  fi
+  if ! e2e_stop_metro; then
+    metro_cleanup_completed="false"
+  fi
+  if ! e2e_stop_postgres; then
+    postgres_cleanup_completed="false"
+  fi
+  if [[ "${backend_cleanup_completed}" != "true" ]] \
+    || [[ "${metro_cleanup_completed}" != "true" ]] \
+    || [[ "${postgres_cleanup_completed}" != "true" ]]; then
+    e2e_log "Owned service cleanup did not complete; the run cannot be accepted as evidence."
+    if [[ "${exit_code}" -eq 0 ]]; then
+      exit_code=1
+    fi
+  fi
   if [[ "${E2E_METADATA_INITIALIZED}" != "true" ]]; then
     e2e_log "Run metadata was not initialized; no evidence file was published."
     if [[ "${exit_code}" -eq 0 ]]; then
@@ -411,28 +462,52 @@ e2e_cleanup() {
     e2e_log "Artifacts: ${E2E_ARTIFACT_DIR}"
     return "${exit_code}"
   fi
+  if ! e2e_record_property backend_cleanup_completed "${backend_cleanup_completed}"; then
+    metadata_write_failed="true"
+  fi
+  if ! e2e_record_property metro_cleanup_completed "${metro_cleanup_completed}"; then
+    metadata_write_failed="true"
+  fi
+  if ! e2e_record_property postgres_cleanup_completed "${postgres_cleanup_completed}"; then
+    metadata_write_failed="true"
+  fi
   if ! git_commit_end="$(git -C "${E2E_ROOT_DIR}" rev-parse HEAD)"; then
     git_commit_end="unavailable"
   fi
   if ! git_tree_end="$(git -C "${E2E_ROOT_DIR}" rev-parse 'HEAD^{tree}')"; then
     git_tree_end="unavailable"
   fi
-  e2e_record_property git_commit_end "${git_commit_end}"
-  e2e_record_property git_tree_end "${git_tree_end}"
+  if ! e2e_record_property git_commit_end "${git_commit_end}"; then
+    metadata_write_failed="true"
+  fi
+  if ! e2e_record_property git_tree_end "${git_tree_end}"; then
+    metadata_write_failed="true"
+  fi
   if e2e_source_is_clean end \
     && [[ "${git_commit_end}" == "${E2E_GIT_COMMIT_START}" ]] \
     && [[ "${git_tree_end}" == "${E2E_GIT_TREE_START}" ]]; then
     source_clean_end="true"
   fi
-  e2e_record_property source_clean_end "${source_clean_end}"
-  e2e_record_property journey_completed "${journey_completed}"
+  if ! e2e_record_property source_clean_end "${source_clean_end}"; then
+    metadata_write_failed="true"
+  fi
+  if ! e2e_record_property journey_completed "${journey_completed}"; then
+    metadata_write_failed="true"
+  fi
   if [[ "${E2E_SOURCE_CLEAN_START}" != "true" ]] || [[ "${source_clean_end}" != "true" ]]; then
     e2e_log "Source traceability failed (start=${E2E_SOURCE_CLEAN_START}, end=${source_clean_end})."
     if [[ "${exit_code}" -eq 0 ]]; then
       exit_code=1
     fi
   fi
-  e2e_record_property finished_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if finished_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"; then
+    if ! e2e_record_property finished_at "${finished_at}"; then
+      metadata_write_failed="true"
+    fi
+  else
+    e2e_log "Failed to capture the evidence completion timestamp."
+    metadata_write_failed="true"
+  fi
   if [[ -n "${E2E_RUN_CREDENTIAL:-}" ]]; then
     if ! E2E_REDACTION_VALUE="${E2E_RUN_CREDENTIAL}" node \
       "${E2E_ROOT_DIR}/scripts/e2e/redact-output.mjs" --directory "${E2E_ARTIFACT_DIR}"; then
@@ -442,7 +517,23 @@ e2e_cleanup() {
       fi
     fi
   fi
-  e2e_record_property exit_code "${exit_code}"
+  if [[ "${metadata_write_failed}" == "true" ]]; then
+    e2e_log "Required cleanup metadata could not be recorded; evidence will not be published."
+    if [[ "${exit_code}" -eq 0 ]]; then
+      exit_code=1
+    fi
+  fi
+  if ! e2e_record_property exit_code "${exit_code}"; then
+    metadata_write_failed="true"
+    if [[ "${exit_code}" -eq 0 ]]; then
+      exit_code=1
+    fi
+  fi
+  if [[ "${metadata_write_failed}" == "true" ]]; then
+    e2e_log "Atomic run metadata finalization skipped because required metadata is incomplete."
+    e2e_log "Artifacts: ${E2E_ARTIFACT_DIR}"
+    return "${exit_code}"
+  fi
   if ! e2e_finalize_run_properties; then
     e2e_log "Atomic run metadata finalization failed."
     if [[ "${exit_code}" -eq 0 ]]; then

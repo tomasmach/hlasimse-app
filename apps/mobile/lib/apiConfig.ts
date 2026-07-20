@@ -1,17 +1,20 @@
 const DEVELOPMENT_DEFAULT = "http://127.0.0.1:8000";
 const ANDROID_EMULATOR_E2E_URL = "http://10.0.2.2:8000";
+const IOS_SIMULATOR_E2E_URL = "http://127.0.0.1:8000";
 const LOCAL_DEVELOPMENT_URL = /^http:\/\/(127\.0\.0\.1|localhost|10\.0\.2\.2)(:\d+)?$/;
 
 type ApiConfigInput = {
   configuredBaseUrl?: string;
   isDevelopment: boolean;
   isAndroidE2E: boolean;
+  isIosE2E: boolean;
 };
 
 export function resolveApiBaseUrl({
   configuredBaseUrl,
   isDevelopment,
   isAndroidE2E,
+  isIosE2E,
 }: ApiConfigInput): string {
   const baseUrl = configuredBaseUrl?.trim().replace(/\/$/, "")
     || (isDevelopment ? DEVELOPMENT_DEFAULT : "");
@@ -29,8 +32,8 @@ export function resolveApiBaseUrl({
     return baseUrl;
   }
   if (
-    isAndroidE2E
-    && baseUrl === ANDROID_EMULATOR_E2E_URL
+    (isAndroidE2E && baseUrl === ANDROID_EMULATOR_E2E_URL)
+    || (isIosE2E && baseUrl === IOS_SIMULATOR_E2E_URL)
   ) {
     return baseUrl;
   }

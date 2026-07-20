@@ -44,8 +44,8 @@ tags:
     visible:
       id: "checkin-success-overlay"
     timeout: 10000
-- assertVisible: "Check-in potvrzen serverem"
-- assertVisible: "Server přijal hlášení.*"
+- assertVisible:
+    id: "checkin-success-summary"
 - tapOn:
     id: "checkin-success-continue"
 - extendedWaitUntil:

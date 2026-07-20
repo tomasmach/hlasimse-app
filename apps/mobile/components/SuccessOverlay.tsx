@@ -179,6 +179,7 @@ export function SuccessOverlay({
           {/* Text */}
           <Animated.View
             accessible
+            testID="checkin-success-summary"
             accessibilityRole="alert"
             accessibilityLiveRegion="assertive"
             accessibilityLabel={`Check-in potvrzen serverem. Server přijal hlášení. Další termín za ${formatInterval(intervalHours)}.`}

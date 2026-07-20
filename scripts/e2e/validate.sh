@@ -63,6 +63,42 @@ E2E_ARTIFACT_DIR="${VALIDATION_DIR}" bash -c '
   [[ ! -e "${E2E_RUN_PROPERTIES_STAGING}" ]]
 ' _ "${ROOT_DIR}/scripts/e2e/common.sh"
 
+for failure_command in mktemp mv; do
+  FINALIZATION_FIXTURE="${VALIDATION_DIR}/finalization-${failure_command}"
+  E2E_ARTIFACT_DIR="${FINALIZATION_FIXTURE}" FAILURE_COMMAND="${failure_command}" bash -c '
+    set -Eeuo pipefail
+    source "$1"
+    e2e_record_property alpha first
+    if [[ "${FAILURE_COMMAND}" == "mktemp" ]]; then
+      mktemp() { return 1; }
+    else
+      mv() { return 1; }
+    fi
+    set +e
+    e2e_finalize_run_properties
+    finalization_status=$?
+    set -e
+    [[ "${finalization_status}" -ne 0 ]]
+    [[ -f "${E2E_RUN_PROPERTIES_STAGING}" ]]
+    [[ ! -e "${E2E_RUN_PROPERTIES}" ]]
+  ' _ "${ROOT_DIR}/scripts/e2e/common.sh"
+done
+
+E2E_ARTIFACT_DIR="${VALIDATION_DIR}/finalization-grep" bash -c '
+  set -Eeuo pipefail
+  source "$1"
+  E2E_RUN_CREDENTIAL="validation-credential-sentinel"
+  e2e_record_property safe_value "${E2E_RUN_CREDENTIAL}"
+  grep() { return 2; }
+  set +e
+  e2e_finalize_run_properties
+  finalization_status=$?
+  set -e
+  [[ "${finalization_status}" -ne 0 ]]
+  [[ -f "${E2E_RUN_PROPERTIES_STAGING}" ]]
+  [[ ! -e "${E2E_RUN_PROPERTIES}" ]]
+' _ "${ROOT_DIR}/scripts/e2e/common.sh"
+
 SOURCE_FIXTURE="${VALIDATION_DIR}/source-fixture"
 mkdir -p "${SOURCE_FIXTURE}/apps/mobile" "${SOURCE_FIXTURE}/apps/server"
 printf 'tracked\n' >"${SOURCE_FIXTURE}/apps/mobile/runtime.txt"
@@ -143,6 +179,54 @@ E2E_ARTIFACT_DIR="${VALIDATION_DIR}/completion-artifacts" \
     [[ "$(grep -c "^exit_code=1$" "${E2E_RUN_PROPERTIES}")" -eq 1 ]]
   ' _ "${ROOT_DIR}/scripts/e2e/common.sh"
 
+METADATA_FAILURE_FIXTURE="${VALIDATION_DIR}/cleanup-metadata-failure"
+mkdir -p "${METADATA_FAILURE_FIXTURE}/source/apps/mobile"
+printf 'tracked\n' >"${METADATA_FAILURE_FIXTURE}/source/apps/mobile/runtime.txt"
+git -C "${METADATA_FAILURE_FIXTURE}/source" init -q
+git -C "${METADATA_FAILURE_FIXTURE}/source" config user.email "e2e-validator@hlasimse.invalid"
+git -C "${METADATA_FAILURE_FIXTURE}/source" config user.name "Hlásím se E2E validator"
+git -C "${METADATA_FAILURE_FIXTURE}/source" add apps/mobile/runtime.txt
+git -C "${METADATA_FAILURE_FIXTURE}/source" commit -qm "test fixture"
+E2E_ARTIFACT_DIR="${METADATA_FAILURE_FIXTURE}/artifacts" \
+  E2E_SOURCE_ROOT_DIR="${METADATA_FAILURE_FIXTURE}/source" bash -c '
+    set -Eeuo pipefail
+    source "$1"
+    E2E_SOURCE_PATHS=("apps/mobile")
+    E2E_MAESTRO_VERSION="2.6.1"
+    e2e_initialize_run_metadata android "$(e2e_app_id android)"
+    E2E_JOURNEY_COMPLETED="true"
+    eval "$(declare -f e2e_record_property | sed "1s/e2e_record_property/e2e_record_property_original/")"
+    e2e_record_property() {
+      if [[ "$1" == "backend_cleanup_completed" ]]; then
+        return 1
+      fi
+      e2e_record_property_original "$@"
+    }
+    set +e
+    e2e_cleanup 0
+    cleanup_status=$?
+    set -e
+    [[ "${cleanup_status}" -eq 1 ]]
+    [[ -f "${E2E_RUN_PROPERTIES_STAGING}" ]]
+    [[ ! -e "${E2E_RUN_PROPERTIES}" ]]
+  ' _ "${ROOT_DIR}/scripts/e2e/common.sh"
+
+IOS_EARLY_FAILURE_ARTIFACTS="${VALIDATION_DIR}/ios-early-failure-artifacts"
+set +e
+E2E_ARTIFACT_DIR="${IOS_EARLY_FAILURE_ARTIFACTS}" bash -c '
+  set -Eeuo pipefail
+  source "$1"
+  eval "$(sed -n "/^IOS_TEMPLATE_SIMULATOR_UDID=/,/^trap .*EXIT$/p" "$2")"
+  exit 7
+' _ "${ROOT_DIR}/scripts/e2e/common.sh" "${ROOT_DIR}/scripts/e2e/run-ios.sh" \
+  >"${VALIDATION_DIR}/ios-early-failure.log" 2>&1
+ios_early_failure_status=$?
+set -e
+[[ "${ios_early_failure_status}" -eq 7 ]]
+! grep -Fq "unbound variable" "${VALIDATION_DIR}/ios-early-failure.log"
+[[ ! -e "${IOS_EARLY_FAILURE_ARTIFACTS}/run.properties.partial" ]]
+[[ ! -e "${IOS_EARLY_FAILURE_ARTIFACTS}/run.properties" ]]
+
 ruby -e '
   common = File.read(ARGV.fetch(0))
   ios = File.read(ARGV.fetch(1))
@@ -151,6 +235,7 @@ ruby -e '
   required_common = %w[
     git_commit git_tree run_mode platform app_id source_clean_start source_clean_end
     app_version app_build maestro_version db_vendor journey_completed
+    backend_cleanup_completed metro_cleanup_completed postgres_cleanup_completed
   ]
   missing_common = required_common.reject { |key| common.include?("e2e_record_property #{key}") }
   abort("Missing required run metadata keys: #{missing_common.join(", ")}") unless missing_common.empty?
@@ -172,6 +257,14 @@ ruby -e '
     device_id device_name device_origin device_owned device_type_identifier
     template_device_id template_device_name os_name os_version api_level
     ios_runtime_id xcode_version xcode_build
+    production_app_id release_evidence_eligible device_cleanup_completed build_cleanup_completed build_configuration packaged_app_version packaged_app_build js_bundle_mode
+    metro_used native_project_origin expo_prebuild_version cocoapods_version
+    podfile_lock_sha256 native_project_sha256 production_app_sha256 production_js_bundle_sha256 e2e_app_sha256
+    e2e_executable_sha256 e2e_js_bundle_sha256 e2e_info_plist_sha256 installed_app_sha256
+    e2e_codesign_cdhash signing_authority bundle_identity_derivation
+    production_cleartext_allowed e2e_local_networking_allowed initial_install_mode
+    update_artifact_relation n_minus_one_coverage store_signed_update_coverage
+    ios_architectures ios_bundle_present_before_install
   ]
   missing_ios = required_ios.reject { |key| ios.include?("e2e_record_property #{key}") }
   abort("Missing iOS metadata keys: #{missing_ios.join(", ")}") unless missing_ios.empty?
@@ -185,15 +278,47 @@ ruby -e '
     %q{local device_id="${IOS_OWNED_SIMULATOR_UDID}"},
     %q{xcrun simctl shutdown "${device_id}"},
     %q{xcrun simctl delete "${device_id}"},
+    %q{npx expo prebuild --clean --platform ios --no-install},
+    %q{.hlasimse-prebuild-stale-sentinel},
+    %q{pod install},
+    %q{-configuration Release},
+    %q{EXPO_PUBLIC_API_URL="https://release-manifest.invalid"},
+    %q{EXPO_PUBLIC_API_URL="http://127.0.0.1:8000/"},
+    %q{main.jsbundle},
+    %q{Set :CFBundleIdentifier ${E2E_APP_ID}},
+    %q{Set :NSAppTransportSecurity:NSAllowsLocalNetworking true},
+    %q{codesign --force --sign - --timestamp=none},
+    %q{xcrun simctl install "${device_id}" "${IOS_E2E_APP_PATH}"},
+    %q{xcrun simctl launch --terminate-running-process},
+    %q{same-built-app-reinstall-not-n-minus-one},
+    %q{ios_bundle_present_before_install},
   ]
   missing_lifecycle = required_lifecycle.reject { |fragment| ios.include?(fragment) }
   abort("Missing fail-closed iOS lifecycle fragments: #{missing_lifecycle.join(", ")}") unless missing_lifecycle.empty?
 
   cleanup_body = ios[/e2e_ios_cleanup\(\) \{(.*?)\n\}/m, 1]
   abort("Could not inspect iOS cleanup") unless cleanup_body
+  ownership_init = ios.index(%q{IOS_DEVICE_OWNED="false"})
+  cleanup_trap = ios.index(%q{trap } + 39.chr + %q{e2e_ios_cleanup "$?"} + 39.chr + %q{ EXIT})
+  abort("iOS ownership state is not initialized before the EXIT trap") unless ownership_init && cleanup_trap && ownership_init < cleanup_trap
   evidence_cleanup = cleanup_body.index(%q{e2e_cleanup "${exit_code}"})
   simulator_cleanup = cleanup_body.index("e2e_ios_delete_owned_simulator")
-  abort("iOS simulator cleanup runs before evidence/PostgreSQL cleanup") unless evidence_cleanup && simulator_cleanup && evidence_cleanup < simulator_cleanup
+  cleanup_record = cleanup_body.index(%q{e2e_record_property device_cleanup_completed true})
+  abort("iOS cleanup is not recorded before evidence finalization") unless evidence_cleanup && simulator_cleanup && cleanup_record && simulator_cleanup < cleanup_record && cleanup_record < evidence_cleanup
+
+  forbidden_ios_release = [
+    "e2e_start_metro",
+    "expo run:ios",
+    "DEV_CLIENT_URL",
+    "expo-development-client",
+  ]
+  ios_release_violation = forbidden_ios_release.find { |fragment| ios.include?(fragment) }
+  abort("iOS release evidence still contains development tooling: #{ios_release_violation}") if ios_release_violation
+  abort("iOS release evidence contains a Debug build configuration") if ios.match?(/-configuration\s+Debug/)
+  production_release_build = ios.match?(/EXPO_PUBLIC_API_URL="https:\/\/release-manifest\.invalid".*?xcodebuild.*?-configuration Release.*?-derivedDataPath "\$\{production_derived_data\}" build/m)
+  e2e_release_build = ios.match?(/EXPO_PUBLIC_API_URL="http:\/\/127\.0\.0\.1:8000\/".*?xcodebuild.*?-configuration Release.*?-derivedDataPath "\$\{e2e_derived_data\}" build/m)
+  abort("Production iOS build is not structurally tied to Release and its own DerivedData") unless production_release_build
+  abort("E2E iOS build is not structurally tied to Release and its own DerivedData") unless e2e_release_build
 
   forbidden_lifecycle = [
     /simctl\s+delete\s+(?:all|unavailable)/,
@@ -260,6 +385,19 @@ ruby -e '
   abort("Android cleartext override is not isolated to the e2e manifest") unless plugin.match?(/"src",\s*"e2e",\s*"AndroidManifest\.xml"/m)
   abort("Android E2E manifest does not opt in to local cleartext") unless plugin.include?(%q{android:usesCleartextTraffic="true"})
 ' "${ROOT_DIR}/apps/mobile/app.json" "${ROOT_DIR}/apps/mobile/plugins/with-android-e2e-build.js"
+
+ruby -rjson -e '
+  app = JSON.parse(File.read(ARGV.fetch(0)))
+  api = File.read(ARGV.fetch(1))
+  config = File.read(ARGV.fetch(2))
+  ats = app.dig("expo", "ios", "infoPlist", "NSAppTransportSecurity")
+  abort("Production iOS ATS must reject arbitrary loads") unless ats.is_a?(Hash) && ats["NSAllowsArbitraryLoads"] == false
+  abort("Production iOS ATS must reject local networking") unless ats["NSAllowsLocalNetworking"] == false
+  abort("iOS E2E transport is not tied to the native application identity") unless api.include?(%q{Platform.OS === "ios" && Application.applicationId?.endsWith(".e2e") === true})
+  abort("iOS E2E loopback URL is not exact") unless config.include?(%q{const IOS_SIMULATOR_E2E_URL = "http://127.0.0.1:8000"})
+  abort("Mobile API config uses a spoofable public E2E flag") if api.include?("EXPO_PUBLIC_E2E") || config.include?("EXPO_PUBLIC_E2E")
+' "${ROOT_DIR}/apps/mobile/app.json" "${ROOT_DIR}/apps/mobile/lib/api.ts" \
+  "${ROOT_DIR}/apps/mobile/lib/apiConfig.ts"
 
 ruby -e '
   require "yaml"

@@ -12,6 +12,10 @@
       "buildNumber": "1",
       "bundleIdentifier": "com.anonymous.hlasimse",
       "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": false,
+          "NSAllowsLocalNetworking": false
+        },
         "NSUserNotificationsUsageDescription": "Potřebujeme oprávnění k notifikacím, abychom vás mohli upozornit, když se někdo neohlásí včas."
       }
     },

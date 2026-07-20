@@ -12,6 +12,7 @@ export const API_BASE_URL = resolveApiBaseUrl({
   configuredBaseUrl: process.env.EXPO_PUBLIC_API_URL,
   isDevelopment,
   isAndroidE2E: Platform.OS === "android" && Application.applicationId?.endsWith(".e2e") === true,
+  isIosE2E: Platform.OS === "ios" && Application.applicationId?.endsWith(".e2e") === true,
 });
 
 export class ApiError extends Error {

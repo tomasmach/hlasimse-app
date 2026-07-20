@@ -23,7 +23,8 @@ tags:
     visible:
       id: "checkin-success-overlay"
     timeout: 15000
-- assertVisible: "Check-in potvrzen serverem"
+- assertVisible:
+    id: "checkin-success-summary"
 - tapOn:
     id: "checkin-success-continue"
 - extendedWaitUntil:
