@@ -97,6 +97,11 @@ tags:
 - extendedWaitUntil:
     visible: "Potvrzení uloženo serverem"
     timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: "back-button"
+    direction: UP
+    centerElement: true
 - tapOn:
     id: "back-button"
 - retry:
