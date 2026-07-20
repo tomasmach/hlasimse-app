@@ -12,7 +12,7 @@ export type CheckInFeedback = {
 };
 
 export const PENDING_CHECK_IN_MESSAGE =
-  "Hlášení zatím nebylo odesláno. Čeká na připojení; do synchronizace mohou být strážci upozorněni.";
+  "Čeká na připojení — strážci zatím spoléhají na původní termín.";
 
 export const FAILED_CHECK_IN_MESSAGE =
   "Hlášení se nepodařilo odeslat ani bezpečně uložit. Zkuste to znovu.";

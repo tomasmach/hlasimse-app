@@ -34,7 +34,7 @@ export const PERSONA_CARDS: PersonaCard[] = [
     id: "caregiver",
     icon: UsersThree,
     title: "Starám se o blízkého",
-    description: "Chci mít jistotu, že je v pořádku",
+    description: "Chci mít přehled o serverem potvrzených check-inech",
   },
   {
     id: "traveler",
@@ -49,7 +49,7 @@ export const EMPATHY_CONTENT: Record<Persona, string> = {
   alone:
     "Když žijete sami, občas vás napadne: co kdyby se mi něco stalo a nikdo by nevěděl? Ten pocit znáte. A právě proto existujeme.",
   caregiver:
-    "Máte svůj život, ale v hlavě pořád myšlenku: je maminka v pořádku? Chcete mít jistotu, aniž byste museli neustále volat.",
+    "Máte svůj život, ale v hlavě pořád myšlenku: ozvala se maminka? Chcete mít přehled o potvrzených check-inech, aniž byste museli neustále volat.",
   traveler:
     "Milujete svobodu cestování, ale vaši blízcí se bojí. Nechcete se omezovat, ale chcete, aby věděli, že jste OK.",
 };
@@ -75,8 +75,8 @@ export const SOLUTION_STEPS: Record<Persona, TimelineStep[]> = {
     },
     {
       icon: Bell,
-      title: "Když se neohlásíte, vaši blízcí se dozví",
-      description: "Automaticky a spolehlivě.",
+      title: "Když server nezaznamená check-in včas, vytvoří incident",
+      description: "Pokusí se upozornit strážce; doručení push nelze garantovat.",
     },
   ],
   caregiver: [
@@ -87,19 +87,19 @@ export const SOLUTION_STEPS: Record<Persona, TimelineStep[]> = {
     },
     {
       icon: CheckCircle,
-      title: "Dostanete pravidelné potvrzení, že je OK",
-      description: "Bez otravného volání.",
+      title: "Uvidíte serverem potvrzený check-in",
+      description: "Potvrzení znamená přijetí serverem, ne zdravotní dohled.",
     },
     {
       icon: Warning,
-      title: "Pokud se neozve, okamžitě se dozvíte",
-      description: "Notifikace přímo na váš telefon.",
+      title: "Pokud se neozve, vznikne incident",
+      description: "Server se pokusí poslat push. Hlásím se není tísňová služba.",
     },
   ],
   traveler: [
     {
       icon: MapPin,
-      title: "Při hlášení se uloží vaše poloha",
+      title: "K check-inu můžete volitelně přidat polohu",
       description:
         "Kdyby bylo potřeba, vaši blízcí uvidí kde jste byli naposledy.",
     },
@@ -118,7 +118,7 @@ export const SOLUTION_STEPS: Record<Persona, TimelineStep[]> = {
 
 // Screen 4: Notification messages for wow moment
 export const NOTIFICATION_MESSAGE: Record<Persona, string> = {
-  alone: "Váš blízký se právě ohlásil. Vše je v pořádku.",
-  caregiver: "Maminka se právě ohlásila. Vše je v pořádku.",
-  traveler: "Váš cestovatel se právě ohlásil. Vše je v pořádku.",
+  alone: "Server právě potvrdil check-in vašeho blízkého.",
+  caregiver: "Server právě potvrdil check-in profilu Maminka.",
+  traveler: "Server právě potvrdil check-in vašeho cestovatele.",
 };

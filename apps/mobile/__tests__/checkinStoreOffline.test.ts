@@ -17,7 +17,7 @@ jest.mock("@/lib/api", () => {
     apiRequest: jest.fn(),
   };
 });
-jest.mock("@/lib/reminderNotifications", () => ({ scheduleReminders: jest.fn() }));
+jest.mock("@/lib/reminderNotifications", () => ({ reconcileReminders: jest.fn() }));
 
 import { apiRequest } from "@/lib/api";
 import { useCheckInStore } from "@/stores/checkin";
@@ -44,19 +44,43 @@ const confirmedProfile: CheckInProfile = {
 beforeEach(() => {
   jest.clearAllMocks();
   (SecureStore as unknown as { __reset(): void }).__reset();
-  useAuthStore.setState({ user: { id: "user-1", email: "a@example.test", first_name: "A", last_name: "", date_joined: "" } });
-  useCheckInStore.setState({ profile: confirmedProfile, profiles: [confirmedProfile], isLoading: false, hasFetched: true, error: null, pendingCount: 0, failedPendingCount: 0, pendingItems: [], lastCheckInWasOffline: false });
+  useAuthStore.setState({ user: { id: "user-1", email: "a@example.test", first_name: "A", last_name: "", date_joined: "", email_verified_at: "2026-07-19T00:00:00Z" } });
+  useCheckInStore.setState({ profile: confirmedProfile, profiles: [confirmedProfile], isLoading: false, hasFetched: true, lastFetchSucceeded: true, isUsingCachedProfiles: false, profilesCachedAt: null, error: null, pendingCount: 0, failedPendingCount: 0, pendingItems: [], lastCheckInWasOffline: false });
 });
 
 describe("offline check-in safety", () => {
   it("queues a network failure without advancing the confirmed deadline", async () => {
     mockApiRequest.mockRejectedValueOnce(new NetworkError());
-    const result = await useCheckInStore.getState().checkIn();
+    const result = await useCheckInStore.getState().checkIn({ lat: 50.1, lng: 14.4, accuracy: 12 });
     const state = useCheckInStore.getState();
     expect(result).toEqual({ success: true, offline: true });
     expect(state.profile?.next_deadline_at).toBe(confirmedProfile.next_deadline_at);
     expect(state.pendingCount).toBe(1);
     expect(state.lastCheckInWasOffline).toBe(true);
+    expect(state.pendingItems[0]).toMatchObject({ latitude: null, longitude: null, locationAccuracyMeters: null });
+  });
+
+  it("uses an explicitly stale secure profile cache during a cold network failure", async () => {
+    mockApiRequest.mockResolvedValueOnce([confirmedProfile]);
+    await useCheckInStore.getState().fetchProfile("user-1");
+    useCheckInStore.setState({ profile: null, profiles: [], hasFetched: false });
+    mockApiRequest.mockRejectedValueOnce(new NetworkError());
+
+    await useCheckInStore.getState().fetchProfile("user-1");
+
+    expect(useCheckInStore.getState()).toMatchObject({
+      profile: { id: confirmedProfile.id, next_deadline_at: confirmedProfile.next_deadline_at },
+      lastFetchSucceeded: false,
+      isUsingCachedProfiles: true,
+    });
+    expect(useCheckInStore.getState().profilesCachedAt).toEqual(expect.any(String));
+  });
+
+  it("allows a guardian-only account to skip owned profile creation", async () => {
+    await useCheckInStore.getState().chooseGuardianOnlyMode("user-1", true);
+    mockApiRequest.mockResolvedValueOnce([]);
+    await useCheckInStore.getState().fetchProfile("user-1");
+    expect(useCheckInStore.getState()).toMatchObject({ profile: null, profiles: [], guardianOnlyMode: true, lastFetchSucceeded: true });
   });
 
   it("does not queue an explicit server rejection", async () => {
@@ -74,6 +98,7 @@ describe("offline check-in safety", () => {
     mockApiRequest.mockResolvedValueOnce({ id: "receipt" }).mockResolvedValueOnce([]);
     await useCheckInStore.getState().syncPendingCheckIns();
     expect(mockApiRequest.mock.calls[0][1].headers["Idempotency-Key"]).toBe(initialHeaders["Idempotency-Key"]);
+    expect(mockApiRequest.mock.calls[0][1].body.submitted_from_queue).toBe(true);
     expect(useCheckInStore.getState().pendingCount).toBe(0);
   });
 

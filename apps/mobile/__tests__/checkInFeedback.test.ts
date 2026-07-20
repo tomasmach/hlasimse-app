@@ -20,8 +20,8 @@ describe("getCheckInFeedback", () => {
       type: "warning",
       message: PENDING_CHECK_IN_MESSAGE,
     });
-    expect(PENDING_CHECK_IN_MESSAGE).toContain("zatím nebylo odesláno");
-    expect(PENDING_CHECK_IN_MESSAGE).toContain("strážci upozorněni");
+    expect(PENDING_CHECK_IN_MESSAGE).toContain("Čeká na připojení");
+    expect(PENDING_CHECK_IN_MESSAGE).toContain("původní termín");
   });
 
   it("does not imply that a failed attempt was queued", () => {

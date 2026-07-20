@@ -22,6 +22,7 @@ import { COLORS } from "@/constants/design";
 import { useOnboardingStore } from "@/stores/onboarding";
 import { useNotifications } from "@/hooks/useNotifications";
 import { createTokenRegistrationTracker } from "@/utils/pushTokenRegistration";
+import { notificationDestination } from "@/lib/notificationRouting";
 
 function useProtectedRoute(
   user: any,
@@ -73,6 +74,9 @@ export default function RootLayout() {
     InstrumentSans_500Medium,
     InstrumentSans_600SemiBold,
     InstrumentSans_700Bold,
+    Satoshi_400Regular: require("@/assets/fonts/satoshi/Satoshi-Regular.ttf"),
+    Satoshi_500Medium: require("@/assets/fonts/satoshi/Satoshi-Medium.ttf"),
+    Satoshi_700Bold: require("@/assets/fonts/satoshi/Satoshi-Bold.ttf"),
   });
 
   const { user, isLoading: isAuthLoading } = useAuth();
@@ -81,7 +85,7 @@ export default function RootLayout() {
     isLoading: isOnboardingLoading,
     checkOnboardingStatus,
   } = useOnboardingStore();
-  const { requestPermissions, registerToken, expoPushToken, setNotificationResponseHandler } = useNotifications();
+  const { registerToken, expoPushToken, setNotificationResponseHandler } = useNotifications();
   const router = useRouter();
 
   // Create token registration tracker that persists across re-renders
@@ -95,13 +99,6 @@ export default function RootLayout() {
     checkOnboardingStatus();
   }, []);
 
-  // Request notification permissions when user is logged in
-  useEffect(() => {
-    if (user && !isAuthLoading) {
-      requestPermissions();
-    }
-  }, [user, isAuthLoading]);
-
   // Register push token when available and user is logged in
   // The tracker automatically handles logout/login cycles
   useEffect(() => {
@@ -111,15 +108,19 @@ export default function RootLayout() {
     });
   }, [user, expoPushToken, tokenTracker]);
 
-  // Handle notification tap - navigate to guardians screen
+  // Consume notification responses only after account restoration and navigation are ready.
   useEffect(() => {
+    if (isAuthLoading || !user) return;
     setNotificationResponseHandler((data) => {
-      if (data.type === "alert") {
-        // Navigate to guardians tab where watched profiles are shown
-        router.push("/(tabs)/guardians");
+      const destination = notificationDestination(data);
+      if (destination?.kind === "incident") {
+        router.push({ pathname: "/(tabs)/incident/[id]", params: { id: destination.incidentId } });
+      } else if (destination?.kind === "reminder") {
+        router.push("/(tabs)");
       }
     });
-  }, [router]);
+    return () => setNotificationResponseHandler(null);
+  }, [router, user?.id, isAuthLoading, setNotificationResponseHandler]);
 
   useProtectedRoute(user, isAuthLoading, hasSeenOnboarding, isOnboardingLoading);
 

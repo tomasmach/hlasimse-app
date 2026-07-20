@@ -23,6 +23,8 @@ type GradientButtonProps = {
   disabled?: boolean;
   variant?: "primary" | "secondary";
   size?: "md" | "lg";
+  testID?: string;
+  accessibilityLabel?: string;
 };
 
 export function GradientButton({
@@ -32,6 +34,8 @@ export function GradientButton({
   disabled = false,
   variant = "primary",
   size = "md",
+  testID,
+  accessibilityLabel,
 }: GradientButtonProps) {
   const scale = useSharedValue(1);
 
@@ -74,6 +78,10 @@ export function GradientButton({
 
   return (
     <AnimatedPressable
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel || label}
+      accessibilityState={{ disabled: disabled || loading, busy: loading }}
       onPress={handlePress}
       onPressIn={handlePressIn}
       onPressOut={handlePressOut}

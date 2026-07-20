@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { apiRequest } from "@/lib/api";
 import { useCheckInStore } from "@/stores/checkin";
+import { useProductStore } from "@/stores/product";
 import type { GuardianWithUser, InviteWithInviter, WatchedProfile } from "@/types/database";
 
 interface ServerGuardian {
@@ -17,6 +18,14 @@ interface ServerInvitation {
   profile_name: string;
   owner_display_name: string;
   status: InviteWithInviter["status"];
+  expires_at: string;
+  created_at: string;
+}
+
+export interface SentGuardianInvitation {
+  id: string;
+  email: string;
+  status: "pending" | "accepted" | "declined" | "expired" | "revoked";
   expires_at: string;
   created_at: string;
 }
@@ -59,12 +68,14 @@ const watchedFromServer = (profile: ServerWatchedProfile): WatchedProfile => ({
 interface GuardiansState {
   myGuardians: GuardianWithUser[];
   pendingInvites: InviteWithInviter[];
+  sentInvites: SentGuardianInvitation[];
   watchedProfiles: WatchedProfile[];
   isLoading: boolean;
   error: string | null;
   invitesChannel: ReturnType<typeof setInterval> | null;
   fetchMyGuardians: (profileId: string) => Promise<void>;
   fetchPendingInvites: (userId?: string) => Promise<void>;
+  fetchSentInvites: (profileId: string) => Promise<void>;
   fetchWatchedProfiles: (userId?: string) => Promise<void>;
   sendInvite: (profileId: string, email: string) => Promise<{ success: boolean; error?: string }>;
   acceptInvite: (inviteId: string) => Promise<boolean>;
@@ -80,6 +91,7 @@ interface GuardiansState {
 export const useGuardiansStore = create<GuardiansState>((set, get) => ({
   myGuardians: [],
   pendingInvites: [],
+  sentInvites: [],
   watchedProfiles: [],
   isLoading: false,
   error: null,
@@ -104,6 +116,15 @@ export const useGuardiansStore = create<GuardiansState>((set, get) => ({
     }
   },
 
+  fetchSentInvites: async (profileId) => {
+    try {
+      const data = await apiRequest<SentGuardianInvitation[]>(`/api/v1/profiles/${profileId}/invitations/`);
+      set({ sentInvites: data });
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : "Nepodařilo se načíst odeslané pozvánky." });
+    }
+  },
+
   fetchWatchedProfiles: async () => {
     try {
       const data = await apiRequest<ServerWatchedProfile[]>("/api/v1/watched-profiles/");
@@ -121,6 +142,7 @@ export const useGuardiansStore = create<GuardiansState>((set, get) => ({
         body: { email: email.trim().toLowerCase() },
       });
       set({ isLoading: false });
+      await get().fetchSentInvites(profileId);
       return { success: true };
     } catch (error) {
       const message = error instanceof Error ? error.message : "Nepodařilo se odeslat pozvánku.";
@@ -169,10 +191,12 @@ export const useGuardiansStore = create<GuardiansState>((set, get) => ({
   },
 
   stopWatching: async (membershipId) => {
+    const watchedProfile = get().watchedProfiles.find((profile) => profile.membership_id === membershipId);
     set({ isLoading: true, error: null });
     try {
       await apiRequest<void>(`/api/v1/guardian-memberships/${membershipId}/revoke/`, { method: "POST" });
       set((state) => ({ watchedProfiles: state.watchedProfiles.filter((profile) => profile.membership_id !== membershipId), isLoading: false }));
+      if (watchedProfile) useProductStore.getState().evictProfileAccess(watchedProfile.id);
       return true;
     } catch (error) {
       set({ error: error instanceof Error ? error.message : "Hlídání se nepodařilo ukončit.", isLoading: false });
@@ -196,6 +220,6 @@ export const useGuardiansStore = create<GuardiansState>((set, get) => ({
   clearError: () => set({ error: null }),
   reset: () => {
     get().unsubscribeFromInvites();
-    set({ myGuardians: [], pendingInvites: [], watchedProfiles: [], isLoading: false, error: null });
+    set({ myGuardians: [], pendingInvites: [], sentInvites: [], watchedProfiles: [], isLoading: false, error: null });
   },
 }));

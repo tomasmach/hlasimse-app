@@ -3,6 +3,7 @@ import { View, Text, Pressable, Animated, StyleSheet } from "react-native";
 import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
 import { Check } from "phosphor-react-native";
+import { useReducedMotion } from "react-native-reanimated";
 import { COLORS, ANIMATION } from "@/constants/design";
 import { formatInterval } from "@/utils/formatInterval";
 
@@ -17,6 +18,7 @@ export function SuccessOverlay({
   onDismiss,
   intervalHours = 24,
 }: SuccessOverlayProps) {
+  const reduceMotion = useReducedMotion();
   // Create stable Animated.Value refs that persist across renders
   const backdropOpacity = useRef(new Animated.Value(0));
   const circleScale = useRef(new Animated.Value(0));
@@ -25,6 +27,10 @@ export function SuccessOverlay({
   const textTranslateY = useRef(new Animated.Value(20));
 
   const handleDismiss = useCallback(() => {
+    if (reduceMotion) {
+      onDismiss();
+      return;
+    }
     Animated.parallel([
       Animated.timing(backdropOpacity.current, {
         toValue: 0,
@@ -49,7 +55,7 @@ export function SuccessOverlay({
     ]).start(() => {
       onDismiss();
     });
-  }, [onDismiss]);
+  }, [onDismiss, reduceMotion]);
 
   useEffect(() => {
     if (visible) {
@@ -59,6 +65,16 @@ export function SuccessOverlay({
       checkmarkScale.current.setValue(0);
       textOpacity.current.setValue(0);
       textTranslateY.current.setValue(20);
+
+      if (reduceMotion) {
+        backdropOpacity.current.setValue(1);
+        circleScale.current.setValue(1);
+        checkmarkScale.current.setValue(1);
+        textOpacity.current.setValue(1);
+        textTranslateY.current.setValue(0);
+        const timer = setTimeout(handleDismiss, 3000);
+        return () => clearTimeout(timer);
+      }
 
       // Trigger haptic feedback
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -127,7 +143,7 @@ export function SuccessOverlay({
         textTranslateY.current.stopAnimation();
       };
     }
-  }, [visible, handleDismiss]);
+  }, [visible, handleDismiss, reduceMotion]);
 
   if (!visible) return null;
 
@@ -162,10 +178,10 @@ export function SuccessOverlay({
           }}
         >
           <Text className="text-[28px] font-bold text-charcoal mb-2 text-center font-lora-bold">
-            Vše v pořádku!
+            Check-in potvrzen serverem
           </Text>
           <Text className="text-lg text-muted text-center leading-[26px] font-lora">
-            Další hlášení za{"\n"}
+            Server přijal hlášení. Další termín za{"\n"}
             <Text className="font-semibold text-charcoal font-lora-semibold">{formatInterval(intervalHours)}</Text>
           </Text>
         </Animated.View>

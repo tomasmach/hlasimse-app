@@ -4,6 +4,7 @@ import * as Device from "expo-device";
 import { Platform } from "react-native";
 import Constants from "expo-constants";
 import { registerPushDevice } from "@/lib/pushDevices";
+import { createResponseOnceDispatcher } from "@/lib/notificationRouting";
 
 // Configure how notifications are handled when app is in foreground
 Notifications.setNotificationHandler({
@@ -22,7 +23,7 @@ export interface UseNotificationsResult {
   requestPermissions: () => Promise<boolean>;
   registerToken: (userId: string) => Promise<void>;
   setNotificationResponseHandler: (
-    handler: (data: Record<string, unknown>) => void
+    handler: ((data: Record<string, unknown>) => void) | null
   ) => void;
 }
 
@@ -35,11 +36,42 @@ export function useNotifications(): UseNotificationsResult {
   const notificationListener = useRef<Notifications.EventSubscription | null>(null);
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
   const responseHandlerRef = useRef<((data: Record<string, unknown>) => void) | null>(null);
+  const responseDispatcherRef = useRef<ReturnType<typeof createResponseOnceDispatcher> | null>(null);
+
+  const loadExpoPushToken = useCallback(async (): Promise<boolean> => {
+    if (!Device.isDevice) return false;
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
+    if (!projectId) {
+      console.warn("Missing EAS projectId in app config");
+      return false;
+    }
+    try {
+      const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
+      if (!tokenData?.data) return false;
+      setExpoPushToken(tokenData.data);
+      if (Platform.OS === "android") {
+        for (const channel of [{ id: "alerts", name: "Incidenty" }, { id: "reminders", name: "Připomínky" }]) {
+          await Notifications.setNotificationChannelAsync(channel.id, {
+            name: channel.name,
+            importance: Notifications.AndroidImportance.HIGH,
+            vibrationPattern: [0, 250, 250, 250],
+            lightColor: "#FF6B5B",
+          });
+        }
+      }
+      return true;
+    } catch (error) {
+      console.error("Failed to get push token:", error);
+      return false;
+    }
+  }, []);
 
   useEffect(() => {
     // Check current permission status on mount
     Notifications.getPermissionsAsync().then(({ status }) => {
       setPermissionStatus(status);
+      // Refresh an existing registration without showing an OS prompt.
+      if (status === "granted") void loadExpoPushToken();
     });
 
     // Listen for incoming notifications
@@ -52,9 +84,8 @@ export function useNotifications(): UseNotificationsResult {
     // Listen for notification responses (when user taps notification)
     responseListener.current = Notifications.addNotificationResponseReceivedListener(
       (response) => {
-        const data = response.notification.request.content.data;
-        if (responseHandlerRef.current) {
-          responseHandlerRef.current(data as Record<string, unknown>);
+        if (responseDispatcherRef.current?.(response as Parameters<ReturnType<typeof createResponseOnceDispatcher>>[0])) {
+          void Notifications.clearLastNotificationResponseAsync();
         }
       }
     );
@@ -67,7 +98,7 @@ export function useNotifications(): UseNotificationsResult {
         responseListener.current.remove();
       }
     };
-  }, []);
+  }, [loadExpoPushToken]);
 
   const requestPermissions = useCallback(async (): Promise<boolean> => {
     if (!Device.isDevice) {
@@ -89,45 +120,10 @@ export function useNotifications(): UseNotificationsResult {
       return false;
     }
 
-    // Get the push token
-    const projectId = Constants.expoConfig?.extra?.eas?.projectId;
-    if (!projectId) {
-      console.warn("Missing EAS projectId in app config");
-      return false;
-    }
-
-    try {
-      const tokenData = await Notifications.getExpoPushTokenAsync({
-        projectId,
-      });
-      if (!tokenData?.data) {
-        console.warn("Failed to retrieve push token data");
-        return false;
-      }
-      setExpoPushToken(tokenData.data);
-    } catch (error) {
-      console.error("Failed to get push token:", error);
-      return false;
-    }
-
-    // Configure Android notification channels
-    if (Platform.OS === "android") {
-      const channels = [
-        { id: "alerts", name: "Alerts" },
-        { id: "reminders", name: "Připomínky" },
-      ];
-      for (const channel of channels) {
-        await Notifications.setNotificationChannelAsync(channel.id, {
-          name: channel.name,
-          importance: Notifications.AndroidImportance.HIGH,
-          vibrationPattern: [0, 250, 250, 250],
-          lightColor: "#FF6B5B",
-        });
-      }
-    }
+    if (!(await loadExpoPushToken())) return false;
 
     return true;
-  }, []);
+  }, [loadExpoPushToken]);
 
   const registerToken = useCallback(async (_userId: string): Promise<void> => {
     if (!expoPushToken) {
@@ -143,9 +139,19 @@ export function useNotifications(): UseNotificationsResult {
   }, [expoPushToken]);
 
   const setNotificationResponseHandler = useCallback((
-    handler: (data: Record<string, unknown>) => void
+    handler: ((data: Record<string, unknown>) => void) | null
   ) => {
     responseHandlerRef.current = handler;
+    if (!handler) {
+      responseDispatcherRef.current = null;
+      return;
+    }
+    responseDispatcherRef.current = createResponseOnceDispatcher(handler);
+    void Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (response && responseDispatcherRef.current?.(response as Parameters<ReturnType<typeof createResponseOnceDispatcher>>[0])) {
+        void Notifications.clearLastNotificationResponseAsync();
+      }
+    });
   }, []);
 
   return {

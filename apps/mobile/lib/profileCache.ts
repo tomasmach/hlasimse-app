@@ -4,6 +4,7 @@ import type { CheckInProfile } from "@/types/database";
 const cacheKey = (userId: string) => `hlasimse.confirmed-profiles.${userId}.index`;
 const profileKey = (userId: string, profileId: string) => `hlasimse.confirmed-profiles.${userId}.${profileId}`;
 const selectionKey = (userId: string) => `hlasimse.selected-profile.${userId}`;
+const guardianOnlyKey = (userId: string) => `hlasimse.guardian-only.${userId}`;
 
 export interface ConfirmedProfilesCache {
   profiles: CheckInProfile[];
@@ -50,11 +51,21 @@ export async function loadSelectedProfileId(userId: string): Promise<string | nu
   return SecureStore.getItemAsync(selectionKey(userId));
 }
 
+export async function saveGuardianOnlyPreference(userId: string, value: boolean): Promise<void> {
+  if (value) await SecureStore.setItemAsync(guardianOnlyKey(userId), "true");
+  else await SecureStore.deleteItemAsync(guardianOnlyKey(userId));
+}
+
+export async function loadGuardianOnlyPreference(userId: string): Promise<boolean> {
+  return (await SecureStore.getItemAsync(guardianOnlyKey(userId))) === "true";
+}
+
 export async function clearConfirmedProfiles(userId: string): Promise<void> {
   const index = await readIndex(userId);
   await Promise.all([
     SecureStore.deleteItemAsync(cacheKey(userId)),
     SecureStore.deleteItemAsync(selectionKey(userId)),
+    SecureStore.deleteItemAsync(guardianOnlyKey(userId)),
     ...(index?.ids || []).map((id) => SecureStore.deleteItemAsync(profileKey(userId, id))),
   ]);
 }

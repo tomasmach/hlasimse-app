@@ -32,6 +32,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="activity"
+        options={{
+          title: "Historie",
+          headerShown: false,
+        }}
+      />
+      <Tabs.Screen
         name="settings"
         options={{
           title: "Nastavení",
@@ -67,6 +74,11 @@ export default function TabLayout() {
           href: null,
         }}
       />
+      <Tabs.Screen name="profile-detail" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen name="diagnostics" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen name="data-export" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen name="safety-info" options={{ href: null, headerShown: false }} />
+      <Tabs.Screen name="incident/[id]" options={{ href: null, headerShown: false }} />
     </Tabs>
   );
 }

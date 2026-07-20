@@ -5,9 +5,9 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans: "Lora_400Regular",
-        display: ["Lora_600SemiBold", "Lora_700Bold"],
-        body: ["InstrumentSans_400Regular", "InstrumentSans_500Medium", "InstrumentSans_600SemiBold"],
+        sans: "Satoshi_400Regular",
+        display: ["Satoshi_700Bold"],
+        body: ["Satoshi_400Regular"],
       },
       fontWeight: {
         normal: "400",
@@ -73,6 +73,10 @@ module.exports = {
         '.font-lora-medium': { fontFamily: 'Lora_500Medium' },
         '.font-lora-semibold': { fontFamily: 'Lora_600SemiBold' },
         '.font-lora-bold': { fontFamily: 'Lora_700Bold' },
+        '.font-body': { fontFamily: 'Satoshi_400Regular' },
+        '.font-body-medium': { fontFamily: 'Satoshi_500Medium' },
+        '.font-body-semibold': { fontFamily: 'Satoshi_700Bold' },
+        '.font-display': { fontFamily: 'Satoshi_700Bold' },
       });
     },
   ],

@@ -14,6 +14,7 @@ export interface CheckInProfile {
   last_checked_in_at: string | null;
   next_deadline_at: string | null;
   deadline_generation: number;
+  archived_at?: string | null;
   created_at: string;
   updated_at: string;
   // Compatibility aliases used by the current UI until the multi-profile redesign.
@@ -29,6 +30,7 @@ export interface CheckInReceipt {
   accepted_at: string;
   deadline_generation: number;
   next_deadline_at: string | null;
+  submitted_from_queue?: boolean;
 }
 
 export interface GuardianWithUser {

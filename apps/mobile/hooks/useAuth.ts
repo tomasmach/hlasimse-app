@@ -5,12 +5,14 @@ import { cancelAllReminders } from "@/lib/reminderNotifications";
 import { useAuthStore } from "@/stores/auth";
 import { useCheckInStore } from "@/stores/checkin";
 import { useGuardiansStore } from "@/stores/guardians";
+import { useProductStore } from "@/stores/product";
 
 async function clearRuntimeState(purgeQueue: boolean): Promise<void> {
   await clearLocalSession({ purgeQueue });
   await cancelAllReminders();
   useCheckInStore.getState().clearProfile();
   useGuardiansStore.getState().reset();
+  useProductStore.getState().reset();
   useAuthStore.getState().setUser(null);
 }
 
@@ -22,6 +24,7 @@ export function useAuth() {
     await cancelAllReminders();
     useCheckInStore.getState().clearProfile();
     useGuardiansStore.getState().reset();
+    useProductStore.getState().reset();
     setUser(null);
   };
 

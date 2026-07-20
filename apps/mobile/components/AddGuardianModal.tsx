@@ -10,6 +10,7 @@ import {
   Platform,
 } from "react-native";
 import { COLORS } from "@/constants/design";
+import { useReducedMotion } from "react-native-reanimated";
 
 interface AddGuardianModalProps {
   visible: boolean;
@@ -18,20 +19,21 @@ interface AddGuardianModalProps {
 }
 
 export function AddGuardianModal({ visible, onClose, onSubmit }: AddGuardianModalProps) {
+  const reduceMotion = useReducedMotion();
   const [email, setEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async () => {
     if (!email.trim()) {
-      setError("Zadej email strážce");
+      setError("Zadejte e-mail strážce.");
       return;
     }
 
     // Základní validace emailu
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(email.trim())) {
-      setError("Zadej platný email");
+      setError("Zadejte platný e-mail.");
       return;
     }
 
@@ -64,7 +66,7 @@ export function AddGuardianModal({ visible, onClose, onSubmit }: AddGuardianModa
     <Modal
       visible={visible}
       transparent
-      animationType="fade"
+      animationType={reduceMotion ? "none" : "fade"}
       onRequestClose={handleClose}
     >
       <KeyboardAvoidingView
@@ -77,13 +79,14 @@ export function AddGuardianModal({ visible, onClose, onSubmit }: AddGuardianModa
         >
           <Pressable
             onPress={(e) => e.stopPropagation()}
-            className="bg-cream w-full rounded-3xl p-6"
+            className="bg-cream w-full rounded-[28px] p-6"
+            accessibilityViewIsModal
           >
             <Text className="text-charcoal text-xl font-semibold mb-2 font-lora-semibold">
-              Přidat strážce
+              Pozvat strážce
             </Text>
             <Text className="text-muted mb-4 font-lora">
-              Zadej email osoby, která tě bude hlídat. Musí mít účet v aplikaci.
+              Pozvaný člověk musí vztah výslovně přijmout. E-mail neobsahuje informace o check-inech, poloze ani incidentu.
             </Text>
 
             <TextInput
@@ -99,6 +102,8 @@ export function AddGuardianModal({ visible, onClose, onSubmit }: AddGuardianModa
               autoFocus
               className="bg-white rounded-xl px-4 py-3 text-charcoal mb-3"
               placeholderTextColor={COLORS.muted}
+              accessibilityLabel="E-mail strážce"
+              testID="guardian-invite-email"
             />
 
             {error && (
@@ -109,14 +114,17 @@ export function AddGuardianModal({ visible, onClose, onSubmit }: AddGuardianModa
               <Pressable
                 onPress={handleClose}
                 disabled={isLoading}
-                className="flex-1 py-3 rounded-xl border border-muted/30"
+                className="flex-1 min-h-[48px] rounded-xl border border-muted/30 items-center justify-center"
+                accessibilityRole="button"
               >
                 <Text className="text-muted text-center font-medium font-lora-medium">Zrušit</Text>
               </Pressable>
               <Pressable
                 onPress={handleSubmit}
                 disabled={isLoading}
-                className="flex-1 py-3 rounded-xl bg-coral"
+                className="flex-1 min-h-[48px] rounded-xl bg-coral items-center justify-center"
+                accessibilityRole="button"
+                testID="guardian-invite-submit"
               >
                 {isLoading ? (
                   <ActivityIndicator color={COLORS.white} />

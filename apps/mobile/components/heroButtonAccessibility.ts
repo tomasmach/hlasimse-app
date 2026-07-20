@@ -15,7 +15,7 @@ export function getHeroButtonAccessibility({
     label: isLoading ? "Odesílání hlášení" : "Odeslat hlášení",
     hint: isUnavailable
       ? undefined
-      : "Odešle serveru potvrzení, že jste v pořádku.",
+      : "Odešle check-in serveru. Úspěch nastane až po potvrzení serverem.",
     state: {
       disabled: isUnavailable,
       busy: isLoading,

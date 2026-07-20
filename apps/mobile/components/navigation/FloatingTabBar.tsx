@@ -5,8 +5,9 @@ import Animated, {
   useSharedValue,
   useAnimatedStyle,
   withSpring,
+  useReducedMotion,
 } from "react-native-reanimated";
-import { House, UsersThree, GearSix, IconProps } from "phosphor-react-native";
+import { House, UsersThree, ClockCounterClockwise, GearSix, IconProps } from "phosphor-react-native";
 import type { BottomTabBarProps } from "expo-router/js-tabs";
 import { COLORS, ANIMATION, SHADOWS } from "@/constants/design";
 
@@ -21,6 +22,7 @@ type TabConfig = {
 const TABS: TabConfig[] = [
   { name: "index", icon: House, label: "Domů" },
   { name: "guardians", icon: UsersThree, label: "Strážci" },
+  { name: "activity", icon: ClockCounterClockwise, label: "Historie" },
   { name: "settings", icon: GearSix, label: "Nastavení" },
 ];
 
@@ -32,6 +34,7 @@ type TabButtonProps = {
 
 function TabButton({ tab, isActive, onPress }: TabButtonProps) {
   const scale = useSharedValue(1);
+  const reduceMotion = useReducedMotion();
   const Icon = tab.icon;
 
   // KEEP animated style - uses withSpring
@@ -40,11 +43,11 @@ function TabButton({ tab, isActive, onPress }: TabButtonProps) {
   }));
 
   const handlePressIn = () => {
-    scale.value = withSpring(0.9, ANIMATION.spring.bouncy);
+    if (!reduceMotion) scale.value = withSpring(0.94, ANIMATION.spring.gentle);
   };
 
   const handlePressOut = () => {
-    scale.value = withSpring(1, ANIMATION.spring.bouncy);
+    if (!reduceMotion) scale.value = withSpring(1, ANIMATION.spring.gentle);
   };
 
   const handlePress = () => {
@@ -60,8 +63,12 @@ function TabButton({ tab, isActive, onPress }: TabButtonProps) {
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       className="items-center justify-center flex-1"
       style={animatedStyle}
+      accessibilityRole="tab"
+      accessibilityLabel={tab.label}
+      accessibilityState={{ selected: isActive }}
+      testID={`tab-${tab.name}`}
     >
-      <View className={`w-11 h-11 rounded-[22px] items-center justify-center ${isActive ? 'bg-coral/15' : ''}`}>
+      <View className={`w-10 h-10 rounded-[20px] items-center justify-center ${isActive ? 'bg-coral/15' : ''}`}>
         <Icon
           size={24}
           weight={isActive ? "fill" : "light"}
@@ -84,7 +91,7 @@ export function FloatingTabBar({ state, navigation }: BottomTabBarProps) {
     <View style={styles.container}>
       <View style={styles.blurContainer}>
         <BlurView intensity={80} tint="light" className="bg-white/80">
-          <View className="flex-row py-3 px-8 justify-around items-center">
+          <View className="flex-row py-2 px-3 justify-around items-center">
             {visibleRoutes.map((route) => {
               const tab = TABS.find((t) => t.name === route.name);
               if (!tab) return null;
