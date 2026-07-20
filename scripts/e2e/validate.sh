@@ -263,6 +263,7 @@ ruby -e '
     e2e_executable_sha256 e2e_js_bundle_sha256 e2e_info_plist_sha256 installed_app_sha256
     e2e_codesign_cdhash signing_authority bundle_identity_derivation
     js_bundle_relation production_entitlements_sha256 e2e_entitlements_sha256 bundle_bound_entitlements_present
+    framework_executable_mode_normalization normalized_framework_executable_count framework_executable_content_preserved
     production_cleartext_allowed e2e_local_networking_allowed initial_install_mode
     update_artifact_relation n_minus_one_coverage store_signed_update_coverage
     production_endpoint_coverage artifact_scope
@@ -296,6 +297,13 @@ ruby -e '
     %q{Set :NSAppTransportSecurity:NSAllowsLocalNetworking true},
     %q{codesign --force --sign - --timestamp=none --entitlements},
     %q{bundle_bound_entitlement in application-identifier com.apple.developer.team-identifier keychain-access-groups},
+    %q{[[ ! "${framework_executable}" =~ ^[A-Za-z0-9._+-]+$ ]]},
+    %q{stat -f %Lp "${framework_executable_path}"},
+    %q{chmod 0644 "${framework_executable_path}"},
+    %q{[[ "${framework_executable_sha256_after}" == "${framework_executable_sha256_before}" ]]},
+    %q{[[ "${normalized_framework_executable_count}" -gt 0 ]]},
+    %q{e2e_record_property framework_executable_content_preserved true},
+    %q{release-postbuild-identity-ats-and-coresimulator-mode-isolated},
     %q{xcrun simctl install "${device_id}" "${IOS_E2E_APP_PATH}"},
     %q{xcrun simctl launch --terminate-running-process},
     %q{ios-install-tree.diff},

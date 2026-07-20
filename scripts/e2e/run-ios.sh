@@ -114,10 +114,12 @@ e2e_require node
 e2e_require npx
 e2e_require ditto
 e2e_require codesign
+e2e_require chmod
 e2e_require diff
 e2e_require pod
 e2e_require plutil
 e2e_require shasum
+e2e_require stat
 e2e_require tr
 e2e_require uname
 e2e_require uv
@@ -416,6 +418,14 @@ e2e_ios_prepare_release_apps() {
   local e2e_entitlements_sha256
   local bundle_bound_entitlement
   local ios_architectures
+  local framework_path
+  local framework_info
+  local framework_executable
+  local framework_executable_path
+  local framework_executable_mode
+  local framework_executable_sha256_before
+  local framework_executable_sha256_after
+  local normalized_framework_executable_count=0
 
   mkdir -p "${native_dir}"
   touch "${native_dir}/.hlasimse-prebuild-stale-sentinel"
@@ -491,6 +501,34 @@ e2e_ios_prepare_release_apps() {
       return 1
     fi
   done
+  for framework_path in "${IOS_E2E_APP_PATH}/Frameworks/"*.framework; do
+    [[ -d "${framework_path}" ]] || continue
+    framework_info="${framework_path}/Info.plist"
+    [[ -f "${framework_info}" ]] \
+      || { e2e_log "Framework Info.plist is missing: ${framework_path}."; return 1; }
+    framework_executable="$(e2e_ios_plist_value "${framework_info}" CFBundleExecutable)"
+    if [[ ! "${framework_executable}" =~ ^[A-Za-z0-9._+-]+$ ]] \
+      || [[ "${framework_executable}" == "." || "${framework_executable}" == ".." ]]; then
+      e2e_log "Unsafe framework executable basename: ${framework_executable}."
+      return 1
+    fi
+    framework_executable_path="${framework_path}/${framework_executable}"
+    [[ -f "${framework_executable_path}" && ! -L "${framework_executable_path}" ]] \
+      || { e2e_log "Framework executable is missing: ${framework_executable_path}."; return 1; }
+    framework_executable_sha256_before="$(shasum -a 256 "${framework_executable_path}" | awk '{print $1}')"
+    framework_executable_mode="$(stat -f %Lp "${framework_executable_path}")"
+    [[ "${framework_executable_mode}" == "755" ]] \
+      || { e2e_log "Unexpected packaged framework executable mode ${framework_executable_mode}: ${framework_executable_path}."; return 1; }
+    chmod 0644 "${framework_executable_path}"
+    [[ "$(stat -f %Lp "${framework_executable_path}")" == "644" ]] \
+      || { e2e_log "Failed to normalize framework executable mode: ${framework_executable_path}."; return 1; }
+    framework_executable_sha256_after="$(shasum -a 256 "${framework_executable_path}" | awk '{print $1}')"
+    [[ "${framework_executable_sha256_after}" == "${framework_executable_sha256_before}" ]] \
+      || { e2e_log "Framework executable bytes changed during mode normalization: ${framework_executable_path}."; return 1; }
+    normalized_framework_executable_count=$((normalized_framework_executable_count + 1))
+  done
+  [[ "${normalized_framework_executable_count}" -gt 0 ]] \
+    || { e2e_log "No embedded framework executables were found for CoreSimulator mode normalization."; return 1; }
   /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${E2E_APP_ID}" "${e2e_info}"
   /usr/libexec/PlistBuddy -c "Set :NSAppTransportSecurity:NSAllowsLocalNetworking true" "${e2e_info}"
   codesign --force --sign - --timestamp=none --entitlements "${production_entitlements_path}" \
@@ -595,10 +633,13 @@ e2e_ios_prepare_release_apps() {
   e2e_record_property production_entitlements_sha256 "${production_entitlements_sha256}"
   e2e_record_property e2e_entitlements_sha256 "${e2e_entitlements_sha256}"
   e2e_record_property bundle_bound_entitlements_present false
+  e2e_record_property framework_executable_mode_normalization coresimulator-0755-to-0644
+  e2e_record_property normalized_framework_executable_count "${normalized_framework_executable_count}"
+  e2e_record_property framework_executable_content_preserved true
   e2e_record_property e2e_info_plist_sha256 "${e2e_info_plist_sha256}"
   e2e_record_property e2e_codesign_cdhash "${codesign_cdhash}"
   e2e_record_property signing_authority adhoc-simulator-test-only
-  e2e_record_property bundle_identity_derivation release-postbuild-identity-isolated
+  e2e_record_property bundle_identity_derivation release-postbuild-identity-ats-and-coresimulator-mode-isolated
   e2e_record_property production_cleartext_allowed false
   e2e_record_property e2e_local_networking_allowed true
   e2e_record_property initial_install_mode fresh-package-install
