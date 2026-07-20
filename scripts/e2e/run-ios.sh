@@ -12,6 +12,7 @@ IOS_PRODUCTION_APP_PATH=""
 IOS_E2E_APP_PATH=""
 IOS_PRODUCTION_APP_ID=""
 IOS_PRODUCTION_JS_BUNDLE_SHA256=""
+IOS_SIMULATOR_ARCHITECTURE=""
 IOS_E2E_APP_SHA256=""
 IOS_E2E_EXECUTABLE_SHA256=""
 IOS_E2E_JS_BUNDLE_SHA256=""
@@ -113,9 +114,11 @@ e2e_require node
 e2e_require npx
 e2e_require ditto
 e2e_require codesign
+e2e_require diff
 e2e_require pod
 e2e_require plutil
 e2e_require shasum
+e2e_require tr
 e2e_require uv
 e2e_require xcrun
 e2e_require xcodebuild
@@ -341,6 +344,37 @@ e2e_ios_app_tree_sha256() {
   ' "${app_path}"
 }
 
+e2e_ios_write_app_tree_manifest() {
+  local app_path="$1"
+  local output_path="$2"
+  node -e '
+    const crypto = require("crypto");
+    const fs = require("fs");
+    const path = require("path");
+    const root = process.argv[1];
+    const rows = [];
+    const walk = (directory, prefix = "") => {
+      for (const name of fs.readdirSync(directory).sort()) {
+        const absolute = path.join(directory, name);
+        const relative = prefix ? `${prefix}/${name}` : name;
+        const stat = fs.lstatSync(absolute);
+        const mode = (stat.mode & 0o7777).toString(8);
+        if (stat.isSymbolicLink()) {
+          rows.push(`L\t${mode}\t${fs.readlinkSync(absolute)}\t${relative}`);
+        } else if (stat.isDirectory()) {
+          rows.push(`D\t${mode}\t-\t${relative}`);
+          walk(absolute, relative);
+        } else if (stat.isFile()) {
+          const digest = crypto.createHash("sha256").update(fs.readFileSync(absolute)).digest("hex");
+          rows.push(`F\t${mode}\t${digest}\t${relative}`);
+        }
+      }
+    };
+    walk(root);
+    process.stdout.write(`${rows.join("\n")}\n`);
+  ' "${app_path}" >"${output_path}"
+}
+
 e2e_ios_plist_value() {
   local plist_path="$1"
   local key_path="$2"
@@ -380,6 +414,7 @@ e2e_ios_prepare_release_apps() {
   local production_entitlements_sha256
   local e2e_entitlements_sha256
   local bundle_bound_entitlement
+  local ios_architectures
 
   mkdir -p "${native_dir}"
   touch "${native_dir}/.hlasimse-prebuild-stale-sentinel"
@@ -417,7 +452,8 @@ e2e_ios_prepare_release_apps() {
       xcodebuild -workspace "${workspace}" -scheme "${scheme}" \
         -configuration Release -sdk iphonesimulator \
         -destination "id=${IOS_SIMULATOR_UDID}" \
-        -derivedDataPath "${production_derived_data}" build
+        -derivedDataPath "${production_derived_data}" \
+        ONLY_ACTIVE_ARCH=YES build
   ) 2>&1 | tee "${E2E_ARTIFACT_DIR}/ios-production-build.log"
 
   IOS_PRODUCTION_APP_PATH="${production_derived_data}/Build/Products/Release-iphonesimulator/Hlsmse.app"
@@ -500,10 +536,12 @@ e2e_ios_prepare_release_apps() {
     || { e2e_log "Release-derived E2E JS bundle lacks the native-identity loopback constant."; return 1; }
 
   xcodebuild -workspace "${workspace}" -scheme "${scheme}" -configuration Release \
-    -sdk iphonesimulator -destination "id=${IOS_SIMULATOR_UDID}" -showBuildSettings \
+    -sdk iphonesimulator -destination "id=${IOS_SIMULATOR_UDID}" ONLY_ACTIVE_ARCH=YES \
+    -showBuildSettings \
     >"${E2E_ARTIFACT_DIR}/ios-release-build-settings.txt"
   grep -Eq '^[[:space:]]*CONFIGURATION = Release$' "${E2E_ARTIFACT_DIR}/ios-release-build-settings.txt"
   grep -Eq '^[[:space:]]*ENABLE_TESTABILITY = NO$' "${E2E_ARTIFACT_DIR}/ios-release-build-settings.txt"
+  grep -Eq '^[[:space:]]*ONLY_ACTIVE_ARCH = YES$' "${E2E_ARTIFACT_DIR}/ios-release-build-settings.txt"
 
   codesign_details="$(codesign -dvvv "${IOS_E2E_APP_PATH}" 2>&1)"
   printf '%s\n' "${codesign_details}" >"${E2E_ARTIFACT_DIR}/ios-e2e-codesign.txt"
@@ -531,6 +569,9 @@ e2e_ios_prepare_release_apps() {
     || { e2e_log "Production Release app changed while deriving the E2E copy."; return 1; }
   e2e_info_plist_sha256="$(shasum -a 256 "${e2e_info}" | awk '{print $1}')"
   native_project_sha256="$(shasum -a 256 "${native_dir}/Hlsmse.xcodeproj/project.pbxproj" | awk '{print $1}')"
+  ios_architectures="$(lipo -archs "${IOS_E2E_APP_PATH}/${executable_name}")"
+  [[ "${ios_architectures}" == "${IOS_SIMULATOR_ARCHITECTURE}" ]] \
+    || { e2e_log "Release app architecture does not match the active simulator architecture."; return 1; }
 
   e2e_record_property build_configuration Release
   e2e_record_property packaged_app_version "${packaged_app_version}"
@@ -565,7 +606,9 @@ e2e_ios_prepare_release_apps() {
   e2e_record_property store_signed_update_coverage false
   e2e_record_property production_endpoint_coverage sentinel-not-real-production-endpoint
   e2e_record_property artifact_scope release-derived-simulator-not-store-signed
-  e2e_record_property ios_architectures "$(lipo -archs "${IOS_E2E_APP_PATH}/${executable_name}")"
+  e2e_record_property ios_architectures "${ios_architectures}"
+  e2e_ios_write_app_tree_manifest "${IOS_E2E_APP_PATH}" \
+    "${E2E_ARTIFACT_DIR}/ios-packaged-app-tree.tsv"
 }
 
 e2e_ios_install_and_launch_release_app() {
@@ -600,6 +643,9 @@ e2e_ios_install_and_launch_release_app() {
     || { e2e_log "Installed E2E iOS ATS isolation mismatch."; return 1; }
   executable_name="$(e2e_ios_plist_value "${installed_info}" CFBundleExecutable)"
   installed_app_sha256="$(e2e_ios_app_tree_sha256 "${installed_bundle}")"
+  e2e_record_property installed_app_sha256 "${installed_app_sha256}"
+  e2e_ios_write_app_tree_manifest "${installed_bundle}" \
+    "${E2E_ARTIFACT_DIR}/ios-installed-app-tree.tsv"
   installed_executable_sha256="$(shasum -a 256 "${installed_bundle}/${executable_name}" | awk '{print $1}')"
   installed_js_bundle_sha256="$(shasum -a 256 "${installed_bundle}/main.jsbundle" | awk '{print $1}')"
   [[ "${installed_executable_sha256}" == "${IOS_E2E_EXECUTABLE_SHA256}" ]] \
@@ -610,9 +656,13 @@ e2e_ios_install_and_launch_release_app() {
     || { e2e_log "Installed iOS JS bundle differs from the production Release JS bundle."; return 1; }
   grep -aFq 'https://release-manifest.invalid' "${installed_bundle}/main.jsbundle" \
     || { e2e_log "Installed E2E JS bundle lost the production HTTPS endpoint sentinel."; return 1; }
-  [[ "${installed_app_sha256}" == "${IOS_E2E_APP_SHA256}" ]] \
-    || { e2e_log "Installed iOS app tree differs from the immutable Release artifact."; return 1; }
-  e2e_record_property installed_app_sha256 "${installed_app_sha256}"
+  if [[ "${installed_app_sha256}" != "${IOS_E2E_APP_SHA256}" ]]; then
+    diff -u "${E2E_ARTIFACT_DIR}/ios-packaged-app-tree.tsv" \
+      "${E2E_ARTIFACT_DIR}/ios-installed-app-tree.tsv" \
+      >"${E2E_ARTIFACT_DIR}/ios-install-tree.diff" || true
+    e2e_log "Installed iOS app tree differs from the immutable Release artifact."
+    return 1
+  fi
   xcrun simctl launch --terminate-running-process "${device_id}" "${E2E_APP_ID}" \
     >"${E2E_ARTIFACT_DIR}/ios-initial-launch.txt"
 }
@@ -704,6 +754,14 @@ if ! xcrun simctl boot "${IOS_SIMULATOR_UDID}" 2>/dev/null; then
   fi
 fi
 xcrun simctl bootstatus "${IOS_SIMULATOR_UDID}" -b
+IOS_SIMULATOR_ARCHITECTURE="$(
+  xcrun simctl spawn "${IOS_SIMULATOR_UDID}" uname -m | tr -d '\r\n'
+)"
+if [[ "${IOS_SIMULATOR_ARCHITECTURE}" != "arm64" ]]; then
+  e2e_log "Release evidence requires an arm64 iOS simulator; found ${IOS_SIMULATOR_ARCHITECTURE}."
+  exit 1
+fi
+e2e_record_property simulator_architecture "${IOS_SIMULATOR_ARCHITECTURE}"
 e2e_prepare_backend
 e2e_ios_prepare_release_apps
 e2e_ios_install_and_launch_release_app "${IOS_SIMULATOR_UDID}"

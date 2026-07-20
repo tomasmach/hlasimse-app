@@ -256,7 +256,7 @@ ruby -e '
   required_ios = %w[
     device_id device_name device_origin device_owned device_type_identifier
     template_device_id template_device_name os_name os_version api_level
-    ios_runtime_id xcode_version xcode_build
+    ios_runtime_id xcode_version xcode_build simulator_architecture
     production_app_id release_evidence_eligible device_cleanup_completed build_cleanup_completed build_configuration packaged_app_version packaged_app_build js_bundle_mode
     metro_used native_project_origin expo_prebuild_version cocoapods_version
     podfile_lock_sha256 native_project_sha256 production_app_sha256 production_app_sha256_after_isolation e2e_source_app_sha256 production_js_bundle_sha256 e2e_app_sha256
@@ -286,6 +286,9 @@ ruby -e '
     %q{-configuration Release},
     %q{EXPO_PUBLIC_API_URL="https://release-manifest.invalid"},
     %q{E2E_APP_ID="${IOS_PRODUCTION_APP_ID}.e2e"},
+    %q{ONLY_ACTIVE_ARCH=YES build},
+    %q{xcrun simctl spawn "${IOS_SIMULATOR_UDID}" uname -m},
+    %q{[[ "${ios_architectures}" == "${IOS_SIMULATOR_ARCHITECTURE}" ]]},
     %q{main.jsbundle},
     %q{ditto "${IOS_PRODUCTION_APP_PATH}" "${IOS_E2E_APP_PATH}"},
     %q{Set :CFBundleIdentifier ${E2E_APP_ID}},
@@ -294,6 +297,7 @@ ruby -e '
     %q{bundle_bound_entitlement in application-identifier com.apple.developer.team-identifier keychain-access-groups},
     %q{xcrun simctl install "${device_id}" "${IOS_E2E_APP_PATH}"},
     %q{xcrun simctl launch --terminate-running-process},
+    %q{ios-install-tree.diff},
     %q{same-built-app-reinstall-not-n-minus-one},
     %q{ios_bundle_present_before_install},
   ]
@@ -319,9 +323,9 @@ ruby -e '
   ios_release_violation = forbidden_ios_release.find { |fragment| ios.include?(fragment) }
   abort("iOS release evidence still contains development tooling: #{ios_release_violation}") if ios_release_violation
   abort("iOS release evidence contains a Debug build configuration") if ios.match?(/-configuration\s+Debug/)
-  production_release_build = ios.match?(/EXPO_PUBLIC_API_URL="https:\/\/release-manifest\.invalid".*?xcodebuild.*?-configuration Release.*?-derivedDataPath "\$\{production_derived_data\}" build/m)
+  production_release_build = ios.match?(/EXPO_PUBLIC_API_URL="https:\/\/release-manifest\.invalid".*?xcodebuild.*?-configuration Release.*?-derivedDataPath "\$\{production_derived_data\}".*?ONLY_ACTIVE_ARCH=YES build/m)
   abort("Production iOS build is not structurally tied to Release and its own DerivedData") unless production_release_build
-  release_build_count = ios.scan(/-derivedDataPath "\$\{[^}]+\}" build/).length
+  release_build_count = ios.scan("ONLY_ACTIVE_ARCH=YES build").length
   abort("iOS harness must contain exactly one Xcode app build") unless release_build_count == 1
   abort("iOS E2E transport must not depend on a separate loopback-configured JS build") if ios.match?(/EXPO_PUBLIC_API_URL="http:\/\//) || ios.include?("e2e_derived_data")
   abort("iOS E2E JS must be byte-identical to production") unless ios.include?(%q{[[ "${IOS_PRODUCTION_JS_BUNDLE_SHA256}" == "${IOS_E2E_JS_BUNDLE_SHA256}" ]]})
