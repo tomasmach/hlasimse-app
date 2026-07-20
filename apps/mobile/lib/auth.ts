@@ -109,18 +109,17 @@ export async function logout(): Promise<void> {
   if (tokens?.refresh) {
     try {
       await deactivateCurrentPushDevice();
-    } catch {
-      // Device cleanup is retried when this installation registers again.
-    }
-    try {
       const currentTokens = await getTokens();
       if (!currentTokens?.refresh) throw new Error("Session already cleared");
       await apiRequest<void>("/api/v1/auth/logout/", {
         method: "POST",
         body: { refresh: currentTokens.refresh },
       });
-    } catch {
-      // Local logout remains available if token revocation cannot reach the server.
+    } catch (error) {
+      throw new Error(
+        "Bezpečné odhlášení se nepodařilo potvrdit serverem. Zkontrolujte připojení a zkuste to znovu; účet i upozornění na tomto zařízení zatím zůstávají aktivní.",
+        { cause: error },
+      );
     }
   }
   await clearLocalSession({ purgeQueue: true });

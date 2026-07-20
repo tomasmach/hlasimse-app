@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Alert, Pressable, ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
@@ -5,7 +6,6 @@ import { ArrowRight, Bell, DownloadSimple, GearSix, ShieldWarning, SignOut, Tras
 import { PageTitle, Notice } from "@/components/product/ProductUI";
 import { useAuth } from "@/hooks/useAuth";
 import { useCheckInStore } from "@/stores/checkin";
-import { useProductStore } from "@/stores/product";
 import { COLORS } from "@/constants/design";
 
 function Row({ label, detail, icon: Icon, onPress, testID, danger = false }: { label: string; detail?: string; icon: React.ComponentType<any>; onPress: () => void; testID?: string; danger?: boolean }) {
@@ -15,12 +15,16 @@ function Row({ label, detail, icon: Icon, onPress, testID, danger = false }: { l
 export default function SettingsScreen() {
   const { user, signOut } = useAuth();
   const { profile, pendingCount, failedPendingCount } = useCheckInStore();
-  const resetProduct = useProductStore((state) => state.reset);
+  const [logoutError, setLogoutError] = useState("");
   const logout = () => {
     const queued = pendingCount + failedPendingCount;
     Alert.alert("Odhlásit se?", queued ? `V zařízení je ${queued} nepotvrzených požadavků. Odhlášení je z bezpečnostních důvodů trvale odstraní; serverový termín se nezmění.` : "Lokální session a připomínky tohoto zařízení budou odstraněny.", [
       { text: "Zrušit", style: "cancel" },
-      { text: queued ? "Odhlásit a smazat frontu" : "Odhlásit", style: "destructive", onPress: async () => { resetProduct(); await signOut(); } },
+      { text: queued ? "Odhlásit a smazat frontu" : "Odhlásit", style: "destructive", onPress: async () => {
+        setLogoutError("");
+        try { await signOut(); }
+        catch (error) { setLogoutError(error instanceof Error ? error.message : "Bezpečné odhlášení se nepodařilo."); }
+      } },
     ]);
   };
   return (
@@ -33,7 +37,8 @@ export default function SettingsScreen() {
         <Row testID="account-export-open" label="Exportovat moje data" detail="Server připraví aktuální JSON export; obsah může zahrnovat citlivé údaje" icon={DownloadSimple} onPress={() => router.push("/(tabs)/data-export")} />
         <Row label="Jak služba funguje" detail="Význam check-inu, incidentu a best-effort push" icon={GearSix} onPress={() => router.push("/(tabs)/safety-info")} />
         <View className="my-7"><Notice title="Hlásím se je kompletně zdarma" tone="success"><Text className="font-body text-[#245E3C]">Až 5 profilů a 5 strážců na profil, bez trialu, předplatného nebo placeného odemknutí.</Text></Notice></View>
-        <Row testID="settings-sign-out" label="Odhlásit se" detail={pendingCount + failedPendingCount ? "Pozor: nepotvrzená offline fronta bude smazána" : "Odstraní lokální session a připomínky"} icon={SignOut} onPress={logout} danger={pendingCount + failedPendingCount > 0} />
+        {logoutError ? <View className="mb-4"><Notice title={logoutError} tone="danger" /></View> : null}
+        <Row testID="settings-sign-out" label="Odhlásit se" detail={pendingCount + failedPendingCount ? "Vyžaduje síť; nepotvrzená offline fronta bude po potvrzení serverem smazána" : "Vyžaduje síť kvůli odregistrování zařízení a odstraní lokální session i připomínky"} icon={SignOut} onPress={logout} danger={pendingCount + failedPendingCount > 0} />
         <Row testID="account-delete-open" label="Smazat účet" detail="Vyžaduje heslo; aktivní incident musí být nejdřív bezpečně vyřešen" icon={Trash} onPress={() => router.push("/(tabs)/delete-account")} danger />
         <View className="flex-row gap-3 items-start py-7"><ShieldWarning size={22} color={COLORS.error} /><Text className="font-body text-sm leading-5 text-muted flex-1">Hlásím se nekontaktuje tísňové služby. V bezprostředním ohrožení volejte 112 nebo 155.</Text></View>
       </ScrollView>

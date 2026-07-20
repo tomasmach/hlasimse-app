@@ -11,7 +11,7 @@ import { ActionButton, BackHeader, Notice } from "@/components/product/ProductUI
 import { COLORS } from "@/constants/design";
 
 export default function DeleteAccountScreen() {
-  const { signOut } = useAuth();
+  const { finishAccountDeletion } = useAuth();
   const { profiles, pendingCount, failedPendingCount } = useCheckInStore();
   const resetProduct = useProductStore((state) => state.reset);
   const [password, setPassword] = useState("");
@@ -26,7 +26,7 @@ export default function DeleteAccountScreen() {
         try {
           await apiRequest<void>("/api/v1/account/", { method: "DELETE", body: { password, confirmed: true } });
           resetProduct();
-          await signOut();
+          await finishAccountDeletion();
           router.replace("/(auth)/login");
         } catch (reason) { setError(reason instanceof Error ? reason.message : "Server účet nesmazal."); }
         finally { setBusy(false); }

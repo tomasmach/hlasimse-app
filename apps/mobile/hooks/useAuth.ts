@@ -28,6 +28,10 @@ export function useAuth() {
     setUser(null);
   };
 
+  const finishAccountDeletion = async () => {
+    await clearRuntimeState(true);
+  };
+
   useEffect(() => {
     setUnauthorizedHandler(() => clearRuntimeState(true));
     if (!initialized) {
@@ -40,5 +44,5 @@ export function useAuth() {
     }
   }, [initialized, setInitialized, setIsLoading, setUser]);
 
-  return { session: user ? { user } : null, user, isLoading, signOut };
+  return { session: user ? { user } : null, user, isLoading, signOut, finishAccountDeletion };
 }

@@ -130,3 +130,24 @@ it("purges the previous account queue on account switch and the current queue on
   expect(await getQueue("new-user", installationId)).toHaveLength(0);
   expect(await getTokens()).toBeNull();
 });
+
+it("keeps the local session and queue when server-side logout cleanup cannot be confirmed", async () => {
+  const installationId = await getInstallationId();
+  await setStoredUserId("current-user");
+  await addToQueue({
+    userId: "current-user",
+    installationId,
+    profileId: "33333333-3333-4333-8333-333333333333",
+    clientRecordedAt: "2026-07-19T12:00:00Z",
+    latitude: null,
+    longitude: null,
+    locationAccuracyMeters: null,
+    status: "pending",
+    error: null,
+  });
+  jest.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("Network request failed"));
+
+  await expect(logout()).rejects.toThrow("Bezpečné odhlášení se nepodařilo potvrdit serverem");
+  expect(await getTokens()).toEqual({ access: "expired", refresh: "refresh-1" });
+  expect(await getQueue("current-user", installationId)).toHaveLength(1);
+});
