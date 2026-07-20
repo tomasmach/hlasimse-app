@@ -18,6 +18,7 @@ tags:
 - tapOn:
     text: "Not Now"
     optional: true
+- launchApp
 - extendedWaitUntil:
     visible:
       id: "checkin-submit"
