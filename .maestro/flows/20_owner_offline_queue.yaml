@@ -4,7 +4,11 @@ tags:
   - simulator
   - offline
 ---
+- stopApp
 - launchApp
+- extendedWaitUntil:
+    visible: "Toto je uložený náhled, může být zastaralý"
+    timeout: 25000
 - tapOn:
     id: "checkin-submit"
 - extendedWaitUntil:

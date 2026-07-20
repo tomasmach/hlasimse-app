@@ -5,8 +5,6 @@ tags:
   - offline
 ---
 - launchApp
-- tapOn:
-    id: "offline-queue-sync"
 - extendedWaitUntil:
     notVisible: "Čeká na připojení — strážci zatím spoléhají na původní termín"
     timeout: 15000
