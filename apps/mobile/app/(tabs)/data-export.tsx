@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { router } from "expo-router";
 import { DownloadSimple } from "phosphor-react-native";
 import { ActionButton, BackHeader, Notice } from "@/components/product/ProductUI";
 import { useProductStore } from "@/stores/product";
@@ -20,5 +21,5 @@ export default function DataExportScreen() {
     } catch (error) { setMessage({ tone: "danger", text: error instanceof Error ? error.message : "Export se nepodařilo připravit." }); }
     finally { setBusy(false); }
   };
-  return <SafeAreaView className="flex-1 bg-cream"><ScrollView contentContainerClassName="px-5 pb-36"><BackHeader title="Export dat" /><View className="pt-6"><DownloadSimple size={40} color={COLORS.brand[500]} /><Text className="font-display text-[38px] leading-[42px] text-charcoal mt-5">Vaše data bez černé skříňky</Text><Text className="font-body text-base leading-6 text-muted mt-4">Export se načte přímo ze serveru a aplikace ho neukládá do produktového store. Dočasný JSON soubor po zavření systémové nabídky smažeme z cache aplikace; cílovou aplikaci nebo úložiště už řídí systém.</Text></View>{message ? <View className="mt-6"><Notice title={message.text} tone={message.tone} /></View> : null}<View className="mt-8"><ActionButton testID="account-export-submit" label="Připravit a sdílet JSON" loading={busy} onPress={() => void run()} /></View><Text className="font-body text-sm leading-5 text-muted mt-5">Export zahrnuje účet, profily, check-iny, vztahy strážců, pozvánky, incidenty a registrovaná zařízení podle serverového retenčního kontraktu.</Text></ScrollView></SafeAreaView>;
+  return <SafeAreaView className="flex-1 bg-cream"><ScrollView contentContainerClassName="px-5 pb-36"><BackHeader title="Export dat" onBack={() => router.replace("/(tabs)/settings")} /><View className="pt-6"><DownloadSimple size={40} color={COLORS.brand[500]} /><Text className="font-display text-[38px] leading-[42px] text-charcoal mt-5">Vaše data bez černé skříňky</Text><Text className="font-body text-base leading-6 text-muted mt-4">Export se načte přímo ze serveru a aplikace ho neukládá do produktového store. Dočasný JSON soubor po zavření systémové nabídky smažeme z cache aplikace; cílovou aplikaci nebo úložiště už řídí systém.</Text></View>{message ? <View className="mt-6"><Notice title={message.text} tone={message.tone} /></View> : null}<View className="mt-8"><ActionButton testID="account-export-submit" label="Připravit a sdílet JSON" loading={busy} onPress={() => void run()} /></View><Text className="font-body text-sm leading-5 text-muted mt-5">Export zahrnuje účet, profily, check-iny, vztahy strážců, pozvánky, incidenty a registrovaná zařízení podle serverového retenčního kontraktu.</Text></ScrollView></SafeAreaView>;
 }

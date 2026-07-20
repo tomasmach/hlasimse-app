@@ -4,13 +4,14 @@ tags:
   - simulator
   - destructive-test-fixture
 ---
-- scrollUntilVisible:
-    element:
-      id: "back-button"
-    direction: UP
-    centerElement: true
-- tapOn:
-    id: "back-button"
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-settings"
+      - extendedWaitUntil:
+          visible: "Nastavení důvěry"
+          timeout: 5000
 - scrollUntilVisible:
     element:
       id: "account-delete-open"

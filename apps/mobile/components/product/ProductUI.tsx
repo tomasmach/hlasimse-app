@@ -17,12 +17,12 @@ export function PageTitle({ title, subtitle, action }: { title: string; subtitle
   );
 }
 
-export function BackHeader({ title }: { title: string }) {
+export function BackHeader({ title, onBack }: { title: string; onBack?: () => void }) {
   return (
     <View className="flex-row items-center gap-3 py-2 mb-5">
       <Pressable
         testID="back-button"
-        onPress={() => router.back()}
+        onPress={onBack ?? (() => router.back())}
         className="w-12 h-12 rounded-full bg-white items-center justify-center border border-sand"
         accessibilityRole="button"
         accessibilityLabel="Zpět"

@@ -42,3 +42,12 @@ it("reloads safety history whenever its tab regains focus", () => {
   expect(source).toContain("useFocusEffect(");
   expect(source).toContain("void load();");
 });
+
+it("returns settings-only account screens to settings instead of tab history", () => {
+  const tabLayout = readFileSync(resolve(mobileRoot, "app/(tabs)/_layout.tsx"), "utf8");
+  expect(tabLayout).toContain('backBehavior="history"');
+  for (const path of ["app/(tabs)/data-export.tsx", "app/(tabs)/delete-account.tsx"]) {
+    const source = readFileSync(resolve(mobileRoot, path), "utf8");
+    expect(source).toContain('onBack={() => router.replace("/(tabs)/settings")}');
+  }
+});
