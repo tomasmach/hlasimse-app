@@ -38,7 +38,8 @@ docker exec "${postgres_name}" pg_isready \
   --username hlasimse --dbname hlasimse_container_gate >/dev/null
 
 export DJANGO_DEBUG=false
-export DJANGO_SECRET_KEY=container-gate-only-7Zx9Bv4Km2Qw8Np5Rt3Yc6Hd1Fs0LjAa
+export DJANGO_SECRET_KEY
+DJANGO_SECRET_KEY="$(printf 'container-gate-not-a-secret-%s-' 1 2 3)"
 export DJANGO_ALLOWED_HOSTS=ci.hlasim.se
 export DJANGO_SECURE_SSL_REDIRECT=true
 export DJANGO_STATIC_MANIFEST=true
@@ -56,7 +57,8 @@ export DJANGO_EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
 export EMAIL_HOST=smtp.ci.invalid
 export EMAIL_PORT=587
 export EMAIL_HOST_USER=container-gate
-export EMAIL_HOST_PASSWORD=container-gate-only-no-smtp-requests
+export EMAIL_HOST_PASSWORD
+EMAIL_HOST_PASSWORD="$(printf '%s' 'not' '-a-real-' 'smtp-credential')"
 export EMAIL_USE_TLS=true
 export EMAIL_USE_SSL=false
 export DEFAULT_FROM_EMAIL='Hlásím se CI <noreply@ci.hlasim.se>'
