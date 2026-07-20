@@ -11,10 +11,13 @@ tags:
     id: "login-password-input"
     retryTapIfNoChange: true
 - inputText: ${E2E_CREDENTIAL}
-- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "login-submit-button"
+    direction: DOWN
+    centerElement: true
 - tapOn:
     id: "login-submit-button"
-    optional: true
 - tapOn:
     text: "Not Now"
     optional: true
