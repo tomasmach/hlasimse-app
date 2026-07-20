@@ -178,8 +178,10 @@ e2e_run_flow() {
       return 0
     fi
     if ((attempt == 1)) \
+      && [[ "$flow_name" == "00_guardian_clean_install" ]] \
       && grep -qs --fixed-strings "<failure>Unknown error</failure>" "${output_dir}/report.xml" \
-      && grep -Rqs --fixed-strings "Failed to connect to /127.0.0.1:7001" "$output_dir"; then
+      && { grep -Rqs --fixed-strings "Failed to connect to /127.0.0.1:7001" "$output_dir" \
+        || grep -Rqs --fixed-strings "DEADLINE_EXCEEDED: deadline exceeded" "$output_dir"; }; then
       e2e_log "Maestro lost its local XCUITest bridge; retrying this flow once with fresh artifacts."
       attempt=$((attempt + 1))
       continue
