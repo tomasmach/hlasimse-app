@@ -43,6 +43,9 @@ Compose file, CI logs, shell history, or repository.
 - `EXPO_ACCESS_TOKEN`: production Expo access token; enhanced push security must be enabled for the
   project so unauthenticated submissions are rejected.
 - `GUNICORN_FORWARDED_ALLOW_IPS`: trusted proxy addresses/CIDRs supported by Gunicorn.
+- `WEB_TRUSTED_PROXY_CIDRS`: exact internal proxy addresses/CIDRs that may supply
+  `X-Forwarded-For` for web authentication rate limits. Leave empty only when Gunicorn receives
+  client connections directly; never include public client networks.
 
 Also configure SPF, DKIM, and DMARC for the sending domain. The selected infrastructure must supply
 encrypted backups, point-in-time recovery, metrics, paging, log retention, TLS certificates, and at

@@ -28,7 +28,6 @@ tags:
 - tapOn:
     id: "account-delete-password"
 - inputText: ${E2E_CREDENTIAL}
-- hideKeyboard
 - scrollUntilVisible:
     element:
       id: "account-delete-submit"

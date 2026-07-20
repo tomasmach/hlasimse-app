@@ -174,6 +174,19 @@ CACHES = {
     )
 }
 
+WEB_TRUSTED_PROXY_CIDRS = tuple(
+    value.strip()
+    for value in os.getenv("WEB_TRUSTED_PROXY_CIDRS", "").split(",")
+    if value.strip()
+)
+WEB_AUTH_RATE_LIMITS = {
+    "login": {"ip": (20, 300), "identity": (8, 300)},
+    "registration": {"ip": (10, 3600), "identity": (3, 3600)},
+    "password_reset_request": {"ip": (10, 3600), "identity": (3, 3600)},
+    "verification_resend": {"ip": (10, 3600), "identity": (3, 3600)},
+    "password_reset_confirm": {"ip": (20, 900), "identity": (10, 900)},
+}
+
 AUTH_PASSWORD_VALIDATORS = [
     {"NAME": "django.contrib.auth.password_validation.UserAttributeSimilarityValidator"},
     {"NAME": "django.contrib.auth.password_validation.MinimumLengthValidator"},

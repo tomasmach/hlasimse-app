@@ -76,6 +76,7 @@ from .services import (
     revoke_guardian_membership,
     update_profile,
 )
+from .web_rate_limits import WebAuthRateLimitMixin, web_auth_rate_limit
 
 
 class LandingView(TemplateView):
@@ -97,10 +98,12 @@ def legal_release_blocker_view(request, document):
     return response
 
 
-class SessionLoginView(LoginView):
+class SessionLoginView(WebAuthRateLimitMixin, LoginView):
     authentication_form = LoginForm
     template_name = "core/auth/login.html"
     redirect_authenticated_user = True
+    rate_limit_scope = "login"
+    rate_limit_identity_field = "username"
 
     def form_valid(self, form):
         response = super().form_valid(form)
@@ -117,10 +120,12 @@ class SessionLogoutView(LogoutView):
     http_method_names = ("post", "options")
 
 
-class SecurePasswordResetView(PasswordResetView):
+class SecurePasswordResetView(WebAuthRateLimitMixin, PasswordResetView):
     template_name = "core/auth/forgot_password.html"
     form_class = PasswordResetForm
     success_url = reverse_lazy("accounts:password_reset_done")
+    rate_limit_scope = "password_reset_request"
+    rate_limit_identity_field = "email"
 
     def form_valid(self, form):
         email = form.cleaned_data["email"]
@@ -149,9 +154,10 @@ class SecurePasswordResetDoneView(PasswordResetDoneView):
     template_name = "core/auth/password_reset_done.html"
 
 
-class SecurePasswordResetConfirmView(PasswordResetConfirmView):
+class SecurePasswordResetConfirmView(WebAuthRateLimitMixin, PasswordResetConfirmView):
     template_name = "core/auth/password_reset_confirm.html"
     success_url = reverse_lazy("accounts:password_reset_complete")
+    rate_limit_scope = "password_reset_confirm"
 
     def form_valid(self, form):
         with transaction.atomic():
@@ -164,6 +170,10 @@ class SecurePasswordResetCompleteView(PasswordResetCompleteView):
     template_name = "core/auth/password_reset_complete.html"
 
 
+@web_auth_rate_limit(
+    "registration",
+    identity=lambda request, _args, _kwargs: request.POST.get("email"),
+)
 def register_view(request):
     if request.user.is_authenticated:
         return redirect("core:dashboard")
@@ -183,6 +193,10 @@ def verification_sent_view(request):
     return render(request, "core/auth/verification_sent.html")
 
 
+@web_auth_rate_limit(
+    "verification_resend",
+    identity=lambda request, _args, _kwargs: request.POST.get("email"),
+)
 def resend_verification_view(request):
     form = EmailVerificationResendForm(request.POST if request.method == "POST" else None)
     if request.method == "POST" and form.is_valid():
