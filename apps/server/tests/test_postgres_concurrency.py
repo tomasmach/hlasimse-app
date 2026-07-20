@@ -37,8 +37,8 @@ def require_postgresql():
         pytest.skip("PostgreSQL concurrency validation requires a PostgreSQL test database")
 
 
-def run_two_workers(worker):
-    barrier = Barrier(2)
+def run_workers(worker, *, count=2):
+    barrier = Barrier(count)
 
     def wrapped(argument):
         close_old_connections()
@@ -48,8 +48,12 @@ def run_two_workers(worker):
         finally:
             connections.close_all()
 
-    with ThreadPoolExecutor(max_workers=2) as executor:
-        return list(executor.map(wrapped, (0, 1)))
+    with ThreadPoolExecutor(max_workers=count) as executor:
+        return list(executor.map(wrapped, range(count)))
+
+
+def run_two_workers(worker):
+    return run_workers(worker)
 
 
 def test_concurrent_profile_creation_never_creates_a_sixth_profile():
@@ -104,7 +108,7 @@ def test_concurrent_guardian_acceptance_never_activates_a_sixth_guardian():
     assert GuardianInvitation.objects.filter(status=GuardianInvitation.Status.PENDING).count() == 1
 
 
-def test_concurrent_duplicate_checkin_has_one_receipt_and_one_deadline_advance():
+def test_ten_concurrent_duplicate_checkins_have_one_receipt_and_one_deadline_advance():
     owner = User.objects.create_user(email="checkin-owner@example.cz", password="Long-pass-123")
     profile = create_profile(owner=owner, name="Solo", interval_seconds=3_600)
     initial_generation = profile.deadline_generation
@@ -114,13 +118,13 @@ def test_concurrent_duplicate_checkin_has_one_receipt_and_one_deadline_advance()
         result = perform_check_in(profile=thread_profile, idempotency_key="same-device-event")
         return str(result.check_in.id), result.created, result.check_in.response_deadline_at
 
-    results = run_two_workers(check_in)
+    results = run_workers(check_in, count=10)
 
     profile.refresh_from_db()
     assert CheckIn.objects.filter(profile=profile).count() == 1
     assert {result[0] for result in results} == {str(profile.check_ins.get().id)}
-    assert sorted(result[1] for result in results) == [False, True]
-    assert results[0][2] == results[1][2]
+    assert sum(result[1] for result in results) == 1
+    assert {result[2] for result in results} == {profile.check_ins.get().response_deadline_at}
     assert profile.deadline_generation == initial_generation + 1
 
 

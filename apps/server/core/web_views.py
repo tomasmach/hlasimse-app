@@ -31,10 +31,12 @@ from django.utils.encoding import force_bytes
 from django.utils.http import urlsafe_base64_encode
 from django.views.decorators.http import require_POST
 from django.views.generic import TemplateView
+from rest_framework.utils.encoders import JSONEncoder
 
 from .account_data import (
     AccountDeletionBlocked,
     AccountPasswordInvalid,
+    build_account_export,
     delete_account_safely,
 )
 from .audit import record_audit_event
@@ -883,6 +885,11 @@ def alert_detail_view(request, pk):
         for value, _label in alert.deliveries.model.Status.choices
     }
     delivery_counts = {key: value for key, value in delivery_counts.items() if value}
+    legacy_provider_accepted = delivery_counts.pop("delivered", 0)
+    if legacy_provider_accepted:
+        delivery_counts["provider_accepted"] = (
+            delivery_counts.get("provider_accepted", 0) + legacy_provider_accepted
+        )
     if delivery_counts.get("provider_accepted"):
         delivery_state = "accepted_by_push_service"
     elif delivery_counts.get("ticket_received") or delivery_counts.get("receipt_processing"):
@@ -948,123 +955,16 @@ def settings_view(request):
     )
 
 
-def _iso(value):
-    return value.isoformat() if value is not None else None
-
-
-def _export_payload(user):
-    profiles = list(CheckInProfile.objects.filter(owner=user).order_by("created_at"))
-    profile_ids = [profile.pk for profile in profiles]
-    checkins = CheckIn.objects.filter(profile_id__in=profile_ids).select_related("profile")
-    memberships = GuardianMembership.objects.filter(
-        Q(profile_id__in=profile_ids) | Q(guardian=user)
-    ).select_related("profile", "guardian")
-    invitations = GuardianInvitation.objects.filter(
-        Q(profile_id__in=profile_ids) | Q(normalized_email=user.email.lower())
-    ).select_related("profile")
-    incidents = accessible_incidents(user).select_related("profile")
-    acknowledgements = AlertAcknowledgement.objects.filter(user=user)
-    return {
-        "exported_at": _iso(timezone.now()),
-        "account": {
-            "id": str(user.pk),
-            "email": user.email,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "date_joined": _iso(user.date_joined),
-        },
-        "profiles": [
-            {
-                "id": str(item.pk),
-                "name": item.name,
-                "interval_seconds": item.interval_seconds,
-                "enabled": item.enabled,
-                "is_paused": item.is_paused,
-                "paused_until": _iso(item.paused_until),
-                "last_checked_in_at": _iso(item.last_checked_in_at),
-                "next_deadline_at": _iso(item.next_deadline_at),
-                "archived_at": _iso(item.archived_at),
-                "created_at": _iso(item.created_at),
-            }
-            for item in profiles
-        ],
-        "check_ins": [
-            {
-                "id": str(item.pk),
-                "profile_id": str(item.profile_id),
-                "accepted_at": _iso(item.accepted_at),
-                "client_recorded_at": _iso(item.client_recorded_at),
-                "latitude": str(item.latitude) if item.latitude is not None else None,
-                "longitude": str(item.longitude) if item.longitude is not None else None,
-                "location_accuracy_meters": (
-                    str(item.location_accuracy_meters)
-                    if item.location_accuracy_meters is not None
-                    else None
-                ),
-                "submitted_from_queue": item.submitted_from_queue,
-            }
-            for item in checkins
-        ],
-        "guardian_memberships": [
-            {
-                "id": str(item.pk),
-                "profile_id": str(item.profile_id),
-                "guardian_id": str(item.guardian_id),
-                "guardian_email": item.guardian.email,
-                "status": item.status,
-                "created_at": _iso(item.created_at),
-            }
-            for item in memberships
-        ],
-        "guardian_invitations": [
-            {
-                "id": str(item.pk),
-                "profile_id": str(item.profile_id),
-                "email": item.email,
-                "status": item.status,
-                "expires_at": _iso(item.expires_at),
-                "created_at": _iso(item.created_at),
-            }
-            for item in invitations
-        ],
-        "alerts": [
-            {
-                "id": str(item.pk),
-                "profile_id": str(item.profile_id),
-                "status": item.status,
-                "deadline_at": _iso(item.deadline_at),
-                "opened_at": _iso(item.opened_at),
-                "resolved_at": _iso(item.resolved_at),
-            }
-            for item in incidents
-        ],
-        "alert_acknowledgements": [
-            {
-                "id": str(item.pk),
-                "incident_id": str(item.incident_id),
-                "user_id": str(item.user_id),
-                "acknowledged_at": _iso(item.acknowledged_at),
-            }
-            for item in acknowledgements
-        ],
-        "push_devices": [
-            {
-                "id": str(item.pk),
-                "installation_id": str(item.installation_id),
-                "platform": item.platform,
-                "active": item.active,
-                "last_seen_at": _iso(item.last_seen_at),
-            }
-            for item in PushDevice.objects.filter(user=user)
-        ],
-    }
-
-
 @login_required(login_url="accounts:login")
 def export_data_view(request):
     form = ExportDataForm(request.POST if request.method == "POST" else None)
     if request.method == "POST" and form.is_valid():
-        body = json.dumps(_export_payload(request.user), ensure_ascii=False, indent=2)
+        body = json.dumps(
+            build_account_export(request.user),
+            cls=JSONEncoder,
+            ensure_ascii=False,
+            indent=2,
+        )
         response = HttpResponse(body, content_type="application/json; charset=utf-8")
         response["Content-Disposition"] = 'attachment; filename="hlasim-se-export.json"'
         response["Cache-Control"] = "no-store"

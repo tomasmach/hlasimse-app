@@ -73,7 +73,7 @@ Aktuální runtime umožňuje:
 - export JSON s účtem, profily, check-iny včetně případné polohy, vztahy a pozvánkami strážců, incidenty a identifikátory registrovaných zařízení; provider tokeny se do exportu nevkládají;
 - trvalý výmaz vlastního účtu po bezpečném uzavření otevřených incidentů;
 - při výmazu odstranění vlastněných profilů a jejich dat, vztahů, pozvánek, zařízení a navázaného doručovacího stavu;
-- anonymizaci identity smazaného příjemce v incidentech jiných vlastníků, aby nezůstalo jeho jméno nebo e-mail a zároveň se neporušila historie incidentu;
+- anonymizaci identity smazaného příjemce v uzavřených incidentech jiných vlastníků, včetně odstranění jeho UUID z alert outboxu a odstranění snapshotu zařízení, hashe cílového tokenu a provider ticketu z doručovacích pokusů; neidentifikující výsledek pokusu zůstává zachovaný kvůli bezpečnostní historii incidentu;
 - odstranění polohy konkrétního check-inu na webu bez odstranění zbytku historického záznamu;
 - pseudonymní bezpečnostní auditní událost po výmazu účtu; model auditních metadat zakazuje jméno, e-mail, polohu, token a tajemství.
 

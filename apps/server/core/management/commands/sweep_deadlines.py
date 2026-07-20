@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.core.management.base import BaseCommand
 
 from core.push import record_worker_heartbeat
@@ -18,11 +19,25 @@ class Command(BaseCommand):
         total_events = 0
         with graceful_stop_signals() as stop:
             while not stop.requested:
+                if not settings.DEADLINE_SWEEPER_ENABLED:
+                    record_worker_heartbeat(
+                        "deadline_sweeper",
+                        healthy=False,
+                        disabled=True,
+                        incidents_created=total_incidents,
+                        events_created=total_events,
+                    )
+                    if not options["watch"] or stop.requested:
+                        break
+                    stop.wait(max(options["poll_interval"], 1.0))
+                    continue
                 incidents, events = sweep_expired_deadlines(limit=options["limit"])
                 total_incidents += incidents
                 total_events += events
                 record_worker_heartbeat(
                     "deadline_sweeper",
+                    healthy=True,
+                    disabled=False,
                     incidents_created=total_incidents,
                     events_created=total_events,
                 )

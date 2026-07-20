@@ -107,6 +107,12 @@ Jde o porušení atomického invariantu a SEV-1.
 3. Pokud hrozí notification storm, pozastavte outbox worker kill switchem; scheduler dál perzistuje incidenty.
 4. Opravte claim/lease nebo dedupe mechanismus, nasaďte canary a backlog zpracujte řízeně.
 
+Použijte `ALERT_OUTBOX_ENABLED=false` pouze pro alert worker a restartujte jen jeho proces. Nastavení
+neclaimuje ani nemění čekající položky a záměrně vytvoří nezdravý heartbeat, který musí mít vlastníka
+incidentu. `DEADLINE_SWEEPER_ENABLED=false` je oddělený vypínač vzniku nových incidentů; nevypínejte
+jím doručení již perzistovaných alertů. Po obnovení vždy zkontrolujte backlog a spusťte standardní
+reconciliation. E-mailová fronta má samostatně `EMAIL_OUTBOX_ENABLED=false`.
+
 ### G. Databáze je nedostupná nebo poškozená
 
 1. Zastavte schedulery a workery, aby nevytvářely nekontrolovaný retry load. Klient nesmí zobrazit check-in jako potvrzený.

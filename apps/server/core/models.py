@@ -357,6 +357,7 @@ class DeliveryAttempt(UUIDModel):
         QUEUED = "queued", "Queued"
         TICKET_RECEIVED = "ticket_received", "Ticket received"
         RECEIPT_PROCESSING = "receipt_processing", "Receipt processing"
+        LEGACY_DELIVERED = "delivered", "Legacy provider accepted"
         PROVIDER_ACCEPTED = "provider_accepted", "Accepted by APNs/FCM"
         RETRYABLE_FAILURE = "retryable_failure", "Retryable failure"
         PERMANENT_FAILURE = "permanent_failure", "Permanent failure"

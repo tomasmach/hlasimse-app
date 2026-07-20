@@ -2,6 +2,8 @@ import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
 
 const REMINDER_PREFIX = "checkin-reminder-";
+const INDEFINITE_PAUSE_REMINDER_ID = "indefinite-pause";
+const INDEFINITE_PAUSE_REMINDER_INTERVAL_SECONDS = 24 * 60 * 60;
 
 interface ReminderConfig {
   id: string;
@@ -15,6 +17,7 @@ export interface ReminderProfile {
   name: string;
   enabled: boolean;
   is_paused: boolean;
+  paused_until: string | null;
   next_deadline_at: string | null;
 }
 
@@ -37,7 +40,31 @@ export async function cancelProfileReminders(profileId: string): Promise<void> {
 
 export async function scheduleProfileReminders(profile: ReminderProfile): Promise<void> {
   await cancelProfileReminders(profile.id);
-  if (!profile.enabled || profile.is_paused || !profile.next_deadline_at) return;
+  if (!profile.enabled) return;
+  if (profile.is_paused) {
+    if (profile.paused_until !== null) return;
+    await Notifications.scheduleNotificationAsync({
+      identifier: `${reminderPrefixForProfile(profile.id)}${INDEFINITE_PAUSE_REMINDER_ID}`,
+      content: {
+        title: "Zkontrolujte pauzu bez konce",
+        body: `${profile.name}: Otevřete aplikaci a ověřte, zda má pauza dál pokračovat. Jde o lokální připomínku; systém ji může odložit nebo potlačit.`,
+        sound: true,
+        data: {
+          type: "reminder",
+          profile_id: profile.id,
+          reminder_kind: "indefinite_pause",
+        },
+        ...(Platform.OS === "android" && { channelId: "reminders" }),
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.TIME_INTERVAL,
+        seconds: INDEFINITE_PAUSE_REMINDER_INTERVAL_SECONDS,
+        repeats: true,
+      },
+    });
+    return;
+  }
+  if (!profile.next_deadline_at) return;
   const deadlineMs = new Date(profile.next_deadline_at).getTime();
   if (!Number.isFinite(deadlineMs)) return;
   const now = Date.now();
@@ -65,14 +92,13 @@ export async function scheduleProfileReminders(profile: ReminderProfile): Promis
 export async function reconcileReminders(profiles: ReminderProfile[]): Promise<void> {
   await cancelAllReminders();
   for (const profile of profiles) {
-    if (!profile.enabled || profile.is_paused || !profile.next_deadline_at) continue;
     await scheduleProfileReminders(profile);
   }
 }
 
 /** @deprecated Use profile-specific scheduling. */
 export async function scheduleReminders(deadline: string): Promise<void> {
-  await scheduleProfileReminders({ id: "legacy", name: "Profil", enabled: true, is_paused: false, next_deadline_at: deadline });
+  await scheduleProfileReminders({ id: "legacy", name: "Profil", enabled: true, is_paused: false, paused_until: null, next_deadline_at: deadline });
 }
 
 export async function cancelAllReminders(): Promise<void> {

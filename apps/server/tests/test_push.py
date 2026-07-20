@@ -24,6 +24,7 @@ from core.models import (
     WorkerHeartbeat,
 )
 from core.push import (
+    ALERT_EVENT_TYPES,
     EMAIL_EVENT_TYPES,
     MAX_DELIVERY_ATTEMPTS,
     MAX_EVENT_ATTEMPTS,
@@ -33,6 +34,7 @@ from core.push import (
     fetch_push_receipts,
     process_one_outbox_event,
 )
+from core.services import sweep_expired_deadlines
 
 pytestmark = pytest.mark.django_db
 
@@ -599,6 +601,24 @@ def test_delivery_health_requires_fresh_workers_and_no_delivery_failures():
     heartbeat.details = {"healthy": False, "last_error": "provider unavailable"}
     heartbeat.save(update_fields=["last_seen_at", "details"])
     assert delivery_health()["failing_workers"] == ["outbox_alerts"]
+
+
+def test_incident_without_guardian_is_terminal_without_delivery_failure(profile):
+    profile.next_deadline_at = timezone.now() - timedelta(minutes=1)
+    profile.save(update_fields=["next_deadline_at", "updated_at"])
+    assert sweep_expired_deadlines() == (1, 1)
+
+    assert process_one_outbox_event(event_types=ALERT_EVENT_TYPES)
+
+    event = OutboxEvent.objects.get(event_type="alert.opened")
+    assert event.status == OutboxEvent.Status.PROCESSED
+    assert event.attempts == 1
+    assert event.delivery_attempts.count() == 0
+    assert event.last_error == "Incident has no guardian recipient snapshot"
+    health = delivery_health()
+    assert health["failed_events"] == 0
+    assert health["retrying_alert_events"] == 0
+    assert health["missing_delivery_attempts"] == 0
 
 
 @pytest.mark.django_db(transaction=True)

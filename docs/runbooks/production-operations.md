@@ -7,7 +7,7 @@ secret-management provider.
 
 ## Runtime contract
 
-One immutable image runs eight process roles:
+One immutable image runs nine process roles:
 
 | Role | Command | Required instances |
 | --- | --- | --- |
@@ -17,6 +17,7 @@ One immutable image runs eight process roles:
 | Email outbox | `python manage.py process_outbox --watch --queue email --poll-interval 2` | At least 1 |
 | Push receipts | `python manage.py fetch_push_receipts --watch` | At least 1 |
 | Safety reconciliation | `python manage.py reconcile_safety_state --repair --fail-on-gaps --watch` | At least 1; only deterministic repairs |
+| Session cleanup | `python manage.py purge_expired_sessions --watch --poll-interval 86400` | Exactly 1, or an equivalent external daily scheduler |
 | Delivery monitor | `python manage.py check_delivery_health` every 30 seconds | At least 1 plus external paging |
 | Migration job | `python manage.py migrate --noinput && python manage.py createcachetable` | Exactly 1 per release |
 
@@ -35,6 +36,41 @@ Gunicorn raw access logs are intentionally disabled because verification and pas
 occur in URL paths. Django emits JSON access records keyed by route pattern and correlation ID,
 without raw path parameters, query strings, request bodies, Referer, e-mail, or IP address. Configure
 the edge proxy to redact these token routes as well and propagate only a valid UUID `X-Request-ID`.
+
+## Independent safety switches
+
+The deadline scheduler, alert delivery, and e-mail delivery have independent, fail-visible switches:
+
+| Variable | Stops | Deliberately continues |
+| --- | --- | --- |
+| `DEADLINE_SWEEPER_ENABLED=false` | Materializing new due incidents | API check-ins, existing outbox delivery, durable due deadlines |
+| `ALERT_OUTBOX_ENABLED=false` | Claiming and sending alert outbox events | Incident persistence, e-mail delivery, durable pending alert events |
+| `EMAIL_OUTBOX_ENABLED=false` | Claiming and sending e-mail outbox events | Incident and alert delivery, durable pending e-mail events |
+
+Apply a switch through reviewed deployment configuration and restart only the affected worker role.
+The disabled process remains alive and records `healthy=false, disabled=true`; delivery health must
+therefore page rather than silently treating an intentional stop as healthy. Never suppress that
+alarm without an active incident owner. The `--queue all` compatibility mode stops if either outbox
+switch is off, so production must keep the documented dedicated alert and e-mail workers.
+
+Before disabling, record due-deadline and pending-outbox counts. After re-enabling, confirm the
+worker heartbeat returns to `healthy=true`, wait for the durable backlog to drain, and run
+`python manage.py reconcile_safety_state --repair --fail-on-gaps`. A disabled scheduler leaves each
+deadline eligible for normal idempotent materialization after restart; a disabled outbox worker
+never claims or mutates its pending events.
+
+## Expired session cleanup
+
+Django database sessions are authentication state, not domain history. Run
+`python manage.py purge_expired_sessions --watch --batch-size 1000 --poll-interval 86400` as exactly
+one long-running role, or run the same command without `--watch` from an external scheduler at least
+daily. The command uses each session's existing `expire_date`; it does not invent or apply retention
+periods to check-ins, incidents, delivery records, audit events, logs, or backups.
+
+Cleanup is bounded to at most 10,000 rows per database statement and rechecks `expire_date` during
+deletion, so a session refreshed after selection is preserved. The production-like Compose role
+uses batches of 1,000. Record command failure as an operational alert because expired session rows
+may retain a pseudonymous user identifier even though they can no longer authenticate.
 
 ## Required production configuration
 
@@ -75,7 +111,7 @@ chmod 600 apps/server/.env.compose.local
 docker compose --env-file apps/server/.env.compose.local -f compose.production.yml config --quiet
 docker compose --env-file apps/server/.env.compose.local -f compose.production.yml build
 docker compose --env-file apps/server/.env.compose.local -f compose.production.yml --profile ops run --rm migrate
-docker compose --env-file apps/server/.env.compose.local -f compose.production.yml up -d postgres mailpit outbox-alerts outbox-email receipts reconciliation sweep delivery-monitor web
+docker compose --env-file apps/server/.env.compose.local -f compose.production.yml up -d postgres mailpit outbox-alerts outbox-email receipts reconciliation session-cleanup sweep delivery-monitor web
 ```
 
 The web endpoint is bound only to `127.0.0.1:8000`; Mailpit's local inspection UI is at
@@ -115,6 +151,14 @@ this runbook.
 Every schema change must follow expand/migrate/contract: deploy additive, backward-compatible
 migrations first; migrate data separately; remove old columns only in a later release after every
 old process is gone.
+
+Migration `0008` is intentionally only the expand phase for delivery receipt terminology. It keeps
+the legacy database value `delivered` readable while new writes use `provider_accepted`; API and web
+normalize both to “accepted by push service.” Do not add a bulk rewrite or remove the legacy value
+until telemetry proves every old process is gone and the previous application image is outside the
+rollback window. Migration `0009` only marks legacy, unsupported `checkin.accepted` outbox rows as
+processed and deletes no domain data. Treat it as forward-only during application rollback: deploy
+the prior compatible image against the forward schema instead of reversing the data operation.
 
 1. Confirm the physical-device release gate, current delivery health, recent restore rehearsal,
    on-call coverage, and no unresolved incident.

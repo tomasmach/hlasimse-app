@@ -507,6 +507,11 @@ class AlertIncidentSerializer(serializers.ModelSerializer):
             for value, _label in obj.deliveries.model.Status.choices
         }
         counts = {key: value for key, value in counts.items() if value}
+        legacy_provider_accepted = counts.pop("delivered", 0)
+        if legacy_provider_accepted:
+            counts["provider_accepted"] = (
+                counts.get("provider_accepted", 0) + legacy_provider_accepted
+            )
         if not counts:
             state = "no_delivery_record"
         elif counts.get("provider_accepted"):

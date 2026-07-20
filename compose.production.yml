@@ -18,6 +18,9 @@ x-app-environment: &app-environment
   MOBILE_ANDROID_STORE_URL: ${MOBILE_ANDROID_STORE_URL:?MOBILE_ANDROID_STORE_URL is required}
   MOBILE_API_MAINTENANCE: ${MOBILE_API_MAINTENANCE:-false}
   MOBILE_MAINTENANCE_RETRY_AFTER_SECONDS: ${MOBILE_MAINTENANCE_RETRY_AFTER_SECONDS:-300}
+  DEADLINE_SWEEPER_ENABLED: ${DEADLINE_SWEEPER_ENABLED:-true}
+  ALERT_OUTBOX_ENABLED: ${ALERT_OUTBOX_ENABLED:-true}
+  EMAIL_OUTBOX_ENABLED: ${EMAIL_OUTBOX_ENABLED:-true}
   DJANGO_EMAIL_BACKEND: django.core.mail.backends.smtp.EmailBackend
   EMAIL_HOST: mailpit
   EMAIL_PORT: "1025"
@@ -202,6 +205,22 @@ services:
         "60",
       ]
     healthcheck: *worker-healthcheck
+
+  session-cleanup:
+    <<: *app
+    command:
+      [
+        "python",
+        "manage.py",
+        "purge_expired_sessions",
+        "--watch",
+        "--batch-size",
+        "1000",
+        "--poll-interval",
+        "86400",
+      ]
+    healthcheck:
+      disable: true
 
   delivery-health:
     <<: *app

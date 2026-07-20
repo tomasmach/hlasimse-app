@@ -298,7 +298,7 @@ def test_history_statistics_separate_on_time_checkins_and_incidents(client, user
 
 
 def test_gdpr_export_is_json_scoped_and_omits_operational_secrets(
-    client, user, other_user, profile
+    client, api_client, user, other_user, profile
 ):
     own_checkin = CheckIn.objects.create(
         profile=profile,
@@ -311,6 +311,28 @@ def test_gdpr_export_is_json_scoped_and_omits_operational_secrets(
         idempotency_key="other",
         deadline_generation=other_profile.deadline_generation,
     )
+    own_incident = AlertIncident.objects.create(
+        profile=profile,
+        deadline_generation=profile.deadline_generation,
+        deadline_at=timezone.now() - timedelta(hours=2),
+        status=AlertIncident.Status.RESOLVED,
+        resolved_at=timezone.now() - timedelta(hours=1),
+    )
+    foreign_incident = AlertIncident.objects.create(
+        profile=other_profile,
+        deadline_generation=other_profile.deadline_generation,
+        deadline_at=timezone.now() - timedelta(hours=2),
+        status=AlertIncident.Status.RESOLVED,
+        resolved_at=timezone.now() - timedelta(hours=1),
+    )
+    own_acknowledgement = AlertAcknowledgement.objects.create(
+        incident=own_incident,
+        user=user,
+    )
+    foreign_acknowledgement = AlertAcknowledgement.objects.create(
+        incident=foreign_incident,
+        user=other_user,
+    )
     PushDevice.objects.create(
         user=user,
         installation_id=uuid.uuid4(),
@@ -319,17 +341,28 @@ def test_gdpr_export_is_json_scoped_and_omits_operational_secrets(
     )
     client.force_login(user)
 
-    response = client.post(reverse("accounts:export"), {"confirmation": "on"})
-    payload = json.loads(response.content)
+    web_response = client.post(reverse("accounts:export"), {"confirmation": "on"})
+    web_payload = json.loads(web_response.content)
+    api_client.force_authenticate(user=user)
+    with override_settings(ROOT_URLCONF="config.urls"):
+        api_response = api_client.get("/api/v1/account/export/")
+    api_payload = api_response.json()
 
-    assert response.status_code == 200
-    assert response["Content-Type"].startswith("application/json")
-    assert response["Cache-Control"] == "no-store"
-    assert payload["account"]["email"] == user.email
-    assert [item["id"] for item in payload["check_ins"]] == [str(own_checkin.pk)]
-    assert str(other_profile.pk) not in response.content.decode()
-    assert "ExponentPushToken" not in response.content.decode()
-    assert "token_digest" not in response.content.decode()
+    assert web_response.status_code == api_response.status_code == 200
+    assert web_response["Content-Type"].startswith("application/json")
+    assert web_response["Cache-Control"] == api_response["Cache-Control"] == "no-store"
+    assert web_payload["account"]["email"] == user.email
+    assert [item["id"] for item in web_payload["check_ins"]] == [str(own_checkin.pk)]
+    assert [item["id"] for item in web_payload["alert_acknowledgements"]] == [
+        str(own_acknowledgement.pk)
+    ]
+    assert str(other_profile.pk) not in web_response.content.decode()
+    assert str(foreign_acknowledgement.pk) not in web_response.content.decode()
+    assert "ExponentPushToken" not in web_response.content.decode()
+    assert "token_digest" not in web_response.content.decode()
+    assert web_payload.pop("exported_at")
+    assert api_payload.pop("exported_at")
+    assert web_payload == api_payload
 
 
 def test_account_delete_requires_exact_confirmation_and_removes_owned_data(

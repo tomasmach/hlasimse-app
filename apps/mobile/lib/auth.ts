@@ -13,6 +13,7 @@ import { clearQueue } from "@/lib/offlineQueue";
 import { getInstallationId } from "@/lib/installation";
 import { clearConfirmedProfiles } from "@/lib/profileCache";
 import { deactivateCurrentPushDevice } from "@/lib/pushDevices";
+import { cancelAllReminders } from "@/lib/reminderNotifications";
 import type {
   AuthTokens,
   AuthUser,
@@ -23,7 +24,10 @@ import type {
 async function bindAccount(user: AuthUser): Promise<void> {
   const previousUserId = await getStoredUserId();
   if (previousUserId && previousUserId !== user.id) {
-    await clearQueue(previousUserId, await getInstallationId());
+    await Promise.all([
+      clearQueue(previousUserId, await getInstallationId()),
+      cancelAllReminders(),
+    ]);
   }
   await setStoredUserId(user.id);
   await setStoredUser(user);

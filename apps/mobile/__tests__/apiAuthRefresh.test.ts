@@ -1,4 +1,5 @@
 import * as SecureStore from "expo-secure-store";
+import * as Notifications from "expo-notifications";
 import {
   apiRequest,
   clearReleaseGate,
@@ -26,6 +27,8 @@ it("restores the encrypted cached user during a cold offline start", async () =>
 
 beforeEach(async () => {
   jest.restoreAllMocks();
+  jest.clearAllMocks();
+  (Notifications.getAllScheduledNotificationsAsync as jest.Mock).mockResolvedValue([]);
   (SecureStore as unknown as { __reset(): void }).__reset();
   setUnauthorizedHandler(null);
   setReleaseGateHandler(null);
@@ -115,6 +118,9 @@ it("purges the previous account queue on account switch and the current queue on
   };
   await setStoredUserId("old-user");
   await addToQueue({ ...queued, userId: "old-user" });
+  (Notifications.getAllScheduledNotificationsAsync as jest.Mock).mockResolvedValue([
+    { identifier: "checkin-reminder-old-profile-indefinite-pause" },
+  ]);
   jest.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = String(input);
     if (url.endsWith("/auth/token/")) return json({ access: "new-access", refresh: "new-refresh" });
@@ -125,6 +131,9 @@ it("purges the previous account queue on account switch and the current queue on
   });
   await login("new@example.test", "very-long-password");
   expect(await getQueue("old-user", installationId)).toHaveLength(0);
+  expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith(
+    "checkin-reminder-old-profile-indefinite-pause",
+  );
   await addToQueue({ ...queued, userId: "new-user" });
   await logout();
   expect(await getQueue("new-user", installationId)).toHaveLength(0);

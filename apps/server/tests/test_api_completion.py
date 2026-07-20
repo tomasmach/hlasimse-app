@@ -107,6 +107,35 @@ def test_account_delete_requires_confirmation_and_current_password(api_client, u
     assert User.objects.filter(pk=user.pk).exists()
 
 
+def test_account_delete_invalidates_existing_access_and_refresh_tokens(api_client, user):
+    issued = api_client.post(
+        "/api/v1/auth/token/",
+        {"email": user.email, "password": "Safely-testing-123"},
+        format="json",
+    )
+    assert issued.status_code == 200
+    tokens = issued.json()
+    authenticated = APIClient()
+    authenticated.credentials(HTTP_AUTHORIZATION=f"Bearer {tokens['access']}")
+
+    deleted = authenticated.delete(
+        "/api/v1/account/",
+        {"password": "Safely-testing-123", "confirmed": True},
+        format="json",
+    )
+
+    assert deleted.status_code == 204
+    assert authenticated.get("/api/v1/auth/me/").status_code == 401
+    assert (
+        api_client.post(
+            "/api/v1/auth/token/refresh/",
+            {"refresh": tokens["refresh"]},
+            format="json",
+        ).status_code
+        == 401
+    )
+
+
 def test_account_delete_blocks_any_open_incident(api_client, user, other_user, profile):
     membership = GuardianMembership.objects.create(profile=profile, guardian=other_user)
     incident = AlertIncident.objects.create(
@@ -147,12 +176,40 @@ def test_account_delete_anonymizes_closed_third_party_audit(api_client, user, ot
         user=user,
         user_id_snapshot=user.id,
     )
-    OutboxEvent.objects.create(
-        event_type="alert.opened",
+    retry_event = OutboxEvent.objects.create(
+        event_type="alert.retry",
         aggregate_type="alert_incident",
         aggregate_id=incident.id,
-        deduplication_key=f"test-alert:{incident.id}",
+        deduplication_key=f"test-alert-retry:{incident.id}",
         payload={"recipient_user_ids": [str(user.id)]},
+    )
+    device = PushDevice.objects.create(
+        user=user,
+        installation_id=uuid.uuid4(),
+        expo_push_token="ExponentPushToken[account-erasure-target]",
+        platform=PushDevice.Platform.IOS,
+    )
+    attempt = DeliveryAttempt.objects.create(
+        incident=incident,
+        outbox_event=retry_event,
+        device=device,
+        device_id_snapshot=device.id,
+        destination_token_hash="sensitive-destination-hash",
+        platform_snapshot=PushDevice.Platform.IOS,
+        status=DeliveryAttempt.Status.TICKET_RECEIVED,
+        expo_ticket_id="provider-ticket-correlator",
+        response_data={"provider_reference": "correlating-response"},
+    )
+    legacy_attempt = DeliveryAttempt.objects.create(
+        incident=incident,
+        outbox_event=retry_event,
+        device=device,
+        device_id_snapshot=None,
+        destination_token_hash="legacy-sensitive-destination-hash",
+        platform_snapshot=PushDevice.Platform.IOS,
+        status=DeliveryAttempt.Status.RETRYABLE_FAILURE,
+        expo_ticket_id="legacy-provider-ticket-correlator",
+        response_data={"legacy": "correlating-response"},
     )
 
     response = authenticate(api_client, user).delete(
@@ -168,6 +225,19 @@ def test_account_delete_anonymizes_closed_third_party_audit(api_client, user, ot
     assert recipient.user is None
     assert recipient.user_id_snapshot != user.id
     assert OutboxEvent.objects.get(aggregate_id=incident.id).payload["recipient_user_ids"] == []
+    attempt.refresh_from_db()
+    assert attempt.device is None
+    assert attempt.device_id_snapshot is None
+    assert attempt.destination_token_hash == ""
+    assert attempt.expo_ticket_id == ""
+    assert attempt.response_data == {}
+    assert attempt.platform_snapshot == PushDevice.Platform.IOS
+    assert attempt.status == DeliveryAttempt.Status.TICKET_RECEIVED
+    legacy_attempt.refresh_from_db()
+    assert legacy_attempt.device is None
+    assert legacy_attempt.destination_token_hash == ""
+    assert legacy_attempt.expo_ticket_id == ""
+    assert legacy_attempt.response_data == {}
 
 
 def test_history_is_owner_scoped_paginated_and_validates_filters(
@@ -374,6 +444,40 @@ def test_alert_delivery_status_never_claims_receipt_is_device_delivery(
         device=device,
         device_id_snapshot=device.id,
         status=DeliveryAttempt.Status.PROVIDER_ACCEPTED,
+    )
+
+    response = authenticate(api_client, other_user).get(f"/api/v1/alerts/{incident.id}/")
+
+    assert response.status_code == 200
+    assert response.json()["delivery_status"] == {
+        "state": "accepted_by_push_service",
+        "attempt_counts": {"provider_accepted": 1},
+    }
+
+
+def test_alert_delivery_status_normalizes_legacy_provider_receipts(api_client, other_user, profile):
+    GuardianMembership.objects.create(profile=profile, guardian=other_user)
+    incident = AlertIncident.objects.create(
+        profile=profile,
+        deadline_generation=profile.deadline_generation,
+        deadline_at=timezone.now(),
+    )
+    AlertRecipient.objects.create(
+        incident=incident,
+        user=other_user,
+        user_id_snapshot=other_user.id,
+    )
+    device = PushDevice.objects.create(
+        user=other_user,
+        installation_id=uuid.uuid4(),
+        expo_push_token="ExponentPushToken[legacy-provider-receipt]",
+        platform=PushDevice.Platform.ANDROID,
+    )
+    DeliveryAttempt.objects.create(
+        incident=incident,
+        device=device,
+        device_id_snapshot=device.id,
+        status=DeliveryAttempt.Status.LEGACY_DELIVERED,
     )
 
     response = authenticate(api_client, other_user).get(f"/api/v1/alerts/{incident.id}/")

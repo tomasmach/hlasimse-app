@@ -314,6 +314,7 @@ def _prepare_delivery_attempts(
                 .first()
             )
             if latest and latest.status in {
+                DeliveryAttempt.Status.LEGACY_DELIVERED,
                 DeliveryAttempt.Status.PROVIDER_ACCEPTED,
                 DeliveryAttempt.Status.TICKET_RECEIVED,
                 DeliveryAttempt.Status.RECEIPT_PROCESSING,
@@ -387,6 +388,7 @@ def _finish_event_from_attempts(event: OutboxEvent) -> None:
         for attempt in attempts
         if attempt.status
         in {
+            DeliveryAttempt.Status.LEGACY_DELIVERED,
             DeliveryAttempt.Status.TICKET_RECEIVED,
             DeliveryAttempt.Status.RECEIPT_PROCESSING,
             DeliveryAttempt.Status.PROVIDER_ACCEPTED,
@@ -515,7 +517,7 @@ def process_one_outbox_event(
         return True
     snapshot_ids, recipient_ids = _active_guardian_recipient_ids(event, incident)
     if not snapshot_ids:
-        _mark_event_failed(event, "Recipient snapshot is empty")
+        _mark_event_processed(event, note="Incident has no guardian recipient snapshot")
         return True
     _invalidate_ineligible_attempts(event=event, active_recipient_ids=recipient_ids)
     if not recipient_ids:

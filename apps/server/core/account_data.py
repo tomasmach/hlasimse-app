@@ -1,9 +1,12 @@
 import uuid
 
 from django.db import transaction
+from django.db.models import Q
+from django.utils import timezone
 
 from .audit import record_audit_event
 from .models import (
+    AlertAcknowledgement,
     AlertIncident,
     AlertRecipient,
     CheckIn,
@@ -25,12 +28,16 @@ class AccountPasswordInvalid(Exception):
     pass
 
 
+ACCOUNT_ERASURE_ALERT_EVENT_TYPES = ("alert.opened", "alert.resolved", "alert.retry")
+
+
 def build_account_export(user) -> dict:
     """Build a complete subject export without credentials or provider tokens."""
     profiles = list(CheckInProfile.objects.filter(owner=user).order_by("created_at"))
     profile_ids = [profile.id for profile in profiles]
     return {
         "schema_version": 1,
+        "exported_at": timezone.now(),
         "account": {
             "id": user.id,
             "email": user.email,
@@ -156,6 +163,16 @@ def build_account_export(user) -> dict:
                 "status",
             )
         ),
+        "alert_acknowledgements": list(
+            AlertAcknowledgement.objects.filter(user=user)
+            .order_by("acknowledged_at", "id")
+            .values(
+                "id",
+                "incident_id",
+                "user_id",
+                "acknowledged_at",
+            )
+        ),
         "push_devices": list(
             PushDevice.objects.filter(user=user)
             .order_by("created_at")
@@ -218,6 +235,7 @@ def delete_account_safely(*, user_id, password: str) -> None:
         incident_ids = list(
             AlertIncident.objects.filter(profile_id__in=profile_ids).values_list("id", flat=True)
         )
+        device_ids = list(PushDevice.objects.filter(user=user).values_list("id", flat=True))
         invitation_ids = list(
             GuardianInvitation.objects.filter(profile_id__in=profile_ids).values_list(
                 "id", flat=True
@@ -234,7 +252,7 @@ def delete_account_safely(*, user_id, password: str) -> None:
         recipient_rows = list(AlertRecipient.objects.select_for_update().filter(user=user))
         recipient_incident_ids = [row.incident_id for row in recipient_rows]
         for event in OutboxEvent.objects.select_for_update().filter(
-            event_type__in=("alert.opened", "alert.resolved"),
+            event_type__in=ACCOUNT_ERASURE_ALERT_EVENT_TYPES,
             aggregate_id__in=recipient_incident_ids,
         ):
             payload = dict(event.payload)
@@ -248,6 +266,20 @@ def delete_account_safely(*, user_id, password: str) -> None:
         for recipient in recipient_rows:
             recipient.user_id_snapshot = uuid.uuid4()
             recipient.save(update_fields=["user_id_snapshot", "updated_at"])
+
+        # Keep the non-identifying outcome of closed third-party incident delivery
+        # attempts, but sever every value that can link the attempt back to this
+        # account's installation or provider destination. Owned incident attempts
+        # were removed above together with the owned incident graph.
+        DeliveryAttempt.objects.select_for_update().filter(
+            Q(device_id_snapshot__in=device_ids) | Q(device_id__in=device_ids),
+        ).exclude(incident_id__in=incident_ids).update(
+            device=None,
+            device_id_snapshot=None,
+            destination_token_hash="",
+            expo_ticket_id="",
+            response_data={},
+        )
 
         for invitation in GuardianInvitation.objects.select_for_update().filter(
             normalized_email=user.email.strip().lower()

@@ -1,6 +1,7 @@
 import json
 import uuid
 from datetime import timedelta
+from unittest.mock import patch
 
 import pytest
 from django.core.exceptions import ValidationError
@@ -24,6 +25,7 @@ from core.services import (
     perform_check_in,
     respond_to_invitation,
     revoke_guardian_membership,
+    sweep_expired_deadlines,
     update_profile,
 )
 
@@ -232,6 +234,39 @@ def test_reconciliation_detects_without_writing_and_repairs_expired_generation(p
     assert AuditEvent.objects.filter(
         event_type="incident.opened", aggregate_id=incident.id
     ).exists()
+    assert not reconcile_domain_state().issues
+
+
+def test_incident_and_outbox_fault_rolls_back_then_retries_cleanly(profile, other_user):
+    GuardianMembership.objects.create(profile=profile, guardian=other_user)
+    profile.next_deadline_at = timezone.now() - timedelta(minutes=2)
+    profile.save(update_fields=["next_deadline_at", "updated_at"])
+
+    with (
+        patch.object(
+            OutboxEvent.objects,
+            "get_or_create",
+            side_effect=RuntimeError("injected outbox write failure"),
+        ),
+        pytest.raises(RuntimeError, match="injected outbox write failure"),
+    ):
+        sweep_expired_deadlines()
+
+    assert not AlertIncident.objects.filter(profile=profile).exists()
+    assert not AlertRecipient.objects.exists()
+    assert not OutboxEvent.objects.exists()
+    assert not AuditEvent.objects.filter(event_type="incident.opened").exists()
+
+    assert sweep_expired_deadlines() == (1, 1)
+    incident = AlertIncident.objects.get(profile=profile)
+    assert incident.recipients.filter(user=other_user).exists()
+    assert (
+        OutboxEvent.objects.filter(
+            aggregate_id=incident.id,
+            event_type="alert.opened",
+        ).count()
+        == 1
+    )
     assert not reconcile_domain_state().issues
 
 

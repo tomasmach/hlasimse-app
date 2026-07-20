@@ -12,7 +12,7 @@ jest.mock("expo-notifications", () => ({
 const schedule = Notifications.scheduleNotificationAsync as jest.Mock;
 const getAll = Notifications.getAllScheduledNotificationsAsync as jest.Mock;
 const cancel = Notifications.cancelScheduledNotificationAsync as jest.Mock;
-const profile = (id: string, deadline = new Date(Date.now() + 3 * 3600000).toISOString()) => ({ id, name: `Profil ${id}`, enabled: true, is_paused: false, next_deadline_at: deadline });
+const profile = (id: string, deadline = new Date(Date.now() + 3 * 3600000).toISOString()) => ({ id, name: `Profil ${id}`, enabled: true, is_paused: false, paused_until: null, next_deadline_at: deadline });
 
 beforeEach(() => { jest.clearAllMocks(); getAll.mockResolvedValue([]); });
 
@@ -25,12 +25,59 @@ it("uses profile-specific identifiers and schedules every active confirmed profi
   expect(identifiers.every((id: string) => id.startsWith("checkin-reminder-a-") || id.startsWith("checkin-reminder-b-"))).toBe(true);
 });
 
-it("does not schedule paused, disabled, or missing-deadline profiles", async () => {
+it("schedules one daily best-effort reminder only for an indefinite pause", async () => {
   await reconcileReminders([
-    { ...profile("paused"), is_paused: true },
-    { ...profile("disabled"), enabled: false },
+    { ...profile("indefinite"), is_paused: true, next_deadline_at: null },
+    { ...profile("scheduled"), is_paused: true, paused_until: "2026-07-22T12:00:00.000Z", next_deadline_at: null },
+    { ...profile("disabled"), enabled: false, is_paused: true, next_deadline_at: null },
     { ...profile("missing"), next_deadline_at: null },
   ]);
+  expect(schedule).toHaveBeenCalledTimes(1);
+  expect(schedule).toHaveBeenCalledWith(expect.objectContaining({
+    identifier: "checkin-reminder-indefinite-indefinite-pause",
+    content: expect.objectContaining({
+      title: "Zkontrolujte pauzu bez konce",
+      body: expect.stringContaining("lokální připomínku"),
+      data: {
+        type: "reminder",
+        profile_id: "indefinite",
+        reminder_kind: "indefinite_pause",
+      },
+    }),
+    trigger: {
+      type: 1,
+      seconds: 86_400,
+      repeats: true,
+    },
+  }));
+  const body = schedule.mock.calls[0][0].content.body;
+  expect(body).toContain("může odložit nebo potlačit");
+  expect(body).not.toContain("server potvrdil");
+});
+
+it("replaces an indefinite-pause reminder with deadline reminders after resume", async () => {
+  getAll.mockResolvedValue([
+    { identifier: "checkin-reminder-a-indefinite-pause" },
+    { identifier: "checkin-reminder-b-indefinite-pause" },
+  ]);
+
+  await scheduleProfileReminders(profile("a"));
+
+  expect(cancel).toHaveBeenCalledTimes(1);
+  expect(cancel).toHaveBeenCalledWith("checkin-reminder-a-indefinite-pause");
+  expect(schedule.mock.calls.map(([input]) => input.identifier)).toContain("checkin-reminder-a-deadline");
+});
+
+it("removes pause reminders when a profile is archived from reconciliation", async () => {
+  getAll.mockResolvedValue([
+    { identifier: "checkin-reminder-archived-indefinite-pause" },
+    { identifier: "other" },
+  ]);
+
+  await reconcileReminders([]);
+
+  expect(cancel).toHaveBeenCalledTimes(1);
+  expect(cancel).toHaveBeenCalledWith("checkin-reminder-archived-indefinite-pause");
   expect(schedule).not.toHaveBeenCalled();
 });
 

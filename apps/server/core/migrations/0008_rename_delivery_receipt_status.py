@@ -3,26 +3,12 @@
 from django.db import migrations, models
 
 
-def rename_delivered_to_provider_accepted(apps, schema_editor):
-    delivery_attempt = apps.get_model("core", "DeliveryAttempt")
-    delivery_attempt.objects.filter(status="delivered").update(status="provider_accepted")
-
-
-def restore_legacy_delivered_status(apps, schema_editor):
-    delivery_attempt = apps.get_model("core", "DeliveryAttempt")
-    delivery_attempt.objects.filter(status="provider_accepted").update(status="delivered")
-
-
 class Migration(migrations.Migration):
     dependencies = [
         ("core", "0007_profile_archive_and_queue_provenance"),
     ]
 
     operations = [
-        migrations.RunPython(
-            rename_delivered_to_provider_accepted,
-            reverse_code=restore_legacy_delivered_status,
-        ),
         migrations.AlterField(
             model_name="deliveryattempt",
             name="status",
@@ -31,6 +17,7 @@ class Migration(migrations.Migration):
                     ("queued", "Queued"),
                     ("ticket_received", "Ticket received"),
                     ("receipt_processing", "Receipt processing"),
+                    ("delivered", "Legacy provider accepted"),
                     ("provider_accepted", "Accepted by APNs/FCM"),
                     ("retryable_failure", "Retryable failure"),
                     ("permanent_failure", "Permanent failure"),
