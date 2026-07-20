@@ -110,21 +110,18 @@ tags:
       platform: iOS
     commands:
       - inputText: ${E2E_CREDENTIAL}
-      - hideKeyboard
-      - extendedWaitUntil:
-          visible: "Not Now"
-          timeout: 5000
-          optional: true
+      - pressKey: ENTER
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - scrollUntilVisible:
+          element:
+            id: "login-submit-button"
+          direction: DOWN
+          centerElement: true
       - tapOn:
-          text: "Not Now"
-          optional: true
-- scrollUntilVisible:
-    element:
-      id: "login-submit-button"
-    direction: DOWN
-    centerElement: true
-- tapOn:
-    id: "login-submit-button"
+          id: "login-submit-button"
 - extendedWaitUntil:
     visible: "Not Now"
     timeout: 5000

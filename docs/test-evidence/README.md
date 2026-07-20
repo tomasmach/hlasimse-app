@@ -26,11 +26,22 @@ scripts/e2e/validate.sh
 cd apps/server && uv run pytest tests/test_seed_e2e_command.py -q
 ```
 
-Run one available iOS simulator by exact UDID:
+Run iOS from one available template simulator by exact UDID:
 
 ```bash
 IOS_SIMULATOR_UDID=<exact-udid> scripts/e2e/run-ios.sh
 ```
+
+The runner does not execute the release-evidence journey on that template. It reads the template's
+exact device type and runtime from available-device JSON, creates a unique fresh simulator with
+the same pair, and uses the new UDID for the complete journey, including the in-place same-bundle
+install. `run.properties` distinguishes the template and active device and records
+`device_origin=fresh-runner-created` plus `device_owned=true`. Cleanup publishes/redacts evidence
+and stops the isolated backend/PostgreSQL first, then shuts down and deletes only the exact
+runner-created UDID. The template and all unrelated simulators remain untouched even after a
+failed run. `E2E_IOS_REUSE_TEMPLATE=true` exists only for explicit local diagnosis; runs marked
+`device_origin=diagnostic-template-reuse` and `run_mode=diagnostic-template-reuse` are not accepted
+as fresh-device release evidence.
 
 Run Android on an already booted emulator, or let the runner start the configured AVD:
 
@@ -39,7 +50,8 @@ ANDROID_AVD_NAME=Medium_Phone_API_36.1 scripts/e2e/run-android.sh
 ```
 
 The Android runner leaves a simulator it started running unless
-`E2E_STOP_EMULATOR=true` is set. Both runners stop only backend/Metro processes they started. Expo
+`E2E_STOP_EMULATOR=true` is set. Both runners stop only backend/Metro processes they started. The
+iOS runner additionally deletes only the exact simulator it created and recorded as owned. Expo
 may generate managed native `ios/` or `android/` build directories when they are absent; review
 those generated files after a run instead of deleting pre-existing native projects.
 An already-running Metro process is rejected because its baked-in API URL cannot be inferred. Set

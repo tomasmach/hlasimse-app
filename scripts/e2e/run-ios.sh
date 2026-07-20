@@ -6,13 +6,53 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/common.sh"
 
 IOS_UPGRADE_STAGE_DIR=""
+IOS_TEMPLATE_SIMULATOR_UDID=""
+IOS_OWNED_SIMULATOR_UDID=""
+
+e2e_ios_delete_owned_simulator() {
+  local device_id="${IOS_OWNED_SIMULATOR_UDID}"
+
+  if [[ -z "${device_id}" ]]; then
+    return 0
+  fi
+  if [[ ! "${device_id}" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]]; then
+    e2e_log "Refusing to delete an owned simulator with an invalid exact UDID: ${device_id}."
+    return 1
+  fi
+  if [[ "${device_id}" == "${IOS_TEMPLATE_SIMULATOR_UDID}" ]]; then
+    e2e_log "Refusing to delete the template simulator ${device_id}."
+    return 1
+  fi
+
+  xcrun simctl shutdown "${device_id}" >/dev/null 2>&1 || true
+  if ! xcrun simctl delete "${device_id}"; then
+    e2e_log "Failed to delete runner-created iOS simulator ${device_id}."
+    return 1
+  fi
+  IOS_OWNED_SIMULATOR_UDID=""
+}
 
 e2e_ios_cleanup() {
   local exit_code=$?
+  local cleanup_status
+  local simulator_cleanup_status=0
+
+  trap - EXIT
+  set +e
+  # Publish/redact evidence and stop the owned backend, Metro, and PostgreSQL
+  # before touching simulator state. e2e_cleanup also preserves or elevates the
+  # incoming exit code when traceability/finalization fails.
+  e2e_cleanup "${exit_code}"
+  cleanup_status=$?
   if [[ -n "${IOS_UPGRADE_STAGE_DIR}" ]] && [[ -d "${IOS_UPGRADE_STAGE_DIR}" ]]; then
     rm -r -- "${IOS_UPGRADE_STAGE_DIR}"
   fi
-  e2e_cleanup "${exit_code}"
+  e2e_ios_delete_owned_simulator
+  simulator_cleanup_status=$?
+  if [[ "${simulator_cleanup_status}" -ne 0 ]] && [[ "${cleanup_status}" -eq 0 ]]; then
+    cleanup_status=1
+  fi
+  exit "${cleanup_status}"
 }
 
 trap e2e_ios_cleanup EXIT
@@ -29,44 +69,76 @@ e2e_require xcodebuild
 e2e_require_maestro_version
 e2e_generate_credential
 
-IOS_SIMULATOR_UDID="${IOS_SIMULATOR_UDID:-${1:-}}"
-if [[ -z "${IOS_SIMULATOR_UDID}" ]]; then
+IOS_TEMPLATE_SIMULATOR_UDID="${IOS_SIMULATOR_UDID:-${1:-}}"
+if [[ -z "${IOS_TEMPLATE_SIMULATOR_UDID}" ]]; then
   e2e_log "Set IOS_SIMULATOR_UDID or pass the exact simulator UDID as the first argument."
   exit 2
 fi
-if ! xcrun simctl list devices available | grep -Fq "${IOS_SIMULATOR_UDID}"; then
-  e2e_log "Available iOS simulator not found for UDID ${IOS_SIMULATOR_UDID}."
-  exit 2
-fi
 
-E2E_APP_ID="$(e2e_app_id ios)"
-export E2E_APP_ID
-if [[ "${E2E_IOS_FOCUSED_ONLY:-false}" == "true" ]]; then
-  E2E_RUN_MODE="focused"
-else
-  E2E_RUN_MODE="full"
-fi
-e2e_initialize_run_metadata ios "${E2E_APP_ID}"
-
-IOS_DEVICE_RECORD="$(
-  xcrun simctl list devices --json | node -e '
+e2e_ios_device_record() {
+  local device_id="$1"
+  xcrun simctl list devices available --json | node -e '
     let input = "";
     process.stdin.on("data", chunk => input += chunk);
     process.stdin.on("end", () => {
       const udid = process.argv[1];
       const devices = JSON.parse(input).devices;
       for (const [runtime, entries] of Object.entries(devices)) {
-        const device = entries.find(candidate => candidate.udid === udid);
-        if (device) {
-          process.stdout.write(`${device.name}\t${runtime}`);
+        const device = entries.find(candidate => candidate.udid === udid && candidate.isAvailable !== false);
+        if (device && device.deviceTypeIdentifier) {
+          process.stdout.write(`${device.name}\t${runtime}\t${device.deviceTypeIdentifier}`);
           return;
         }
       }
       process.exit(2);
     });
-  ' "${IOS_SIMULATOR_UDID}"
-)"
-IFS=$'\t' read -r IOS_DEVICE_NAME IOS_RUNTIME_ID <<<"${IOS_DEVICE_RECORD}"
+  ' "${device_id}"
+}
+
+if ! IOS_TEMPLATE_DEVICE_RECORD="$(e2e_ios_device_record "${IOS_TEMPLATE_SIMULATOR_UDID}")"; then
+  e2e_log "Available iOS simulator metadata not found for template UDID ${IOS_TEMPLATE_SIMULATOR_UDID}."
+  exit 2
+fi
+IFS=$'\t' read -r IOS_TEMPLATE_DEVICE_NAME IOS_RUNTIME_ID IOS_DEVICE_TYPE_ID \
+  <<<"${IOS_TEMPLATE_DEVICE_RECORD}"
+
+if [[ "${E2E_IOS_REUSE_TEMPLATE:-false}" == "true" ]]; then
+  IOS_SIMULATOR_UDID="${IOS_TEMPLATE_SIMULATOR_UDID}"
+  IOS_DEVICE_ORIGIN="diagnostic-template-reuse"
+  IOS_DEVICE_OWNED="false"
+else
+  IOS_CREATED_DEVICE_NAME="Hlásím se E2E $(date -u +%Y%m%dT%H%M%SZ)-$$"
+  IOS_OWNED_SIMULATOR_UDID="$(
+    xcrun simctl create "${IOS_CREATED_DEVICE_NAME}" "${IOS_DEVICE_TYPE_ID}" "${IOS_RUNTIME_ID}"
+  )"
+  if [[ ! "${IOS_OWNED_SIMULATOR_UDID}" =~ ^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$ ]]; then
+    e2e_log "simctl create did not return one exact simulator UDID."
+    exit 1
+  fi
+  IOS_SIMULATOR_UDID="${IOS_OWNED_SIMULATOR_UDID}"
+  IOS_DEVICE_ORIGIN="fresh-runner-created"
+  IOS_DEVICE_OWNED="true"
+fi
+
+E2E_APP_ID="$(e2e_app_id ios)"
+export E2E_APP_ID
+if [[ "${E2E_IOS_REUSE_TEMPLATE:-false}" == "true" ]]; then
+  E2E_RUN_MODE="diagnostic-template-reuse"
+elif [[ "${E2E_IOS_FOCUSED_ONLY:-false}" == "true" ]]; then
+  E2E_RUN_MODE="focused"
+else
+  E2E_RUN_MODE="full"
+fi
+e2e_initialize_run_metadata ios "${E2E_APP_ID}"
+
+IOS_DEVICE_RECORD="$(e2e_ios_device_record "${IOS_SIMULATOR_UDID}")"
+IFS=$'\t' read -r IOS_DEVICE_NAME IOS_ACTIVE_RUNTIME_ID IOS_ACTIVE_DEVICE_TYPE_ID \
+  <<<"${IOS_DEVICE_RECORD}"
+if [[ "${IOS_ACTIVE_RUNTIME_ID}" != "${IOS_RUNTIME_ID}" ]] \
+  || [[ "${IOS_ACTIVE_DEVICE_TYPE_ID}" != "${IOS_DEVICE_TYPE_ID}" ]]; then
+  e2e_log "Active simulator metadata does not match the exact template type/runtime."
+  exit 1
+fi
 IOS_RUNTIME_RECORD="$(
   xcrun simctl list runtimes --json | node -e '
     let input = "";
@@ -85,6 +157,11 @@ XCODE_VERSION="$(xcodebuild -version | awk 'NR == 1 {print $2}')"
 XCODE_BUILD="$(xcodebuild -version | awk 'NR == 2 {print $3}')"
 e2e_record_property device_id "${IOS_SIMULATOR_UDID}"
 e2e_record_property device_name "${IOS_DEVICE_NAME}"
+e2e_record_property device_origin "${IOS_DEVICE_ORIGIN}"
+e2e_record_property device_owned "${IOS_DEVICE_OWNED}"
+e2e_record_property device_type_identifier "${IOS_DEVICE_TYPE_ID}"
+e2e_record_property template_device_id "${IOS_TEMPLATE_SIMULATOR_UDID}"
+e2e_record_property template_device_name "${IOS_TEMPLATE_DEVICE_NAME}"
 e2e_record_property os_name "${IOS_OS_NAME}"
 e2e_record_property os_version "${IOS_OS_VERSION}"
 e2e_record_property api_level "${IOS_SDK_VERSION}"
@@ -194,7 +271,29 @@ e2e_reinstall_ios_bundle_without_clearing_data() {
   IOS_UPGRADE_STAGE_DIR=""
 }
 
-xcrun simctl boot "${IOS_SIMULATOR_UDID}" 2>/dev/null || true
+if ! xcrun simctl boot "${IOS_SIMULATOR_UDID}" 2>/dev/null; then
+  IOS_DEVICE_STATE="$(
+    xcrun simctl list devices --json | node -e '
+      let input = "";
+      process.stdin.on("data", chunk => input += chunk);
+      process.stdin.on("end", () => {
+        const udid = process.argv[1];
+        for (const entries of Object.values(JSON.parse(input).devices)) {
+          const device = entries.find(candidate => candidate.udid === udid);
+          if (device) {
+            process.stdout.write(device.state || "");
+            return;
+          }
+        }
+        process.exit(2);
+      });
+    ' "${IOS_SIMULATOR_UDID}"
+  )"
+  if [[ "${IOS_DEVICE_STATE}" != "Booted" ]]; then
+    e2e_log "Failed to boot exact iOS simulator ${IOS_SIMULATOR_UDID}."
+    exit 1
+  fi
+fi
 xcrun simctl bootstatus "${IOS_SIMULATOR_UDID}" -b
 e2e_prepare_backend
 e2e_start_metro "http://127.0.0.1:8000"

@@ -24,6 +24,18 @@ the API and syncs it, requests an export, and deletes the owner fixture. It then
 six-account fixture to assert the visible 5-profile, 5-guardian, and 7-day free-tier boundaries
 before guarded cleanup.
 
+For accepted full-run evidence, the iOS UDID is a template only. The runner resolves that exact
+available simulator's `deviceTypeIdentifier` and runtime from `simctl` JSON, creates a uniquely
+named simulator with the same pair, and records both identities plus
+`device_origin=fresh-runner-created` and `device_owned=true`. The fresh simulator is used for the
+entire baseline, location-denial, and same-bundle-install journey. Only after evidence is
+redacted/finalized and the owned PostgreSQL/backend processes are stopped does cleanup shut down
+and delete that one runner-created UDID. It never erases or deletes the template or another
+simulator. `E2E_IOS_REUSE_TEMPLATE=true` is an explicit diagnostic escape hatch; its metadata says
+`device_origin=diagnostic-template-reuse` and the resulting run is not fresh-device release
+evidence; its run mode is `diagnostic-template-reuse`, never `full`. No lifecycle path performs a
+broad keychain reset.
+
 The iOS runner additionally resets foreground-location permission, proves that denying the native
 prompt does not block a server-confirmed check-in, verifies the resulting database row contains no
 coordinates, and performs an in-place same-bundle install. Before that install it selects a

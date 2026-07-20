@@ -24,21 +24,7 @@ tags:
     id: "login-password-input"
     retryTapIfNoChange: true
 - inputText: ${E2E_CREDENTIAL}
-- hideKeyboard
-- extendedWaitUntil:
-    visible: "Not Now"
-    timeout: 5000
-    optional: true
-- tapOn:
-    text: "Not Now"
-    optional: true
-- scrollUntilVisible:
-    element:
-      id: "login-submit-button"
-    direction: DOWN
-    centerElement: true
-- tapOn:
-    id: "login-submit-button"
+- pressKey: ENTER
 - extendedWaitUntil:
     visible: "Not Now"
     timeout: 5000

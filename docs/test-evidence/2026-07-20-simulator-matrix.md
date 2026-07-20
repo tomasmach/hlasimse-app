@@ -15,6 +15,11 @@ Both runs used Maestro 2.6.1 and exited with code 0. Their `run.properties` SHA-
 - iOS: `dca402aa5e6bea335a8a95ae509df1c67760d1a8d92272f02a771e9bd0977214`
 - Android: `8037342a25048dcf05aa900e3072a8ca72852bc13bd9de18594f7e631de7676a`
 
+This historical iOS run predates the fresh runner-owned simulator lifecycle gate. It remains valid
+for the assertions explicitly listed below, but it must not be relabeled as fresh-device evidence.
+Current accepted iOS full-run evidence must record `device_origin=fresh-runner-created`,
+`device_owned=true`, and distinct active/template UDIDs.
+
 The matrix covers clean onboarding, guardian incident acknowledgement, server-confirmed check-in,
 pause/resume, history, a second free profile, an API outage with visibly unconfirmed offline queue,
 recovery and synchronization, account export, account deletion, and the complete free boundaries:

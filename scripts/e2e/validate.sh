@@ -128,9 +128,40 @@ ruby -e '
   abort("Whole-flow retry loop remains enabled") if common.include?("attempt <= 2")
   abort("Whole-flow retry escape hatch remains enabled") if common.include?("E2E_DISABLE_FLOW_RETRY")
 
-  required_ios = %w[device_id device_name os_name os_version api_level ios_runtime_id xcode_version xcode_build]
+  required_ios = %w[
+    device_id device_name device_origin device_owned device_type_identifier
+    template_device_id template_device_name os_name os_version api_level
+    ios_runtime_id xcode_version xcode_build
+  ]
   missing_ios = required_ios.reject { |key| ios.include?("e2e_record_property #{key}") }
   abort("Missing iOS metadata keys: #{missing_ios.join(", ")}") unless missing_ios.empty?
+
+  required_lifecycle = [
+    %q{E2E_IOS_REUSE_TEMPLATE:-false},
+    %q{E2E_RUN_MODE="diagnostic-template-reuse"},
+    %q{xcrun simctl create "${IOS_CREATED_DEVICE_NAME}" "${IOS_DEVICE_TYPE_ID}" "${IOS_RUNTIME_ID}"},
+    %q{IOS_DEVICE_ORIGIN="fresh-runner-created"},
+    %q{IOS_OWNED_SIMULATOR_UDID=""},
+    %q{local device_id="${IOS_OWNED_SIMULATOR_UDID}"},
+    %q{xcrun simctl shutdown "${device_id}"},
+    %q{xcrun simctl delete "${device_id}"},
+  ]
+  missing_lifecycle = required_lifecycle.reject { |fragment| ios.include?(fragment) }
+  abort("Missing fail-closed iOS lifecycle fragments: #{missing_lifecycle.join(", ")}") unless missing_lifecycle.empty?
+
+  cleanup_body = ios[/e2e_ios_cleanup\(\) \{(.*?)\n\}/m, 1]
+  abort("Could not inspect iOS cleanup") unless cleanup_body
+  evidence_cleanup = cleanup_body.index(%q{e2e_cleanup "${exit_code}"})
+  simulator_cleanup = cleanup_body.index("e2e_ios_delete_owned_simulator")
+  abort("iOS simulator cleanup runs before evidence/PostgreSQL cleanup") unless evidence_cleanup && simulator_cleanup && evidence_cleanup < simulator_cleanup
+
+  forbidden_lifecycle = [
+    /simctl\s+delete\s+(?:all|unavailable)/,
+    /simctl\s+delete\s+"?\$\{IOS_TEMPLATE_SIMULATOR_UDID\}"?/,
+    /simctl\s+(?:erase|keychain)/,
+  ]
+  violation = forbidden_lifecycle.find { |pattern| ios.match?(pattern) }
+  abort("Unsafe iOS simulator lifecycle command: #{violation.inspect}") if violation
 
   required_android = %w[
     device_id device_name os_name os_version api_level android_avd android_build_fingerprint
