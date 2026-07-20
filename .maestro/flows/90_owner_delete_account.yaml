@@ -37,7 +37,7 @@ tags:
 - tapOn:
     id: "account-delete-submit"
 - assertVisible: "Trvale smazat účet?"
-- tapOn: "Smazat účet"
+- tapOn: "Ano, smazat účet"
 - extendedWaitUntil:
     visible:
       id: "login-screen"

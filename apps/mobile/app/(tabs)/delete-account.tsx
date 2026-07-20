@@ -21,7 +21,7 @@ export default function DeleteAccountScreen() {
     if (!password) return setError("Zadejte heslo pro výslovné potvrzení.");
     Alert.alert("Trvale smazat účet?", "Server operaci odmítne, pokud jste vlastník nebo příjemce aktivního incidentu. Uzavřená bezpečnostní auditní stopa může zůstat anonymizovaná podle retenčních pravidel.", [
       { text: "Zrušit", style: "cancel" },
-      { text: "Smazat účet", style: "destructive", onPress: async () => {
+      { text: "Ano, smazat účet", style: "destructive", onPress: async () => {
         setBusy(true); setError("");
         try {
           await apiRequest<void>("/api/v1/account/", { method: "DELETE", body: { password, confirmed: true } });

@@ -46,8 +46,11 @@ it("reloads safety history whenever its tab regains focus", () => {
 it("returns settings-only account screens to settings instead of tab history", () => {
   const tabLayout = readFileSync(resolve(mobileRoot, "app/(tabs)/_layout.tsx"), "utf8");
   expect(tabLayout).toContain('backBehavior="history"');
+  expect(tabLayout).toMatch(/name="delete-account"[\s\S]*?headerShown: false/);
   for (const path of ["app/(tabs)/data-export.tsx", "app/(tabs)/delete-account.tsx"]) {
     const source = readFileSync(resolve(mobileRoot, path), "utf8");
     expect(source).toContain('onBack={() => router.replace("/(tabs)/settings")}');
   }
+  const deletion = readFileSync(resolve(mobileRoot, "app/(tabs)/delete-account.tsx"), "utf8");
+  expect(deletion).toContain('{ text: "Ano, smazat účet", style: "destructive"');
 });

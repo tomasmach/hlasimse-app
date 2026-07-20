@@ -66,6 +66,7 @@ export default function TabLayout() {
         options={{
           title: "Smazat účet",
           href: null,
+          headerShown: false,
         }}
       />
       <Tabs.Screen
