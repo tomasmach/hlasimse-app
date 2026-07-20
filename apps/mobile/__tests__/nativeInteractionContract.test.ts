@@ -25,3 +25,8 @@ it("keeps native press targets stable for critical actions and navigation", () =
     expect(source).not.toContain("onPressOut");
   }
 });
+
+it("keeps the incident acknowledgement above the floating tab bar", () => {
+  const source = readFileSync(resolve(mobileRoot, "app/(tabs)/incident/[id].tsx"), "utf8");
+  expect(source).toContain('contentContainerClassName="px-5 pb-36"');
+});

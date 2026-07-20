@@ -38,7 +38,7 @@ export default function ProfileSetupScreen() {
   return (
     <SafeAreaView className="flex-1 bg-cream">
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="flex-1">
-        <ScrollView contentContainerClassName="px-5 pb-10" keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerClassName="px-5 pb-36" keyboardShouldPersistTaps="handled">
           {adding ? <BackHeader title="Nový profil" /> : <View className="h-5" />}
           <View className="pt-8 mb-10">
             <UserCircle size={40} color={COLORS.brand[500]} weight="duotone" />

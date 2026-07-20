@@ -37,7 +37,7 @@ export default function IncidentDetailScreen() {
   const location = incident.last_known_location;
   return (
     <SafeAreaView className="flex-1 bg-cream">
-      <ScrollView contentContainerClassName="px-5 pb-12">
+      <ScrollView contentContainerClassName="px-5 pb-36">
         <BackHeader title="Detail incidentu" />
         <View className="pt-5 pb-8 border-b border-sand">
           <StatusLabel label={incident.status === "open" ? "Aktivní incident" : "Incident vyřešen"} tone={incident.status === "open" ? "danger" : "success"} />

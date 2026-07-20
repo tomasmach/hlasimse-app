@@ -61,7 +61,7 @@ export default function ProfileDetailScreen() {
   return (
     <SafeAreaView className="flex-1 bg-cream">
       <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="flex-1">
-        <ScrollView contentContainerClassName="px-5 pb-12" keyboardShouldPersistTaps="handled">
+        <ScrollView contentContainerClassName="px-5 pb-36" keyboardShouldPersistTaps="handled">
           <BackHeader title="Správa profilu" />
           <Text className="font-display text-[38px] leading-[42px] tracking-[-1px] text-charcoal mt-4">{profile.name}</Text>
           <Text className="font-body text-base text-muted mt-3">Profil {profiles.findIndex((item) => item.id === profile.id) + 1} z {profiles.length}. Server je autoritou intervalu i dalšího termínu.</Text>

@@ -63,7 +63,7 @@ export default function DiagnosticsScreen() {
   const push = product.pushDiagnostics;
   return (
     <SafeAreaView className="flex-1 bg-cream">
-      <ScrollView contentContainerClassName="px-5 pb-12">
+      <ScrollView contentContainerClassName="px-5 pb-36">
         <BackHeader title="Diagnostika" />
         <Text className="font-display text-[38px] leading-[42px] text-charcoal mt-5">Co zařízení dovolí a co neumí slíbit</Text>
         <Text className="font-body text-base leading-6 text-muted mt-4">Tato kontrola ověří místní oprávnění a registraci tokenu. Neumí potvrdit budoucí end-to-end doručení push.</Text>
