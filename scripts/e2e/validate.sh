@@ -389,10 +389,11 @@ ruby -e '
     android_sdk_toolchain_origin android_build_tools_revision android_adb_version
     android_emulator_version emulator_display_mode
     android_build_fingerprint apk_sha256 apk_signer_cert_sha256 android_package_uid
-    production_app_id
+    production_app_id release_evidence_eligible
     android_package_present_before_install android_first_install_time build_variant
     js_bundle_mode signing_authority production_cleartext_allowed initial_install_mode
-    update_artifact_relation android_launcher_component native_project_origin
+    update_artifact_relation n_minus_one_coverage store_signed_update_coverage
+    android_launcher_component native_project_origin
     expo_prebuild_version device_cleanup_completed
   ]
   missing_android = required_android.reject { |key| android.include?("e2e_record_property #{key}") }
@@ -401,6 +402,11 @@ ruby -e '
   required_android_lifecycle = [
     %q{ANDROID_DEVICE_ORIGIN="fresh-runner-created"},
     %q{ANDROID_DEVICE_OWNED="true"},
+    %q{if [[ "${E2E_RUN_MODE}" == "full"},
+    %q{&& "${ANDROID_DEVICE_OWNED}" == "true"},
+    %q{&& "${ANDROID_DEVICE_ORIGIN}" == "fresh-runner-created" ]]; then},
+    %q{e2e_record_property release_evidence_eligible true},
+    %q{e2e_record_property release_evidence_eligible false},
     %q{mktemp -d "${temp_base}/hlasimse-e2e-avd.XXXXXX"},
     %q{--package "${system_image_package}"},
     %q{-wipe-data},
@@ -414,6 +420,9 @@ ruby -e '
     %q{:app:processReleaseManifest --no-daemon},
     %q{:app:assembleE2e --no-daemon},
     %q{assets/index.android.bundle},
+    %q{same-built-apk-reinstall-not-n-minus-one},
+    %q{e2e_record_property n_minus_one_coverage "false"},
+    %q{e2e_record_property store_signed_update_coverage "false"},
   ]
   missing_android_lifecycle = required_android_lifecycle.reject { |fragment| android.include?(fragment) }
   abort("Missing fail-closed Android lifecycle fragments: #{missing_android_lifecycle.join(", ")}") unless missing_android_lifecycle.empty?
@@ -424,6 +433,23 @@ ruby -e '
   abort("Android full run accepts a pre-existing serial") if android.include?(%q{ANDROID_SERIAL="${ANDROID_SERIAL:-}"})
   abort("Android cleanup is not sentinel-scoped") unless android.include?(".hlasimse-runner-owned-avd")
   abort("Android cleanup may target the persistent template") unless android.include?("Refusing AVD cleanup because the target overlaps")
+
+  create_owned_avd = android.index("\ncreate_owned_android_avd\n")
+  release_eligibility = android.index(%q{e2e_record_property release_evidence_eligible true}, create_owned_avd.to_i)
+  apk_digest = android.index(%q{ANDROID_APK_SHA256="$(shasum -a 256})
+  initial_install = android.index(%q{install "${ANDROID_APK_PATH}"}, apk_digest.to_i)
+  update_relation = android.index(%q{e2e_record_property update_artifact_relation "same-built-apk-reinstall-not-n-minus-one"})
+  n_minus_one_scope = android.index(%q{e2e_record_property n_minus_one_coverage "false"})
+  store_signed_scope = android.index(%q{e2e_record_property store_signed_update_coverage "false"})
+  update_sentinel = android.index(%q{android_input_text "E2E update sentinel" "upgrade sentinel name"})
+  reinstall = android.index(%q{install -r "${ANDROID_APK_PATH}"}, update_sentinel.to_i)
+  update_flow = android.index(%q{e2e_run_flow "${ANDROID_SERIAL}" 05_android_update_preserves_state})
+  completion = android.rindex(%q{E2E_JOURNEY_COMPLETED="true"})
+  ordered_android_proof = [
+    create_owned_avd, release_eligibility, apk_digest, initial_install, update_relation,
+    n_minus_one_scope, store_signed_scope, update_sentinel, reinstall, update_flow, completion,
+  ]
+  abort("Android evidence is not ordered owned-AVD/eligible/build/install/scope/sentinel/reinstall/UI/complete") unless ordered_android_proof.all? && ordered_android_proof.each_cons(2).all? { |left, right| left < right }
 ' "${ROOT_DIR}/scripts/e2e/common.sh" "${ROOT_DIR}/scripts/e2e/run-ios.sh" \
   "${ROOT_DIR}/scripts/e2e/run-android.sh"
 

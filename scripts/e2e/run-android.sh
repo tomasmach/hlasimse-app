@@ -454,6 +454,13 @@ if [[ -n "${ANDROID_SERIAL_OVERRIDE:-}" ]]; then
   exit 2
 fi
 create_owned_android_avd
+if [[ "${E2E_RUN_MODE}" == "full" \
+  && "${ANDROID_DEVICE_OWNED}" == "true" \
+  && "${ANDROID_DEVICE_ORIGIN}" == "fresh-runner-created" ]]; then
+  e2e_record_property release_evidence_eligible true
+else
+  e2e_record_property release_evidence_eligible false
+fi
 "${ANDROID_EMULATOR_BIN}" \
   -avd "${ANDROID_AVD_NAME}" \
   -wipe-data \
@@ -683,7 +690,9 @@ e2e_record_property js_bundle_mode "embedded"
 e2e_record_property signing_authority "debug-test-only"
 e2e_record_property production_cleartext_allowed "false"
 e2e_record_property initial_install_mode "fresh-package-install"
-e2e_record_property update_artifact_relation "same-apk-reinstall"
+e2e_record_property update_artifact_relation "same-built-apk-reinstall-not-n-minus-one"
+e2e_record_property n_minus_one_coverage "false"
+e2e_record_property store_signed_update_coverage "false"
 e2e_record_property android_first_install_time "${ANDROID_FIRST_INSTALL_TIME}"
 ANDROID_LAUNCHER_COMPONENT="$(android_launcher_component)"
 if [[ ! "${ANDROID_LAUNCHER_COMPONENT}" =~ ^${E2E_APP_ID}/ ]]; then

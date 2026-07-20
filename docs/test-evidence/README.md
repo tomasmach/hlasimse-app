@@ -59,20 +59,25 @@ packaging change fails closed for review.
 Byte content and the production app remain unchanged. The installed app must then match the
 isolated copy across every path, byte, symlink, and POSIX mode.
 
-Run Android on an already booted emulator, or let the runner start the configured AVD:
+Run Android using an existing AVD only as an immutable device/image template:
 
 ```bash
-ANDROID_AVD_NAME=Medium_Phone_API_36.1 scripts/e2e/run-android.sh
+ANDROID_TEMPLATE_AVD_NAME=Medium_Phone_API_36.1 scripts/e2e/run-android.sh
 ```
 
-The Android runner leaves a simulator it started running unless
-`E2E_STOP_EMULATOR=true` is set. Both runners stop only backend/Metro processes they started. The
-iOS runner additionally deletes only the exact simulator it created and recorded as owned. Expo
-may generate managed native `ios/` or `android/` build directories when they are absent; review
-those generated files after a run instead of deleting pre-existing native projects.
-An already-running Metro process is rejected because its baked-in API URL cannot be inferred. Set
-`E2E_REUSE_METRO=true` only after independently proving it was started with the platform-specific
-URL (`127.0.0.1` for iOS Simulator, `10.0.2.2` for Android Emulator).
+The Android runner refuses an externally supplied serial. It reads the template's exact device
+profile and system image, creates a fresh runner-owned headless AVD in an isolated temporary home,
+and deletes only that owned AVD during cleanup. A successful full run records
+`release_evidence_eligible=true`; any future mode or device origin that is not exactly `full`,
+`fresh-runner-created`, and owned records `false`. Eligibility describes the harness/device scope,
+not success: `exit_code=0`, `journey_completed=true`, clean source identity, and successful cleanup
+remain mandatory.
+
+The Android in-place install deliberately reuses the exact freshly built APK. Its evidence records
+`update_artifact_relation=same-built-apk-reinstall-not-n-minus-one`,
+`n_minus_one_coverage=false`, and `store_signed_update_coverage=false`. It proves state preservation
+for that same release-derived test artifact only; it does not satisfy the physical-device N-1 or
+store-signing gates below.
 
 ## Covered by each simulator journey
 
