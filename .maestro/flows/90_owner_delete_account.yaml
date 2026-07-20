@@ -40,7 +40,16 @@ tags:
 - tapOn:
     id: "account-delete-password"
 - inputText: ${E2E_CREDENTIAL}
-- hideKeyboard
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - pressKey: ENTER
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
 - runFlow:
     when:
       platform: iOS
