@@ -30,13 +30,19 @@ tags:
 - tapOn:
     id: "checkin-submit"
 - extendedWaitUntil:
-    visible: "Check-in potvrzen serverem"
-    timeout: 15000
-- tapOn: "Check-in potvrzen serverem"
-- extendedWaitUntil:
     visible:
-      id: "profile-pause"
+      id: "checkin-success-overlay"
     timeout: 10000
+- tapOn:
+    id: "checkin-success-overlay"
+- extendedWaitUntil:
+    visible: "Serverový termín aktivní"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "profile-pause"
+    direction: DOWN
+    centerElement: true
 - tapOn:
     id: "profile-pause"
 - assertVisible: "Pozastavit profil?"

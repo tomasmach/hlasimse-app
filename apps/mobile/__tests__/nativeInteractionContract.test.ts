@@ -30,3 +30,9 @@ it("keeps the incident acknowledgement above the floating tab bar", () => {
   const source = readFileSync(resolve(mobileRoot, "app/(tabs)/incident/[id].tsx"), "utf8");
   expect(source).toContain('contentContainerClassName="px-5 pb-36"');
 });
+
+it("exposes the server-confirmed check-in overlay as one dismiss action", () => {
+  const source = readFileSync(resolve(mobileRoot, "components/SuccessOverlay.tsx"), "utf8");
+  expect(source).toContain('testID="checkin-success-overlay"');
+  expect(source).toContain('accessibilityLabel="Check-in potvrzen serverem. Klepnutím zavřete."');
+});

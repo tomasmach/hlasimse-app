@@ -148,7 +148,13 @@ export function SuccessOverlay({
   if (!visible) return null;
 
   return (
-    <Pressable onPress={handleDismiss} style={styles.container}>
+    <Pressable
+      testID="checkin-success-overlay"
+      onPress={handleDismiss}
+      style={styles.container}
+      accessibilityRole="button"
+      accessibilityLabel="Check-in potvrzen serverem. Klepnutím zavřete."
+    >
       <Animated.View style={[styles.backdrop, { opacity: backdropOpacity.current }]}>
         <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
         <View style={styles.creamOverlay} />
