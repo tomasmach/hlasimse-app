@@ -284,7 +284,7 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
         synced += 1;
       } catch (error) {
         failed += 1;
-        if (error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 401 && error.status !== 429) {
+        if (error instanceof ApiError && error.status >= 400 && error.status < 500 && error.status !== 401 && error.status !== 426 && error.status !== 429) {
           await updateQueueItem(account.userId, account.installationId, item.id, {
             status: "failed",
             error: error.message || "Server hlášení odmítl.",

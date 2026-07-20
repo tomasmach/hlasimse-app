@@ -1,9 +1,12 @@
 import os
 from datetime import timedelta
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 
 import dj_database_url
 from django.core.exceptions import ImproperlyConfigured
+
+from core.versioning import InvalidSemVer, parse_semver
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -19,6 +22,73 @@ def env_bool(name: str, *, default: bool) -> bool:
 
 
 DEBUG = env_bool("DJANGO_DEBUG", default=True)
+
+
+def mobile_release(platform: str) -> dict[str, object]:
+    upper_platform = platform.upper()
+    version_name = f"MOBILE_MIN_{upper_platform}_VERSION"
+    build_name = f"MOBILE_MIN_{upper_platform}_BUILD"
+    store_name = f"MOBILE_{upper_platform}_STORE_URL"
+    raw_version = os.getenv(version_name)
+    raw_build = os.getenv(build_name)
+    raw_store_url = os.getenv(store_name)
+    if not DEBUG and not raw_version:
+        raise ImproperlyConfigured(f"Production requires an explicit {version_name}")
+    if not DEBUG and not raw_store_url:
+        raise ImproperlyConfigured(f"Production requires an explicit HTTPS {store_name}")
+    if not DEBUG and not raw_build:
+        raise ImproperlyConfigured(f"Production requires an explicit {build_name}")
+
+    min_version = (raw_version or "1.0.0").strip()
+    min_build = (raw_build or "1").strip()
+    store_url = (raw_store_url or f"https://example.invalid/dev/{platform}").strip()
+    try:
+        parsed_min_version = parse_semver(min_version)
+    except InvalidSemVer as exc:
+        raise ImproperlyConfigured(f"{version_name} must be a valid semantic version") from exc
+    if not min_build.isdigit() or int(min_build) <= 0:
+        raise ImproperlyConfigured(f"{build_name} must be a positive integer")
+    parsed_url = urlsplit(store_url)
+    if parsed_url.scheme != "https" or not parsed_url.netloc:
+        raise ImproperlyConfigured(f"{store_name} must be an absolute HTTPS URL")
+    if not DEBUG:
+        if platform == "ios":
+            final_path_segment = parsed_url.path.rstrip("/").split("/")[-1]
+            valid_store = (
+                parsed_url.hostname == "apps.apple.com"
+                and "/app/" in parsed_url.path
+                and final_path_segment.startswith("id")
+                and final_path_segment[2:].isdigit()
+            )
+        else:
+            valid_store = (
+                parsed_url.hostname == "play.google.com"
+                and parsed_url.path.rstrip("/") == "/store/apps/details"
+                and bool(parse_qs(parsed_url.query).get("id", [""])[0])
+            )
+        if not valid_store:
+            raise ImproperlyConfigured(
+                f"Production {store_name} must be the final {platform} store listing URL"
+            )
+    return {
+        "min_version": min_version,
+        "parsed_min_version": parsed_min_version,
+        "min_build": int(min_build),
+        "store_url": store_url,
+    }
+
+
+MOBILE_RELEASES = {
+    "ios": mobile_release("ios"),
+    "android": mobile_release("android"),
+}
+MOBILE_API_MAINTENANCE = env_bool("MOBILE_API_MAINTENANCE", default=False)
+MOBILE_MAINTENANCE_RETRY_AFTER_SECONDS = int(
+    os.getenv("MOBILE_MAINTENANCE_RETRY_AFTER_SECONDS", "300")
+)
+if MOBILE_MAINTENANCE_RETRY_AFTER_SECONDS <= 0:
+    raise ImproperlyConfigured("MOBILE_MAINTENANCE_RETRY_AFTER_SECONDS must be positive")
+
 development_secret = "unsafe-development-key-change-me"
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", development_secret)
 if not DEBUG and (development_secret == SECRET_KEY or len(SECRET_KEY) < 50):
@@ -47,6 +117,7 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "core.middleware.MobileReleaseGateMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",

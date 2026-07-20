@@ -1,11 +1,31 @@
 from uuid import uuid4
 
+from django.conf import settings
 from django.core.cache import cache
 from django.db import connection
 from django.db.migrations.executor import MigrationExecutor
 from django.http import JsonResponse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
+
+
+@require_GET
+@never_cache
+def mobile_client_config(request):
+    return JsonResponse(
+        {
+            "client": "hlasimse-mobile",
+            "maintenance": settings.MOBILE_API_MAINTENANCE,
+            "platforms": {
+                platform: {
+                    "min_version": release["min_version"],
+                    "min_build": release["min_build"],
+                    "store_url": release["store_url"],
+                }
+                for platform, release in settings.MOBILE_RELEASES.items()
+            },
+        }
+    )
 
 
 @require_GET

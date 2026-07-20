@@ -94,6 +94,22 @@ describe("offline check-in safety", () => {
     expect(useCheckInStore.getState().pendingCount).toBe(0);
   });
 
+  it.each([426, 503])("does not report or queue a %s release-gate rejection", async (status) => {
+    const { ApiError } = jest.requireMock("@/lib/api");
+    mockApiRequest.mockRejectedValueOnce(new ApiError(status, {
+      code: status === 426 ? "update_required" : "maintenance",
+    }));
+
+    await expect(useCheckInStore.getState().checkIn()).resolves.toEqual({
+      success: false,
+      offline: false,
+    });
+    expect(useCheckInStore.getState()).toMatchObject({
+      pendingCount: 0,
+      lastCheckInWasOffline: false,
+    });
+  });
+
   it("omits queue provenance from a live check-in and preserves the false receipt field", async () => {
     const receipt: CheckInReceipt = {
       id: "receipt-live",
@@ -147,6 +163,22 @@ describe("offline check-in safety", () => {
     expect(state.pendingCount).toBe(0);
     expect(state.failedPendingCount).toBe(1);
     expect(state.pendingItems[0].error).toBe("Deadline už vypršel");
+  });
+
+  it("keeps an update-blocked queued check-in pending for the updated app", async () => {
+    const { ApiError } = jest.requireMock("@/lib/api");
+    mockApiRequest.mockRejectedValueOnce(new NetworkError());
+    await useCheckInStore.getState().checkIn();
+    mockApiRequest.mockReset();
+    mockApiRequest.mockRejectedValueOnce(new ApiError(426, { code: "update_required" }));
+
+    await useCheckInStore.getState().syncPendingCheckIns();
+
+    expect(useCheckInStore.getState()).toMatchObject({
+      pendingCount: 1,
+      failedPendingCount: 0,
+      pendingItems: [expect.objectContaining({ status: "pending", error: null })],
+    });
   });
 
   it("keeps the profile active and exposes the exact incident when archive returns 409", async () => {

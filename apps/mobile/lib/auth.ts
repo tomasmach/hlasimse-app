@@ -1,4 +1,4 @@
-import { apiRequest, isNetworkError } from "@/lib/api";
+import { apiRequest, isNetworkError, isReleaseGateError } from "@/lib/api";
 import {
   clearStoredUserId,
   clearTokens,
@@ -89,6 +89,7 @@ export async function restoreUser(): Promise<AuthUser | null> {
     return user;
   } catch (error) {
     if (isNetworkError(error) && cachedUser) return cachedUser;
+    if (isReleaseGateError(error)) return cachedUser;
     await clearTokens();
     return null;
   }

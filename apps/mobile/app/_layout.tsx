@@ -1,5 +1,5 @@
 import "../global.css";
-import { useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { View, ActivityIndicator } from "react-native";
@@ -23,6 +23,10 @@ import { useOnboardingStore } from "@/stores/onboarding";
 import { useNotifications } from "@/hooks/useNotifications";
 import { createTokenRegistrationTracker } from "@/utils/pushTokenRegistration";
 import { notificationDestination } from "@/lib/notificationRouting";
+import { AccessGateScreen } from "@/components/AccessGateScreen";
+import { checkClientRelease, supportsMobileReleaseGate } from "@/lib/clientGate";
+import { clearReleaseGate, isNetworkError, setReleaseGateHandler } from "@/lib/api";
+import type { ClientGate } from "@/lib/clientRelease";
 
 function useProtectedRoute(
   user: any,
@@ -65,6 +69,9 @@ function useProtectedRoute(
 }
 
 export default function RootLayout() {
+  const [releaseGate, setReleaseGate] = useState<ClientGate | null>(null);
+  const [releaseChecked, setReleaseChecked] = useState(!supportsMobileReleaseGate());
+  const [releaseRetrying, setReleaseRetrying] = useState(false);
   const [fontsLoaded] = useFonts({
     Lora_400Regular,
     Lora_500Medium,
@@ -87,6 +94,47 @@ export default function RootLayout() {
   } = useOnboardingStore();
   const { registerToken, expoPushToken, setNotificationResponseHandler } = useNotifications();
   const router = useRouter();
+
+  useEffect(() => {
+    if (!supportsMobileReleaseGate()) return;
+    let active = true;
+    setReleaseGateHandler((gate) => {
+      if (!active) return;
+      setReleaseGate((current) => current?.kind === "update" ? current : gate);
+      setReleaseChecked(true);
+    });
+    checkClientRelease()
+      .then((gate) => {
+        if (active && gate) setReleaseGate(gate);
+      })
+      .catch((error) => {
+        if (!isNetworkError(error)) console.warn("Release gate check failed", error);
+      })
+      .finally(() => {
+        if (active) setReleaseChecked(true);
+      });
+    return () => {
+      active = false;
+      setReleaseGateHandler(null);
+    };
+  }, []);
+
+  const retryReleaseGate = useCallback(async () => {
+    setReleaseRetrying(true);
+    try {
+      const gate = await checkClientRelease();
+      if (gate) {
+        setReleaseGate(gate);
+      } else {
+        clearReleaseGate();
+        setReleaseGate(null);
+      }
+    } catch {
+      // The maintenance screen stays visible until the public config is reachable again.
+    } finally {
+      setReleaseRetrying(false);
+    }
+  }, []);
 
   // Create token registration tracker that persists across re-renders
   const tokenTracker = useMemo(
@@ -125,11 +173,24 @@ export default function RootLayout() {
   useProtectedRoute(user, isAuthLoading, hasSeenOnboarding, isOnboardingLoading);
 
   // Show loading while fonts, auth, or onboarding is loading
-  if (!fontsLoaded || isAuthLoading || isOnboardingLoading) {
+  if (!fontsLoaded || !releaseChecked || isAuthLoading || isOnboardingLoading) {
     return (
       <View className="flex-1 bg-cream items-center justify-center">
         <ActivityIndicator size="large" color={COLORS.coral.default} />
       </View>
+    );
+  }
+
+  if (releaseGate) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <StatusBar style="dark" />
+        <AccessGateScreen
+          gate={releaseGate}
+          retrying={releaseRetrying}
+          onRetry={retryReleaseGate}
+        />
+      </GestureHandlerRootView>
     );
   }
 

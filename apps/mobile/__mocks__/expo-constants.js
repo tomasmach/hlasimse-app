@@ -1,0 +1,10 @@
+module.exports = {
+  __esModule: true,
+  default: {
+    expoConfig: {
+      version: "1.0.0",
+      ios: { buildNumber: "1" },
+      android: { versionCode: 1 },
+    },
+  },
+};

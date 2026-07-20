@@ -1,5 +1,10 @@
 import * as SecureStore from "expo-secure-store";
-import { apiRequest, setUnauthorizedHandler } from "@/lib/api";
+import {
+  apiRequest,
+  clearReleaseGate,
+  setReleaseGateHandler,
+  setUnauthorizedHandler,
+} from "@/lib/api";
 import { getTokens, saveTokens, setStoredUser } from "@/lib/authStorage";
 import { login, logout, restoreUser } from "@/lib/auth";
 import { setStoredUserId } from "@/lib/authStorage";
@@ -23,6 +28,8 @@ beforeEach(async () => {
   jest.restoreAllMocks();
   (SecureStore as unknown as { __reset(): void }).__reset();
   setUnauthorizedHandler(null);
+  setReleaseGateHandler(null);
+  clearReleaseGate();
   await saveTokens({ access: "expired", refresh: "refresh-1" });
 });
 
@@ -36,6 +43,13 @@ it("uses one refresh request for concurrent 401 responses", async () => {
   const [one, two] = await Promise.all([apiRequest<{ ok: boolean }>("/one"), apiRequest<{ ok: boolean }>("/two")]);
   expect(one.ok && two.ok).toBe(true);
   expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/auth/token/refresh/")).length).toBe(1);
+  for (const [, init] of fetchMock.mock.calls) {
+    const headers = new Headers(init?.headers);
+    expect(headers.get("X-Hlasimse-Client")).toBe("hlasimse-mobile");
+    expect(headers.get("X-Hlasimse-Platform")).toBe("ios");
+    expect(headers.get("X-Hlasimse-Version")).toBe("1.0.0");
+    expect(headers.get("X-Hlasimse-Build")).toBe("1");
+  }
   expect(await getTokens()).toEqual({ access: "fresh", refresh: "refresh-2" });
 });
 
@@ -48,6 +62,43 @@ it("clears credentials and invokes logout state handling when refresh is rejecte
   await expect(apiRequest("/protected")).rejects.toThrow("Přihlášení vypršelo");
   expect(await getTokens()).toBeNull();
   expect(unauthorized).toHaveBeenCalledTimes(1);
+});
+
+it("captures update-required without clearing credentials", async () => {
+  const gateHandler = jest.fn();
+  setReleaseGateHandler(gateHandler);
+  jest.spyOn(globalThis, "fetch").mockResolvedValue(json({
+    code: "update_required",
+    detail: "Aktualizujte aplikaci.",
+    min_version: "1.0.0",
+    min_build: 2,
+    store_url: "https://apps.apple.com/app/hlasim-se/id123456789",
+  }, 426));
+
+  await expect(apiRequest("/api/v1/profiles/")).rejects.toMatchObject({ status: 426 });
+  expect(gateHandler).toHaveBeenCalledWith(expect.objectContaining({
+    kind: "update",
+    minVersion: "1.0.0",
+    minBuild: 2,
+  }));
+  expect(await getTokens()).toEqual({ access: "expired", refresh: "refresh-1" });
+});
+
+it("captures maintenance returned during token refresh without logging out", async () => {
+  const gateHandler = jest.fn();
+  const unauthorized = jest.fn();
+  setReleaseGateHandler(gateHandler);
+  setUnauthorizedHandler(unauthorized);
+  jest.spyOn(globalThis, "fetch").mockImplementation(async (input) =>
+    String(input).endsWith("/auth/token/refresh/")
+      ? json({ code: "maintenance", detail: "Probíhá údržba." }, 503)
+      : json({ detail: "expired" }, 401),
+  );
+
+  await expect(apiRequest("/api/v1/profiles/")).rejects.toMatchObject({ status: 503 });
+  expect(gateHandler).toHaveBeenCalledWith({ kind: "maintenance", detail: "Probíhá údržba." });
+  expect(unauthorized).not.toHaveBeenCalled();
+  expect(await getTokens()).toEqual({ access: "expired", refresh: "refresh-1" });
 });
 
 it("purges the previous account queue on account switch and the current queue on logout", async () => {

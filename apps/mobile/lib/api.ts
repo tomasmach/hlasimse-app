@@ -1,4 +1,5 @@
 import { clearTokens, getTokens, saveTokens } from "@/lib/authStorage";
+import { clientHeaders, gateFromError, type ClientGate } from "@/lib/clientRelease";
 import type { ApiErrorBody, AuthTokens } from "@/types/api";
 
 const configuredBaseUrl = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/$/, "");
@@ -49,10 +50,29 @@ function apiErrorMessage(body: ApiErrorBody | null): string | null {
 
 let refreshPromise: Promise<string | null> | null = null;
 let unauthorizedHandler: (() => void | Promise<void>) | null = null;
+let releaseGateHandler: ((gate: ClientGate) => void) | null = null;
+let lastReleaseGate: ClientGate | null = null;
 const DEFAULT_TIMEOUT_MS = 15_000;
 
 export function setUnauthorizedHandler(handler: (() => void | Promise<void>) | null): void {
   unauthorizedHandler = handler;
+}
+
+export function setReleaseGateHandler(handler: ((gate: ClientGate) => void) | null): void {
+  releaseGateHandler = handler;
+  if (handler && lastReleaseGate) handler(lastReleaseGate);
+}
+
+export function clearReleaseGate(): void {
+  lastReleaseGate = null;
+}
+
+function captureReleaseGate(status: number, body: unknown): boolean {
+  const gate = gateFromError(status, body);
+  if (!gate) return false;
+  lastReleaseGate = gate;
+  releaseGateHandler?.(gate);
+  return true;
 }
 
 async function parseBody(response: Response): Promise<unknown> {
@@ -89,24 +109,35 @@ async function refreshAccessToken(): Promise<string | null> {
     try {
       response = await fetchWithTimeout(`${API_BASE_URL}/api/v1/auth/token/refresh/`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          ...clientHeaders(),
+        },
         body: JSON.stringify({ refresh: tokens.refresh }),
       });
     } catch (error) {
       throw new NetworkError(error);
+    }
+    const body = await parseBody(response);
+    if (captureReleaseGate(response.status, body)) {
+      throw new ApiError(
+        response.status,
+        typeof body === "object" ? (body as ApiErrorBody) : null,
+      );
     }
     if (!response.ok) {
       await clearTokens();
       await unauthorizedHandler?.();
       return null;
     }
-    const body = (await parseBody(response)) as { access?: unknown; refresh?: unknown };
-    if (typeof body?.access !== "string" || (body.refresh !== undefined && typeof body.refresh !== "string")) {
+    const tokenBody = body as { access?: unknown; refresh?: unknown };
+    if (typeof tokenBody?.access !== "string" || (tokenBody.refresh !== undefined && typeof tokenBody.refresh !== "string")) {
       await clearTokens();
       await unauthorizedHandler?.();
       return null;
     }
-    const next: AuthTokens = { access: body.access, refresh: body.refresh || tokens.refresh };
+    const next: AuthTokens = { access: tokenBody.access, refresh: tokenBody.refresh || tokens.refresh };
     await saveTokens(next);
     return next.access;
   })().finally(() => {
@@ -126,6 +157,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   const { body, auth = true, retryAuth = true, timeoutMs = DEFAULT_TIMEOUT_MS, headers: suppliedHeaders, ...requestInit } = options;
   const headers = new Headers(suppliedHeaders);
   headers.set("Accept", "application/json");
+  for (const [name, value] of Object.entries(clientHeaders())) headers.set(name, value);
   if (body !== undefined) headers.set("Content-Type", "application/json");
   if (auth) {
     const tokens = await getTokens();
@@ -155,6 +187,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   }
 
   const parsed = await parseBody(response);
+  captureReleaseGate(response.status, parsed);
   if (!response.ok) {
     throw new ApiError(response.status, typeof parsed === "object" ? (parsed as ApiErrorBody) : null);
   }
@@ -163,4 +196,8 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
 
 export function isNetworkError(error: unknown): error is NetworkError {
   return error instanceof NetworkError;
+}
+
+export function isReleaseGateError(error: unknown): error is ApiError {
+  return error instanceof ApiError && gateFromError(error.status, error.body) !== null;
 }
