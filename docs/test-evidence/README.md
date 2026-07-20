@@ -74,6 +74,12 @@ not success: `exit_code=0`, `journey_completed=true`, clean source identity, and
 remain mandatory.
 
 The Android in-place install deliberately reuses the exact freshly built APK. Its evidence records
+`e2e_local_networking_allowed=true` for the E2E-only cleartext `10.0.2.2` transport,
+`production_endpoint_coverage=https-sentinel-release-manifest-configuration-not-real-production-endpoint`,
+and `artifact_scope=release-derived-android-emulator-debug-test-signed-not-store-signed`. The
+production release manifest task uses the HTTPS sentinel configuration and its merged manifest
+does not permit cleartext, but this run does not exercise a real production endpoint or a
+store-signed APK. The in-place update evidence additionally records
 `update_artifact_relation=same-built-apk-reinstall-not-n-minus-one`,
 `n_minus_one_coverage=false`, and `store_signed_update_coverage=false`. It proves state preservation
 for that same release-derived test artifact only; it does not satisfy the physical-device N-1 or

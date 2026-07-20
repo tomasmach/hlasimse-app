@@ -391,7 +391,8 @@ ruby -e '
     android_build_fingerprint apk_sha256 apk_signer_cert_sha256 android_package_uid
     production_app_id release_evidence_eligible
     android_package_present_before_install android_first_install_time build_variant
-    js_bundle_mode signing_authority production_cleartext_allowed initial_install_mode
+    js_bundle_mode signing_authority production_cleartext_allowed e2e_local_networking_allowed
+    production_endpoint_coverage artifact_scope initial_install_mode
     update_artifact_relation n_minus_one_coverage store_signed_update_coverage
     android_launcher_component native_project_origin
     expo_prebuild_version device_cleanup_completed
@@ -420,6 +421,9 @@ ruby -e '
     %q{:app:processReleaseManifest --no-daemon},
     %q{:app:assembleE2e --no-daemon},
     %q{assets/index.android.bundle},
+    %q{e2e_record_property e2e_local_networking_allowed "true"},
+    %q{e2e_record_property production_endpoint_coverage "https-sentinel-release-manifest-configuration-not-real-production-endpoint"},
+    %q{e2e_record_property artifact_scope "release-derived-android-emulator-debug-test-signed-not-store-signed"},
     %q{same-built-apk-reinstall-not-n-minus-one},
     %q{e2e_record_property n_minus_one_coverage "false"},
     %q{e2e_record_property store_signed_update_coverage "false"},
@@ -433,11 +437,18 @@ ruby -e '
   abort("Android full run accepts a pre-existing serial") if android.include?(%q{ANDROID_SERIAL="${ANDROID_SERIAL:-}"})
   abort("Android cleanup is not sentinel-scoped") unless android.include?(".hlasimse-runner-owned-avd")
   abort("Android cleanup may target the persistent template") unless android.include?("Refusing AVD cleanup because the target overlaps")
+  production_manifest_configuration = android.match?(/EXPO_PUBLIC_API_URL="https:\/\/release-manifest\.invalid".*?\.\/gradlew :app:processReleaseManifest --no-daemon/m)
+  abort("Android production manifest task is not tied to the HTTPS endpoint sentinel") unless production_manifest_configuration
+  e2e_runtime_configuration = android.match?(/EXPO_PUBLIC_API_URL="http:\/\/10\.0\.2\.2:8000".*?\.\/gradlew :app:assembleE2e --no-daemon/m)
+  abort("Android E2E APK build is not tied to the exact emulator-local endpoint") unless e2e_runtime_configuration
 
   create_owned_avd = android.index("\ncreate_owned_android_avd\n")
   release_eligibility = android.index(%q{e2e_record_property release_evidence_eligible true}, create_owned_avd.to_i)
   apk_digest = android.index(%q{ANDROID_APK_SHA256="$(shasum -a 256})
   initial_install = android.index(%q{install "${ANDROID_APK_PATH}"}, apk_digest.to_i)
+  local_networking_scope = android.index(%q{e2e_record_property e2e_local_networking_allowed "true"})
+  production_endpoint_scope = android.index(%q{e2e_record_property production_endpoint_coverage "https-sentinel-release-manifest-configuration-not-real-production-endpoint"})
+  artifact_scope = android.index(%q{e2e_record_property artifact_scope "release-derived-android-emulator-debug-test-signed-not-store-signed"})
   update_relation = android.index(%q{e2e_record_property update_artifact_relation "same-built-apk-reinstall-not-n-minus-one"})
   n_minus_one_scope = android.index(%q{e2e_record_property n_minus_one_coverage "false"})
   store_signed_scope = android.index(%q{e2e_record_property store_signed_update_coverage "false"})
@@ -446,7 +457,8 @@ ruby -e '
   update_flow = android.index(%q{e2e_run_flow "${ANDROID_SERIAL}" 05_android_update_preserves_state})
   completion = android.rindex(%q{E2E_JOURNEY_COMPLETED="true"})
   ordered_android_proof = [
-    create_owned_avd, release_eligibility, apk_digest, initial_install, update_relation,
+    create_owned_avd, release_eligibility, apk_digest, initial_install, local_networking_scope,
+    production_endpoint_scope, artifact_scope, update_relation,
     n_minus_one_scope, store_signed_scope, update_sentinel, reinstall, update_flow, completion,
   ]
   abort("Android evidence is not ordered owned-AVD/eligible/build/install/scope/sentinel/reinstall/UI/complete") unless ordered_android_proof.all? && ordered_android_proof.each_cons(2).all? { |left, right| left < right }
