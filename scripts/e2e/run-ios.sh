@@ -334,4 +334,28 @@ if [[ "${IOS_UPGRADE_CHECKINS_AFTER}" -ne $((IOS_UPGRADE_CHECKINS_BEFORE + 1)) ]
 fi
 e2e_assert_latest_owner_checkin_uses_upgrade_sentinel
 e2e_seed_dataset cleanup-only ios-final-cleanup.json
+if [[ "${E2E_IOS_FOCUSED_ONLY:-false}" == "true" ]]; then
+  IOS_EXPECTED_EVIDENCE=(
+    45_ios_location_login
+    50_ios_location_denied
+    55_ios_upgrade_preserves_state
+  )
+else
+  IOS_EXPECTED_EVIDENCE=(
+    00_guardian_clean_install
+    10_owner_online_core
+    15_owner_profile_create
+    20_owner_offline_queue
+    30_owner_offline_sync
+    40_owner_export
+    90_owner_delete_account
+    95_owner_free_boundaries
+    45_ios_location_login
+    50_ios_location_denied
+    55_ios_upgrade_preserves_state
+  )
+fi
+node "${E2E_ROOT_DIR}/scripts/e2e/assert-junit-evidence.mjs" "${E2E_ARTIFACT_DIR}" \
+  "${IOS_EXPECTED_EVIDENCE[@]}" \
+  | tee "${E2E_ARTIFACT_DIR}/backend/ios-junit-evidence.json"
 E2E_JOURNEY_COMPLETED="true"

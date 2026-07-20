@@ -9,6 +9,8 @@ bash -n "${ROOT_DIR}/scripts/e2e/postgres.sh"
 bash -n "${ROOT_DIR}/scripts/e2e/run-ios.sh"
 bash -n "${ROOT_DIR}/scripts/e2e/run-android.sh"
 node --check "${ROOT_DIR}/scripts/e2e/redact-output.mjs"
+node --check "${ROOT_DIR}/scripts/e2e/assert-junit-evidence.mjs"
+node --check "${ROOT_DIR}/apps/mobile/plugins/with-android-e2e-build.js"
 NODE_PATH="${ROOT_DIR}/apps/mobile/node_modules:${ROOT_DIR}/node_modules" \
   node -e 'require.resolve("expo-router/_ctx-shared")'
 
@@ -24,6 +26,19 @@ E2E_REDACTION_VALUE="validation-redaction-sentinel" node \
   "${ROOT_DIR}/scripts/e2e/redact-output.mjs" --directory "${REDACTION_FIXTURE}"
 grep -Fxq 'safe_value=[REDACTED-RUN-CREDENTIAL]' \
   "${REDACTION_FIXTURE}/run.properties.partial"
+
+JUNIT_FIXTURE="${VALIDATION_DIR}/junit"
+for key in flow_one flow_two; do
+  mkdir -p "${JUNIT_FIXTURE}/maestro/${key}"
+  printf '%s\n' '<testsuites><testsuite tests="1" failures="0"><testcase status="SUCCESS" /></testsuite></testsuites>' \
+    >"${JUNIT_FIXTURE}/maestro/${key}/report.xml"
+  printf 'redacted log\n' >"${JUNIT_FIXTURE}/maestro/${key}/maestro.log"
+done
+node "${ROOT_DIR}/scripts/e2e/assert-junit-evidence.mjs" "${JUNIT_FIXTURE}" flow_one flow_two \
+  >"${JUNIT_FIXTURE}/summary.json"
+grep -Fq '"report_count":2' "${JUNIT_FIXTURE}/summary.json"
+! node "${ROOT_DIR}/scripts/e2e/assert-junit-evidence.mjs" "${JUNIT_FIXTURE}" flow_one \
+  >/dev/null 2>&1
 E2E_ARTIFACT_DIR="${VALIDATION_DIR}" bash -c '
   set -Eeuo pipefail
   source "$1"
@@ -189,13 +204,56 @@ ruby -e '
   abort("Unsafe iOS simulator lifecycle command: #{violation.inspect}") if violation
 
   required_android = %w[
-    device_id device_name os_name os_version api_level android_avd android_build_fingerprint
-    apk_sha256 apk_signer_cert_sha256 android_package_uid
+    device_id device_name device_origin device_owned device_type_identifier
+    template_device_id template_device_name os_name os_version api_level android_avd
+    android_device_profile android_system_image_package android_system_image_revision
+    android_platform_package android_platform_revision
+    android_command_line_tools_revision
+    android_sdk_toolchain_origin android_build_tools_revision android_adb_version
+    android_emulator_version
+    android_build_fingerprint apk_sha256 apk_signer_cert_sha256 android_package_uid
+    android_package_present_before_install android_first_install_time build_variant
+    js_bundle_mode signing_authority production_cleartext_allowed initial_install_mode
+    update_artifact_relation android_launcher_component native_project_origin
+    expo_prebuild_version device_cleanup_completed
   ]
   missing_android = required_android.reject { |key| android.include?("e2e_record_property #{key}") }
   abort("Missing Android metadata keys: #{missing_android.join(", ")}") unless missing_android.empty?
+
+  required_android_lifecycle = [
+    %q{ANDROID_DEVICE_ORIGIN="fresh-runner-created"},
+    %q{ANDROID_DEVICE_OWNED="true"},
+    %q{mktemp -d "${temp_base}/hlasimse-e2e-avd.XXXXXX"},
+    %q{--package "${system_image_package}"},
+    %q{-wipe-data},
+    %q{-no-snapshot},
+    %q{shell pm path "${E2E_APP_ID}"},
+    %q{install "${ANDROID_APK_PATH}"},
+    %q{npx expo prebuild --platform android --no-install},
+    %q{.hlasimse-prebuild-stale-sentinel},
+    %q{:app:processReleaseManifest :app:assembleE2e},
+    %q{assets/index.android.bundle},
+  ]
+  missing_android_lifecycle = required_android_lifecycle.reject { |fragment| android.include?(fragment) }
+  abort("Missing fail-closed Android lifecycle fragments: #{missing_android_lifecycle.join(", ")}") unless missing_android_lifecycle.empty?
+
+  abort("Android release evidence still starts Metro") if android.include?("e2e_start_metro")
+  abort("Android release evidence still launches Expo debug tooling") if android.include?("expo run:android") || android.include?("DEV_CLIENT_URL")
+  abort("Android full run accepts a pre-existing serial") if android.include?(%q{ANDROID_SERIAL="${ANDROID_SERIAL:-}"})
+  abort("Android cleanup is not sentinel-scoped") unless android.include?(".hlasimse-runner-owned-avd")
+  abort("Android cleanup may target the persistent template") unless android.include?("Refusing AVD cleanup because the target overlaps")
 ' "${ROOT_DIR}/scripts/e2e/common.sh" "${ROOT_DIR}/scripts/e2e/run-ios.sh" \
   "${ROOT_DIR}/scripts/e2e/run-android.sh"
+
+ruby -e '
+  app = File.read(ARGV.fetch(0))
+  plugin = File.read(ARGV.fetch(1))
+  abort("Android E2E config plugin is not registered") unless app.include?(%q{"./plugins/with-android-e2e-build"})
+  abort("Android E2E config plugin does not define a release-derived build") unless plugin.include?("initWith release")
+  abort("Android E2E config plugin permits debugging") unless plugin.include?("debuggable false")
+  abort("Android cleartext override is not isolated to the e2e manifest") unless plugin.match?(/"src",\s*"e2e",\s*"AndroidManifest\.xml"/m)
+  abort("Android E2E manifest does not opt in to local cleartext") unless plugin.include?(%q{android:usesCleartextTraffic="true"})
+' "${ROOT_DIR}/apps/mobile/app.json" "${ROOT_DIR}/apps/mobile/plugins/with-android-e2e-build.js"
 
 ruby -e '
   require "yaml"

@@ -4,8 +4,6 @@ tags: [android, guardian]
 ---
 - launchApp:
     clearState: true
-- stopApp
-- openLink: ${DEV_CLIENT_URL}
 - extendedWaitUntil:
     visible:
       id: "onboarding-persona-screen"

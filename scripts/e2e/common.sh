@@ -327,11 +327,20 @@ e2e_app_id() {
 e2e_run_flow() {
   local device_id="$1"
   local flow_name="$2"
+  local evidence_key="${3:-$flow_name}"
   local flow_path="${E2E_ROOT_DIR}/.maestro/flows/${flow_name}.yaml"
-  local output_root="${E2E_ARTIFACT_DIR}/maestro/${flow_name}"
+  local output_root="${E2E_ARTIFACT_DIR}/maestro/${evidence_key}"
   local output_dir="$output_root"
+  if [[ ! "${evidence_key}" =~ ^[A-Za-z0-9_-]+$ ]]; then
+    e2e_log "Refusing invalid flow evidence key: ${evidence_key}."
+    return 1
+  fi
+  if [[ -e "${output_root}" ]]; then
+    e2e_log "Refusing to overwrite existing flow evidence: ${output_root}."
+    return 1
+  fi
   mkdir -p "$output_dir"
-  e2e_log "Running ${flow_name} on ${device_id} (single attempt; mutating flows are never replayed)."
+  e2e_log "Running ${flow_name} as ${evidence_key} on ${device_id} (single attempt; mutating flows are never replayed)."
   set +e
   "${E2E_MAESTRO_BIN}" test \
     --udid "$device_id" \
