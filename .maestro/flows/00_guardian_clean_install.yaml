@@ -6,6 +6,11 @@ tags:
 ---
 - launchApp:
     clearState: true
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - openLink: ${DEV_CLIENT_URL}
 - extendedWaitUntil:
     visible:
       id: "onboarding-persona-screen"

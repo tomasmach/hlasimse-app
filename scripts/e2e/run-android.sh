@@ -18,6 +18,9 @@ e2e_generate_credential
 ANDROID_AVD_NAME="${ANDROID_AVD_NAME:-${1:-Medium_Phone_API_36.1}}"
 ANDROID_SERIAL="${ANDROID_SERIAL:-}"
 E2E_EMULATOR_PID=""
+E2E_DEV_CLIENT_URL="hlasimse://expo-development-client/?url=http%3A%2F%2F10.0.2.2%3A8081"
+E2E_DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1,10.0.2.2"
+export E2E_DEV_CLIENT_URL E2E_DJANGO_ALLOWED_HOSTS
 
 find_android_serial() {
   local serial

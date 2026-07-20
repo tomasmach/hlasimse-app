@@ -11,6 +11,8 @@ E2E_MAESTRO_BIN="${E2E_MAESTRO_BIN:-/Users/tomasmach/.maestro/bin/maestro}"
 E2E_ARTIFACT_DIR="${E2E_ARTIFACT_DIR:-/tmp/hlasimse-e2e/$(date -u +%Y%m%dT%H%M%SZ)}"
 E2E_OWNER_EMAIL="e2e.owner@hlasimse.invalid"
 E2E_GUARDIAN_EMAIL="e2e.guardian@hlasimse.invalid"
+E2E_DEV_CLIENT_URL="${E2E_DEV_CLIENT_URL:-}"
+E2E_DJANGO_ALLOWED_HOSTS="${E2E_DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}"
 unset E2E_RUN_CREDENTIAL || true
 E2E_BACKEND_PID=""
 E2E_METRO_PID=""
@@ -80,6 +82,7 @@ e2e_start_backend() {
   fi
   (
     cd "${E2E_ROOT_DIR}/apps/server"
+    export DJANGO_ALLOWED_HOSTS="${E2E_DJANGO_ALLOWED_HOSTS}"
     exec uv run python manage.py runserver 0.0.0.0:8000 --noreload
   ) >"${E2E_ARTIFACT_DIR}/backend/server.log" 2>&1 &
   E2E_BACKEND_PID=$!
@@ -162,6 +165,7 @@ e2e_run_flow() {
       -e "OWNER_EMAIL=${E2E_OWNER_EMAIL}" \
       -e "GUARDIAN_EMAIL=${E2E_GUARDIAN_EMAIL}" \
       -e "E2E_CREDENTIAL=${E2E_RUN_CREDENTIAL}" \
+      -e "DEV_CLIENT_URL=${E2E_DEV_CLIENT_URL}" \
       "$flow_path" 2>&1 \
       | E2E_REDACTION_VALUE="${E2E_RUN_CREDENTIAL}" node \
         "${E2E_ROOT_DIR}/scripts/e2e/redact-output.mjs" --stream \
