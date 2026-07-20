@@ -97,6 +97,14 @@ jobs:
       - name: Install locked dependencies
         run: uv sync --frozen
 
+      - name: Audit locked production dependencies
+        run: |
+          uv export --quiet --frozen --no-dev --no-emit-project --format requirements-txt \
+            --output-file "$RUNNER_TEMP/hlasimse-server-requirements.txt"
+          uvx --from pip-audit==2.10.1 pip-audit \
+            --requirement "$RUNNER_TEMP/hlasimse-server-requirements.txt" \
+            --require-hashes --disable-pip --strict --progress-spinner off
+
       - name: Run lint and formatting checks
         run: uv run ruff check . && uv run ruff format --check .
 
@@ -105,6 +113,26 @@ jobs:
           uv run python manage.py makemigrations --check --dry-run &&
           uv run python manage.py check &&
           uv run python manage.py collectstatic --noinput
+
+      - name: Validate production security configuration
+        env:
+          DJANGO_DEBUG: "false"
+          DJANGO_SECRET_KEY: ci-only-secret-key-that-is-not-used-outside-this-deploy-check
+          DJANGO_ALLOWED_HOSTS: ci.hlasim.se
+          APP_BASE_URL: https://ci.hlasim.se
+          MOBILE_MIN_IOS_VERSION: 1.0.0
+          MOBILE_MIN_IOS_BUILD: "1"
+          MOBILE_IOS_STORE_URL: https://apps.apple.com/app/hlasim-se/id1234567890
+          MOBILE_MIN_ANDROID_VERSION: 1.0.0
+          MOBILE_MIN_ANDROID_BUILD: "1"
+          MOBILE_ANDROID_STORE_URL: https://play.google.com/store/apps/details?id=cz.hlasimse.app
+          EXPO_ACCESS_TOKEN: ci-only-placeholder
+          DJANGO_EMAIL_BACKEND: django.core.mail.backends.smtp.EmailBackend
+          EMAIL_HOST: smtp.ci.invalid
+          EMAIL_HOST_USER: ci-user
+          EMAIL_HOST_PASSWORD: ci-only-placeholder
+          DEFAULT_FROM_EMAIL: Hlásím se CI <noreply@ci.hlasim.se>
+        run: uv run python manage.py check --deploy
 
       - name: Run test suite on PostgreSQL
         run: uv run pytest
