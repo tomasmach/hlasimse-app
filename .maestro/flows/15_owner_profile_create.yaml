@@ -24,7 +24,13 @@ tags:
     timeout: 10000
 - tapOn:
     id: "profile-create-name-input"
-- inputText: "E2E druhý profil"
+- setClipboard: "E2E Druhy profil"
+- pasteText
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
 - scrollUntilVisible:
     element: "1 hodina"
     direction: DOWN
@@ -38,7 +44,7 @@ tags:
 - tapOn:
     id: "profile-create-submit"
 - extendedWaitUntil:
-    visible: "Vybraný profil E2E druhý profil"
+    visible: "Vybraný profil E2E Druhy profil"
     timeout: 15000
 - assertVisible:
     id: "checkin-submit"

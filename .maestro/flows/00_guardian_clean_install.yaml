@@ -15,8 +15,7 @@ tags:
     visible:
       id: "onboarding-persona-screen"
     timeout: 90000
-- tapOn:
-    id: "onboarding-persona-alone"
+- tapOn: "Bydlím sám/sama.*"
 - waitForAnimationToEnd:
     timeout: 5000
 - retry:
@@ -64,11 +63,18 @@ tags:
     timeout: 10000
 - tapOn:
     id: "login-email-input"
-- inputText: ${GUARDIAN_EMAIL}
+- setClipboard: ${GUARDIAN_EMAIL}
+- pasteText
 - tapOn:
     id: "login-password-input"
     retryTapIfNoChange: true
-- inputText: ${E2E_CREDENTIAL}
+- setClipboard: ${E2E_CREDENTIAL}
+- pasteText
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
 - scrollUntilVisible:
     element:
       id: "login-submit-button"

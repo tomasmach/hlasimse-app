@@ -13,10 +13,13 @@ e2e_require node
 e2e_require npx
 e2e_require uv
 [[ -x "${E2E_MAESTRO_BIN}" ]] || { e2e_log "Maestro not executable: ${E2E_MAESTRO_BIN}"; exit 1; }
+e2e_require_maestro_version
 e2e_generate_credential
 
 ANDROID_AVD_NAME="${ANDROID_AVD_NAME:-${1:-Medium_Phone_API_36.1}}"
 ANDROID_SERIAL="${ANDROID_SERIAL:-}"
+E2E_ANDROID_MEMORY_MB="${E2E_ANDROID_MEMORY_MB:-4096}"
+E2E_ANDROID_CORES="${E2E_ANDROID_CORES:-4}"
 E2E_EMULATOR_PID=""
 E2E_DEV_CLIENT_URL="hlasimse://expo-development-client/?url=http%3A%2F%2F10.0.2.2%3A8081"
 E2E_DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1,10.0.2.2"
@@ -42,6 +45,9 @@ find_android_serial() {
 
 android_cleanup() {
   local exit_code=$?
+  if [[ -n "${ANDROID_SERIAL}" ]] && [[ "$(adb -s "${ANDROID_SERIAL}" get-state 2>/dev/null || true)" == "device" ]]; then
+    adb -s "${ANDROID_SERIAL}" logcat -d >"${E2E_ARTIFACT_DIR}/android-logcat.log" 2>&1 || true
+  fi
   if [[ "${E2E_STOP_EMULATOR:-false}" == "true" ]] && [[ -n "${E2E_EMULATOR_PID}" ]] && kill -0 "${E2E_EMULATOR_PID}" 2>/dev/null; then
     kill "${E2E_EMULATOR_PID}"
     wait "${E2E_EMULATOR_PID}" 2>/dev/null || true
@@ -57,6 +63,7 @@ fi
 if [[ -z "${ANDROID_SERIAL}" ]]; then
   e2e_require emulator
   emulator -avd "${ANDROID_AVD_NAME}" -no-snapshot-save \
+    -memory "${E2E_ANDROID_MEMORY_MB}" -cores "${E2E_ANDROID_CORES}" \
     >"${E2E_ARTIFACT_DIR}/android-emulator.log" 2>&1 &
   E2E_EMULATOR_PID=$!
   for _ in {1..120}; do

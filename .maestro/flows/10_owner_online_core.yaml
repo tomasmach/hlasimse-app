@@ -6,11 +6,18 @@ tags:
 ---
 - tapOn:
     id: "login-email-input"
-- inputText: ${OWNER_EMAIL}
+- setClipboard: ${OWNER_EMAIL}
+- pasteText
 - tapOn:
     id: "login-password-input"
     retryTapIfNoChange: true
-- inputText: ${E2E_CREDENTIAL}
+- setClipboard: ${E2E_CREDENTIAL}
+- pasteText
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
 - scrollUntilVisible:
     element:
       id: "login-submit-button"

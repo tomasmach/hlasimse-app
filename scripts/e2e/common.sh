@@ -8,6 +8,7 @@ if [[ -n "${NODE_PATH:-}" ]]; then
   E2E_NODE_PATH="${E2E_NODE_PATH}:${NODE_PATH}"
 fi
 E2E_MAESTRO_BIN="${E2E_MAESTRO_BIN:-/Users/tomasmach/.maestro/bin/maestro}"
+E2E_MIN_MAESTRO_VERSION="${E2E_MIN_MAESTRO_VERSION:-2.6.1}"
 E2E_ARTIFACT_DIR="${E2E_ARTIFACT_DIR:-/tmp/hlasimse-e2e/$(date -u +%Y%m%dT%H%M%SZ)}"
 E2E_OWNER_EMAIL="e2e.owner@hlasimse.invalid"
 E2E_GUARDIAN_EMAIL="e2e.guardian@hlasimse.invalid"
@@ -28,6 +29,38 @@ e2e_require() {
     e2e_log "Missing required command: $1"
     return 1
   fi
+}
+
+e2e_require_maestro_version() {
+  local actual_version
+  local required_version="${E2E_MIN_MAESTRO_VERSION}"
+  local actual_major actual_minor actual_patch
+  local required_major required_minor required_patch
+
+  actual_version="$("${E2E_MAESTRO_BIN}" --version | tr -d '\r' | head -n 1)"
+  if [[ ! "${actual_version}" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+    e2e_log "Could not parse Maestro version: ${actual_version}"
+    return 1
+  fi
+  actual_major="${BASH_REMATCH[1]}"
+  actual_minor="${BASH_REMATCH[2]}"
+  actual_patch="${BASH_REMATCH[3]}"
+
+  if [[ ! "${required_version}" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+    e2e_log "Invalid E2E_MIN_MAESTRO_VERSION: ${required_version}"
+    return 1
+  fi
+  required_major="${BASH_REMATCH[1]}"
+  required_minor="${BASH_REMATCH[2]}"
+  required_patch="${BASH_REMATCH[3]}"
+
+  if ((actual_major < required_major)) \
+    || ((actual_major == required_major && actual_minor < required_minor)) \
+    || ((actual_major == required_major && actual_minor == required_minor && actual_patch < required_patch)); then
+    e2e_log "Maestro ${required_version} or newer is required; found ${actual_version}."
+    return 1
+  fi
+  e2e_log "Maestro ${actual_version} satisfies the minimum ${required_version}."
 }
 
 e2e_generate_credential() {

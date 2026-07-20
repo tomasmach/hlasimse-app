@@ -13,6 +13,7 @@ e2e_require npx
 e2e_require uv
 e2e_require xcrun
 [[ -x "${E2E_MAESTRO_BIN}" ]] || { e2e_log "Maestro not executable: ${E2E_MAESTRO_BIN}"; exit 1; }
+e2e_require_maestro_version
 e2e_generate_credential
 
 IOS_SIMULATOR_UDID="${IOS_SIMULATOR_UDID:-${1:-}}"
