@@ -10,12 +10,21 @@ tags:
       - tapOn:
           id: "tab-settings"
       - extendedWaitUntil:
-          visible:
-            id: "account-export-open"
+          visible: "Nastavení důvěry"
           timeout: 5000
+- scrollUntilVisible:
+    element:
+      id: "account-export-open"
+    direction: DOWN
+    centerElement: true
 - tapOn:
     id: "account-export-open"
 - assertVisible: "Vaše data bez černé skříňky"
+- scrollUntilVisible:
+    element:
+      id: "account-export-submit"
+    direction: DOWN
+    centerElement: true
 - tapOn:
     id: "account-export-submit"
 - waitForAnimationToEnd:

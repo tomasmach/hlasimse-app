@@ -4,15 +4,35 @@ tags:
   - simulator
   - destructive-test-fixture
 ---
+- scrollUntilVisible:
+    element:
+      id: "back-button"
+    direction: UP
+    centerElement: true
 - tapOn:
     id: "back-button"
+- scrollUntilVisible:
+    element:
+      id: "account-delete-open"
+    direction: DOWN
+    centerElement: true
 - tapOn:
     id: "account-delete-open"
 - assertVisible: "Nejdřív bezpečně uzavřete vztahy"
+- scrollUntilVisible:
+    element:
+      id: "account-delete-password"
+    direction: DOWN
+    centerElement: true
 - tapOn:
     id: "account-delete-password"
 - inputText: ${E2E_CREDENTIAL}
 - hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "account-delete-submit"
+    direction: DOWN
+    centerElement: true
 - tapOn:
     id: "account-delete-submit"
 - assertVisible: "Trvale smazat účet?"
