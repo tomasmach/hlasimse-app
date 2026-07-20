@@ -40,6 +40,7 @@ tags:
 - tapOn:
     id: "account-delete-password"
 - inputText: ${E2E_CREDENTIAL}
+- hideKeyboard
 - runFlow:
     when:
       platform: iOS
@@ -51,7 +52,6 @@ tags:
       - tapOn:
           text: "Not Now"
           optional: true
-- hideKeyboard
 - scrollUntilVisible:
     element:
       id: "account-delete-submit"

@@ -49,6 +49,7 @@ tags:
       platform: iOS
     commands:
       - inputText: ${E2E_CREDENTIAL}
+      - hideKeyboard
       - extendedWaitUntil:
           visible: "Not Now"
           timeout: 5000

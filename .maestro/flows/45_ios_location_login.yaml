@@ -24,6 +24,7 @@ tags:
     id: "login-password-input"
     retryTapIfNoChange: true
 - inputText: ${E2E_CREDENTIAL}
+- hideKeyboard
 - extendedWaitUntil:
     visible: "Not Now"
     timeout: 5000
