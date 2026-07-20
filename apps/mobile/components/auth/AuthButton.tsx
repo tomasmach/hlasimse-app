@@ -1,4 +1,4 @@
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, Text } from "react-native";
 import * as Haptics from "expo-haptics";
 import Animated, {
   useAnimatedStyle,
@@ -7,8 +7,6 @@ import Animated, {
   withSpring,
 } from "react-native-reanimated";
 import { COLORS } from "@/constants/design";
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 type AuthButtonProps = {
   label: string;
@@ -41,7 +39,7 @@ export function AuthButton({
   };
 
   return (
-    <AnimatedPressable
+    <Pressable
       testID={testID}
       onPress={press}
       onPressIn={() => {
@@ -59,16 +57,20 @@ export function AuthButton({
       accessibilityLabel={loading ? `${label}, probíhá` : label}
       accessibilityHint={accessibilityHint}
       accessibilityState={{ disabled: unavailable, busy: loading }}
-      style={[animatedStyle, unavailable ? { opacity: 0.55 } : undefined]}
-      className="min-h-[58px] overflow-hidden rounded-[20px] bg-charcoal"
+      style={unavailable ? { opacity: 0.55 } : undefined}
+      className="min-h-[58px] rounded-[20px]"
     >
-      <View className="min-h-[58px] flex-row items-center justify-center px-6 py-4">
+      <Animated.View
+        pointerEvents="none"
+        style={animatedStyle}
+        className="min-h-[58px] flex-row items-center justify-center overflow-hidden rounded-[20px] bg-charcoal px-6 py-4"
+      >
         {loading ? (
           <ActivityIndicator color={COLORS.cream.default} />
         ) : (
           <Text className="font-body-semibold text-[17px] text-cream">{label}</Text>
         )}
-      </View>
-    </AnimatedPressable>
+      </Animated.View>
+    </Pressable>
   );
 }

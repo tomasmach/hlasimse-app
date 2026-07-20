@@ -106,13 +106,25 @@ describe("auth and onboarding UI contract", () => {
     expect(input).toContain('accessibilityLabel={passwordVisible ? "Skrýt heslo" : "Zobrazit heslo"}');
   });
 
+  it("keeps primary button hit targets stable while animating only their content", () => {
+    const button = read("components/auth/AuthButton.tsx");
+    const persona = read("app/(onboarding)/index.tsx");
+
+    expect(button).toContain("<Pressable");
+    expect(button).not.toContain("Animated.createAnimatedComponent(Pressable)");
+    expect(button).toContain('pointerEvents="none"');
+    expect(persona.indexOf("await setPersona(selected)")).toBeLessThan(
+      persona.indexOf('router.push("/(onboarding)/empathy")'),
+    );
+  });
+
   it("meets WCAG AA contrast for primary actions and inline action text", () => {
     expect(contrast("#FFF8F5", "#2D2926")).toBeGreaterThanOrEqual(4.5);
     expect(contrast("#9E382E", "#FFF8F5")).toBeGreaterThanOrEqual(4.5);
     expect(contrast("#6B625E", "#FFF8F5")).toBeGreaterThanOrEqual(4.5);
 
     const button = read("components/auth/AuthButton.tsx");
-    expect(button).toContain('className="min-h-[58px] overflow-hidden rounded-[20px] bg-charcoal"');
+    expect(button).toContain("overflow-hidden rounded-[20px] bg-charcoal");
     expect(button).toContain("text-cream");
   });
 });
