@@ -7,7 +7,7 @@
   <section class="hero container" aria-labelledby="hero-title">
     <div class="hero__copy">
       <h1 id="hero-title">Jeden signál, že je <span class="inline-photo inline-photo--sunset" aria-hidden="true"></span> všechno v pořádku.</h1>
-      <p>Pravidelně se ohlásíte. Když termín zmeškáte, Hlásím se upozorní vámi zvolené blízké. Jednoduše, srozumitelně a kompletně zdarma.</p>
+      <p>Pravidelně se ohlásíte. Když server termín zaznamená jako zmeškaný, vytvoří incident a pokusí se upozornit vámi zvolené blízké best-effort push notifikací. Jednoduše, srozumitelně a kompletně zdarma.</p>
       <div class="button-row">
         <a class="button button--coral" href="{% url 'accounts:register' %}">Vytvořit účet zdarma</a>
         <a class="button button--ghost" href="#jak-to-funguje">Podívat se, jak to funguje</a>
@@ -78,10 +78,10 @@
           <div class="avatar-cluster" aria-hidden="true"><span>EL</span><span>MH</span><span>PB</span></div>
         </article>
         <article class="bento bento--narrow bento--map">
-          <div class="map-lines" aria-hidden="true"></div><h3>Poloha podle vašeho svolení</h3><p>Souřadnice lze připojit k ohlášení, když je chcete sdílet.</p>
+          <div class="map-lines" aria-hidden="true"></div><h3>Poloha podle vašeho svolení</h3><p>Připojuje se jen k vybranému ohlášení. Strážce ji uvidí jako poslední známou polohu pouze při aktivním incidentu, nikdy jako živé sledování.</p>
         </article>
         <article class="bento bento--wide bento--history">
-          <div><h3>Historie bez dohadů</h3><p>Časová osa ukazuje přijatá ohlášení a pomáhá odhalit případné výpadky.</p></div>
+          <div><h3>Historie bez dohadů</h3><p>Časová osa odlišuje potvrzená ohlášení, pozdější synchronizaci, pauzy i incidenty. Statistiky počítá jen z dat přijatých serverem.</p></div>
           <div class="mini-chart" aria-hidden="true"><span style="--h:38%"></span><span style="--h:62%"></span><span style="--h:48%"></span><span style="--h:82%"></span><span style="--h:72%"></span><span style="--h:94%"></span></div>
         </article>
       </div>
@@ -145,7 +145,7 @@
   <section class="final-cta container" aria-labelledby="cta-title">
     <div class="final-cta__inner">
       <h2 id="cta-title">Vytvořte si klidnější každodenní rytmus.</h2>
-      <p>Všechny funkce jsou zdarma. Stačí pár minut k prvnímu nastavení.</p>
+      <p>Až 5 profilů, 5 strážců na profil, interval od 1 hodiny do 7 dní, pauza, historie, statistiky i volitelná poloha. Všechny funkce jsou zdarma.</p>
       <a class="button button--light" href="{% url 'accounts:register' %}">Začít používat Hlásím se</a>
     </div>
   </section>
@@ -154,7 +154,7 @@
     <div class="container site-footer__grid">
       <div><a class="brand brand--light" href="{% url 'core:landing' %}"><span class="brand__mark" aria-hidden="true"><span></span><span></span></span><span>Hlásím se</span></a><p>Pravidelný kontakt pro větší klid.</p></div>
       <div><h2>Služba</h2><a href="#jak-to-funguje">Jak to funguje</a><a href="#funkce">Co umí</a><a href="{% url 'accounts:login' %}">Přihlášení</a></div>
-      <div><h2>Důležité</h2><a href="/ochrana-soukromi/">Ochrana soukromí</a><a href="/obchodni-podminky/">Podmínky používání</a><a href="mailto:podpora@hlasimse.cz">podpora@hlasimse.cz</a></div>
+      <div><h2>Důležité</h2><a href="{% url 'core:privacy' %}">Ochrana soukromí</a><a href="{% url 'core:terms' %}">Podmínky používání</a><a href="mailto:podpora@hlasimse.cz">podpora@hlasimse.cz</a></div>
     </div>
     <div class="container site-footer__bottom"><p>© {% now "Y" %} Hlásím se</p><p>Nenahrazuje linky 112 ani 155.</p></div>
   </footer>

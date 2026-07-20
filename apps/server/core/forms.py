@@ -87,7 +87,10 @@ class CheckInProfileForm(forms.ModelForm):
         label="Interval ohlášení",
         choices=INTERVAL_CHOICES,
         coerce=int,
-        help_text="Po uplynutí intervalu bez ohlášení upozorníme aktivní strážce.",
+        help_text=(
+            "Po uplynutí intervalu bez ohlášení server vytvoří incident a pokusí se "
+            "upozornit aktivní strážce best-effort push notifikací."
+        ),
     )
 
     class Meta:
@@ -111,6 +114,44 @@ class PauseProfileForm(forms.Form):
         widget=forms.DateTimeInput(attrs={"type": "datetime-local"}),
         help_text="Nepovinné. Bez data profil obnovíte později ručně.",
     )
+
+
+class BrowserCheckInForm(forms.Form):
+    """Validate one-shot browser coordinates without ever making them required."""
+
+    location_requested = forms.BooleanField(required=False)
+    latitude = forms.DecimalField(
+        required=False,
+        max_digits=9,
+        decimal_places=6,
+        min_value=-90,
+        max_value=90,
+    )
+    longitude = forms.DecimalField(
+        required=False,
+        max_digits=9,
+        decimal_places=6,
+        min_value=-180,
+        max_value=180,
+    )
+    location_accuracy_meters = forms.DecimalField(
+        required=False,
+        max_digits=10,
+        decimal_places=2,
+        min_value=0,
+        max_value=1_000_000,
+    )
+
+    def clean(self):
+        cleaned_data = super().clean()
+        latitude = cleaned_data.get("latitude")
+        longitude = cleaned_data.get("longitude")
+        accuracy = cleaned_data.get("location_accuracy_meters")
+        if (latitude is None) != (longitude is None):
+            raise ValidationError("Souřadnice musí obsahovat šířku i délku.")
+        if accuracy is not None and latitude is None:
+            raise ValidationError("Přesnost polohy vyžaduje souřadnice.")
+        return cleaned_data
 
 
 class GuardianInvitationForm(forms.Form):

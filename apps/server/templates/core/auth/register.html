@@ -12,7 +12,7 @@
       {% for error in field.errors %}<p class="field-error" role="alert">{{ error }}</p>{% endfor %}
     </div>
   {% endfor %}
-  <label class="check-field"><input type="checkbox" name="terms" required><span>Souhlasím s <a href="/obchodni-podminky/">podmínkami používání</a> a seznámil/a jsem se s <a href="/ochrana-soukromi/">ochranou soukromí</a>.</span></label>
+  <label class="check-field"><input type="checkbox" name="terms" required><span>Souhlasím s <a href="{% url 'core:terms' %}">podmínkami používání</a> a seznámil/a jsem se s <a href="{% url 'core:privacy' %}">ochranou soukromí</a>.</span></label>
   <button class="button button--coral button--wide" type="submit">Vytvořit účet zdarma</button>
 </form>
 <p class="auth-switch">Už účet máte? <a href="{% url 'accounts:login' %}">Přihlásit se</a></p>

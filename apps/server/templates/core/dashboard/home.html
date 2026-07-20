@@ -22,6 +22,30 @@
   </div>
 </section>
 
+{% if watched_memberships %}
+<section class="dashboard-section" aria-labelledby="watched-title">
+  <div class="section-row"><div><h2 id="watched-title">Profily, které hlídáte</h2><p>Aktuální stav vztahů, které jste výslovně přijali.</p></div><a href="{% url 'guardians:list' %}#hlidane-profily">Spravovat vztahy</a></div>
+  <div class="watched-grid">
+    {% for membership in watched_memberships %}
+      <article class="watched-card {% if membership.open_incident %}watched-card--incident{% endif %}">
+        <div class="watched-card__identity"><span class="profile-avatar">{{ membership.profile.name|slice:":1"|upper }}</span><div><h3>{{ membership.profile.name }}</h3><p>{{ membership.owner_display_name }}</p></div></div>
+        {% if membership.open_incident %}
+          <span class="status-pill status-pill--danger">Aktivní incident</span>
+          <p>Termín vypršel {{ membership.open_incident.deadline_at|date:"j. n. v H:i" }}. Ověřte situaci.</p>
+          <a class="button button--danger button--small" href="{% url 'alerts:detail' membership.open_incident.pk %}">Otevřít bezpečnostní postup</a>
+        {% elif membership.profile.is_paused or not membership.profile.enabled %}
+          <span class="status-pill status-pill--neutral">Pozastaveno</span>
+          <p>Odpočet neběží a za dobu pauzy nevznikají nové incidenty.</p>
+        {% else %}
+          <span class="status-pill status-pill--ok">Bez aktivního incidentu</span>
+          <p>Další termín: <strong>{{ membership.profile.next_deadline_at|date:"j. n. v H:i"|default:"čeká na potvrzení" }}</strong></p>
+        {% endif %}
+      </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
 <section class="dashboard-section dashboard-section--split">
   <div class="panel"><div class="section-row"><div><h2>Nedávná ohlášení</h2><p>Poslední přijaté signály.</p></div><a href="{% url 'checkins:history' %}">Celá historie</a></div><div class="event-list">{% for checkin in checkins|slice:":4" %}<div class="event-row"><span class="event-icon event-icon--ok" aria-hidden="true"></span><div><strong>{{ checkin.profile.name|default:"Profil" }}</strong><p>Ohlášení přijato</p></div><time datetime="{{ checkin.accepted_at|date:'c' }}">{{ checkin.accepted_at|date:"j. n., H:i" }}</time></div>{% empty %}<p class="muted-empty">První přijaté ohlášení se zobrazí tady.</p>{% endfor %}</div></div>
   <aside class="panel notification-health"><div><h2>Doručování upozornění</h2><p>Push upozornění závisejí na připojení a nastavení zařízení.</p></div><span class="status-pill {% if notification_health.ok %}status-pill--ok{% else %}status-pill--warning{% endif %}">{% if notification_health.ok %}Zařízení připravená{% else %}Zkontrolovat zařízení{% endif %}</span><a href="{% url 'accounts:settings' %}#upozorneni">Zkontrolovat nastavení</a></aside>

@@ -20,6 +20,7 @@ from django.contrib.auth.views import (
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.core.mail import send_mail
 from django.core.paginator import Paginator
+from django.db import transaction
 from django.db.models import Count, Max, Q
 from django.db.models.functions import TruncDate
 from django.http import Http404, HttpResponse
@@ -36,6 +37,7 @@ from .account_data import (
     AccountPasswordInvalid,
     delete_account_safely,
 )
+from .audit import record_audit_event
 from .email_verification import (
     register_unverified_user,
     resend_verification,
@@ -43,6 +45,7 @@ from .email_verification import (
 )
 from .forms import (
     AccountSettingsForm,
+    BrowserCheckInForm,
     CheckInProfileForm,
     DeleteAccountForm,
     EmailVerificationResendForm,
@@ -55,6 +58,7 @@ from .forms import (
 from .models import (
     AlertAcknowledgement,
     AlertIncident,
+    AuditEvent,
     CheckIn,
     CheckInProfile,
     GuardianInvitation,
@@ -74,6 +78,21 @@ from .services import (
 
 class LandingView(TemplateView):
     template_name = "core/landing.html"
+
+
+def legal_release_blocker_view(request, document):
+    if document not in {"privacy", "terms"}:
+        raise Http404
+    response = render(
+        request,
+        "core/legal_release_blocker.html",
+        {"document": document},
+        status=503,
+    )
+    response["Cache-Control"] = "no-store"
+    response["Retry-After"] = "86400"
+    response["X-Robots-Tag"] = "noindex, nofollow"
+    return response
 
 
 class SessionLoginView(LoginView):
@@ -194,6 +213,10 @@ def _notification_health(profiles):
     }
 
 
+def _display_name(user, fallback="Uživatel"):
+    return " ".join(part for part in (user.first_name, user.last_name) if part).strip() or fallback
+
+
 class DashboardView(LoginRequiredMixin, TemplateView):
     template_name = "core/dashboard/home.html"
     login_url = reverse_lazy("accounts:login")
@@ -218,11 +241,33 @@ class DashboardView(LoginRequiredMixin, TemplateView):
             .order_by("-opened_at")
             .first()
         )
+        watched_memberships = list(
+            GuardianMembership.objects.filter(
+                guardian=self.request.user,
+                status=GuardianMembership.Status.ACTIVE,
+                profile__archived_at__isnull=True,
+            )
+            .select_related("profile", "profile__owner")
+            .order_by("profile__name")
+        )
+        open_incidents = {
+            incident.profile_id: incident
+            for incident in accessible_incidents(self.request.user)
+            .filter(
+                status=AlertIncident.Status.OPEN,
+                profile_id__in=[item.profile_id for item in watched_memberships],
+            )
+            .select_related("profile")
+        }
+        for membership in watched_memberships:
+            membership.open_incident = open_incidents.get(membership.profile_id)
+            membership.owner_display_name = _display_name(membership.profile.owner)
         context.update(
             {
                 "profiles": profiles,
                 "checkins": checkins,
                 "active_alert": active_alert,
+                "watched_memberships": watched_memberships,
                 "notification_health": _notification_health(profiles),
             }
         )
@@ -308,6 +353,10 @@ def profile_detail_view(request, pk):
     guardians = profile.guardians.filter(status=GuardianMembership.Status.ACTIVE).select_related(
         "guardian"
     )
+    for membership in guardians:
+        membership.guardian_display_name = _display_name(
+            membership.guardian, membership.guardian.email
+        )
     checkins = profile.check_ins.all()
     profile.enabled = profile.enabled and not profile.is_paused
     return render(
@@ -334,6 +383,10 @@ def check_in_view(request, pk):
     if profile.is_paused:
         messages.error(request, "Pozastavený profil je nutné před ohlášením obnovit.")
         return redirect("checkins:profile-detail", pk=profile.pk)
+    form = BrowserCheckInForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, "Poloha nebyla platná. Ohlášení nebylo odesláno.")
+        return redirect("checkins:profile-detail", pk=profile.pk)
     session_keys = request.session.get("web_checkin_keys", {})
     idempotency_key = session_keys.get(str(profile.pk))
     if not idempotency_key:
@@ -341,12 +394,26 @@ def check_in_view(request, pk):
         session_keys[str(profile.pk)] = idempotency_key
         request.session["web_checkin_keys"] = session_keys
     try:
-        result = perform_check_in(profile=profile, idempotency_key=f"web:{idempotency_key}")
+        result = perform_check_in(
+            profile=profile,
+            idempotency_key=f"web:{idempotency_key}",
+            latitude=form.cleaned_data.get("latitude"),
+            longitude=form.cleaned_data.get("longitude"),
+            location_accuracy_meters=form.cleaned_data.get("location_accuracy_meters"),
+        )
     except ValidationError as error:
         messages.error(request, "; ".join(error.messages))
     else:
         if result.created:
-            messages.success(request, "Ohlášení bylo bezpečně přijato serverem.")
+            if form.cleaned_data.get("latitude") is not None:
+                messages.success(request, "Ohlášení i volitelná poloha byly přijaty serverem.")
+            elif form.cleaned_data.get("location_requested"):
+                messages.success(
+                    request,
+                    "Ohlášení bylo přijato serverem bez polohy. Termín byl posunut.",
+                )
+            else:
+                messages.success(request, "Ohlášení bylo bezpečně přijato serverem.")
         else:
             messages.info(request, "Toto ohlášení už server dříve přijal.")
     return redirect("checkins:profile-detail", pk=profile.pk)
@@ -421,6 +488,88 @@ def _history_stats(queryset):
     return aggregate
 
 
+def _timeline_page(profiles, page_number):
+    profile_ids = [profile.pk for profile in profiles]
+    check_in_ids = CheckIn.objects.filter(profile_id__in=profile_ids).values("id")
+    incident_ids = AlertIncident.objects.filter(profile_id__in=profile_ids).values("id")
+    queryset = AuditEvent.objects.filter(
+        Q(
+            aggregate_type="check_in_profile",
+            aggregate_id__in=profile_ids,
+            event_type__in=(
+                "profile.created",
+                "profile.paused",
+                "profile.resumed",
+                "profile.archived",
+            ),
+        )
+        | Q(
+            aggregate_type="check_in",
+            aggregate_id__in=check_in_ids,
+            event_type="checkin.confirmed",
+        )
+        | Q(
+            aggregate_type="alert_incident",
+            aggregate_id__in=incident_ids,
+            event_type__in=("incident.opened", "incident.resolved"),
+        )
+    ).order_by("-occurred_at", "-id")
+    page_obj = Paginator(queryset, 25).get_page(page_number)
+    events = list(page_obj.object_list)
+    checkins = {
+        item.pk: item
+        for item in CheckIn.objects.filter(
+            pk__in=[
+                event.aggregate_id
+                for event in events
+                if event.event_type == "checkin.confirmed"
+            ]
+        ).annotate(resolved_incident_count=Count("resolved_incidents", distinct=True))
+    }
+    incidents = {
+        item.pk: item
+        for item in AlertIncident.objects.filter(
+            pk__in=[
+                event.aggregate_id
+                for event in events
+                if event.event_type in {"incident.opened", "incident.resolved"}
+            ]
+        )
+    }
+    profile_map = {profile.pk: profile for profile in profiles}
+    timeline = []
+    for event in events:
+        if event.aggregate_type == "check_in_profile":
+            profile_id = event.aggregate_id
+        else:
+            profile_id = uuid.UUID(str(event.metadata["profile_id"]))
+        item = {
+            "id": event.pk,
+            "event_type": event.event_type,
+            "occurred_at": event.occurred_at,
+            "profile": profile_map[profile_id],
+        }
+        if event.event_type == "checkin.confirmed":
+            checkin = checkins[event.aggregate_id]
+            item.update(
+                {
+                    "checkin": checkin,
+                    "submitted_from_queue": checkin.submitted_from_queue,
+                    "resolved_incident_count": checkin.resolved_incident_count,
+                }
+            )
+        elif event.event_type in {"incident.opened", "incident.resolved"}:
+            item["incident"] = incidents[event.aggregate_id]
+        elif event.event_type in {"profile.paused", "profile.resumed"}:
+            item["automatic"] = event.metadata.get("automatic", False)
+            item["has_scheduled_resume"] = event.metadata.get(
+                "has_scheduled_resume", False
+            )
+        timeline.append(item)
+    page_obj.object_list = timeline
+    return page_obj
+
+
 @login_required(login_url="accounts:login")
 def history_view(request):
     profiles = CheckInProfile.objects.filter(owner=request.user).order_by("created_at")
@@ -438,18 +587,58 @@ def history_view(request):
     if selected_profile is not None:
         incident_queryset = incident_queryset.filter(profile=selected_profile)
     stats["incident_count"] = incident_queryset.count()
-    page_obj = Paginator(queryset, 25).get_page(request.GET.get("page"))
-    return render(
+    timeline_profiles = [selected_profile] if selected_profile is not None else list(profiles)
+    page_obj = _timeline_page(timeline_profiles, request.GET.get("page"))
+    response = render(
         request,
         "core/dashboard/history.html",
         {
             "profiles": profiles,
             "selected_profile": selected_profile,
             "stats": stats,
-            "checkins": page_obj.object_list,
+            "timeline": page_obj.object_list,
             "page_obj": page_obj,
         },
     )
+    response["Cache-Control"] = "no-store, private"
+    response["Pragma"] = "no-cache"
+    return response
+
+
+@require_POST
+@login_required(login_url="accounts:login")
+def checkin_location_delete_view(request, pk):
+    with transaction.atomic():
+        checkin = get_object_or_404(
+            CheckIn.objects.select_for_update().select_related("profile"),
+            pk=pk,
+            profile__owner=request.user,
+        )
+        if checkin.latitude is None:
+            messages.info(request, "U tohoto ohlášení už poloha uložená není.")
+        else:
+            checkin.latitude = None
+            checkin.longitude = None
+            checkin.location_accuracy_meters = None
+            checkin.save(
+                update_fields=[
+                    "latitude",
+                    "longitude",
+                    "location_accuracy_meters",
+                    "updated_at",
+                ]
+            )
+            record_audit_event(
+                event_type="checkin.location_deleted",
+                aggregate_type="check_in",
+                aggregate_id=checkin.pk,
+                actor=request.user,
+            )
+            messages.success(
+                request,
+                "Poloha byla trvale odstraněna. Historický záznam ohlášení zůstal zachován.",
+            )
+    return redirect(f"{reverse('checkins:history')}?profile={checkin.profile_id}")
 
 
 @login_required(login_url="accounts:login")
@@ -471,6 +660,33 @@ def guardians_view(request):
         expires_at__gt=timezone.now(),
         profile__archived_at__isnull=True,
     ).select_related("profile", "invited_by")
+    watched_memberships = list(
+        GuardianMembership.objects.filter(
+            guardian=request.user,
+            status=GuardianMembership.Status.ACTIVE,
+            profile__archived_at__isnull=True,
+        )
+        .select_related("profile", "profile__owner")
+        .order_by("profile__name")
+    )
+    open_incidents = {
+        incident.profile_id: incident
+        for incident in accessible_incidents(request.user)
+        .filter(
+            status=AlertIncident.Status.OPEN,
+            profile_id__in=[item.profile_id for item in watched_memberships],
+        )
+        .select_related("profile")
+    }
+    for membership in watched_memberships:
+        membership.open_incident = open_incidents.get(membership.profile_id)
+        membership.owner_display_name = _display_name(membership.profile.owner)
+    for membership in guardians:
+        membership.guardian_display_name = _display_name(
+            membership.guardian, membership.guardian.email
+        )
+    for invitation in incoming_invites:
+        invitation.inviter_display_name = _display_name(invitation.invited_by)
     return render(
         request,
         "core/dashboard/guardians.html",
@@ -478,6 +694,7 @@ def guardians_view(request):
             "guardians": guardians,
             "invites": invites,
             "incoming_invites": incoming_invites,
+            "watched_memberships": watched_memberships,
         },
     )
 
@@ -524,6 +741,48 @@ def guardian_remove_view(request, pk):
 
 @require_POST
 @login_required(login_url="accounts:login")
+def guardian_self_revoke_view(request, pk):
+    membership = get_object_or_404(
+        GuardianMembership,
+        pk=pk,
+        guardian=request.user,
+        profile__archived_at__isnull=True,
+        status=GuardianMembership.Status.ACTIVE,
+    )
+    revoke_guardian_membership(membership=membership, actor=request.user)
+    messages.success(
+        request,
+        "Profil už nehlídáte. Přístup k jeho incidentům a poloze byl odebrán.",
+    )
+    return redirect("guardians:list")
+
+
+@require_POST
+@login_required(login_url="accounts:login")
+def guardian_invite_revoke_view(request, pk):
+    with transaction.atomic():
+        invitation = get_object_or_404(
+            GuardianInvitation.objects.select_for_update(),
+            pk=pk,
+            profile__owner=request.user,
+            profile__archived_at__isnull=True,
+            status=GuardianInvitation.Status.PENDING,
+        )
+        invitation.status = GuardianInvitation.Status.REVOKED
+        invitation.save(update_fields=["status", "updated_at"])
+        record_audit_event(
+            event_type="guardian.invitation_revoked",
+            aggregate_type="guardian_invitation",
+            aggregate_id=invitation.pk,
+            actor=request.user,
+            metadata={"profile_id": str(invitation.profile_id)},
+        )
+    messages.success(request, "Čekající pozvánka byla zrušena.")
+    return redirect("guardians:list")
+
+
+@require_POST
+@login_required(login_url="accounts:login")
 def guardian_respond_view(request, pk):
     decision = request.POST.get("decision")
     if decision not in {"accept", "decline"}:
@@ -558,15 +817,51 @@ def alert_detail_view(request, pk):
     alert = _accessible_alert_or_404(request.user, pk)
     if alert.status == AlertIncident.Status.OPEN or alert.profile.owner_id == request.user.id:
         alert.last_checkin = alert.profile.check_ins.filter(
-            accepted_at__lte=alert.opened_at
+            accepted_at__lte=alert.opened_at,
+            latitude__isnull=False,
+            longitude__isnull=False,
         ).first()
     else:
         alert.last_checkin = None
-    return render(
+    acknowledgements = alert.acknowledgements.select_related("user").order_by(
+        "acknowledged_at"
+    )
+    for acknowledgement in acknowledgements:
+        acknowledgement.user_display_name = _display_name(
+            acknowledgement.user, "Strážce"
+        )
+    attempts = alert.deliveries.all()
+    if alert.profile.owner_id != request.user.id:
+        attempts = attempts.filter(device__user=request.user)
+    delivery_counts = {
+        value: attempts.filter(status=value).count()
+        for value, _label in alert.deliveries.model.Status.choices
+    }
+    delivery_counts = {key: value for key, value in delivery_counts.items() if value}
+    if delivery_counts.get("delivered"):
+        delivery_state = "delivered"
+    elif delivery_counts.get("ticket_received") or delivery_counts.get(
+        "receipt_processing"
+    ):
+        delivery_state = "sent_to_provider"
+    elif delivery_counts.get("queued") or delivery_counts.get("retryable_failure"):
+        delivery_state = "pending"
+    elif delivery_counts:
+        delivery_state = "failed"
+    else:
+        delivery_state = "no_delivery_record"
+    response = render(
         request,
         "core/dashboard/alert_detail.html",
-        {"alert": alert},
+        {
+            "alert": alert,
+            "acknowledgements": acknowledgements,
+            "delivery_state": delivery_state,
+        },
     )
+    response["Cache-Control"] = "no-store, private"
+    response["Pragma"] = "no-cache"
+    return response
 
 
 @require_POST

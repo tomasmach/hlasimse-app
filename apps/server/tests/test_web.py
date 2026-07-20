@@ -16,13 +16,14 @@ from core.models import (
     AlertRecipient,
     CheckIn,
     CheckInProfile,
+    DeliveryAttempt,
     GuardianInvitation,
     GuardianMembership,
     OutboxEvent,
     PushDevice,
     User,
 )
-from core.services import create_profile
+from core.services import create_profile, perform_check_in, sweep_expired_deadlines, update_profile
 
 pytestmark = pytest.mark.django_db
 
@@ -387,3 +388,217 @@ def test_account_delete_requires_exact_confirmation_and_removes_owned_data(
     assert incoming.status == GuardianInvitation.Status.REVOKED
     assert incoming.email.endswith("@invalid.local")
     assert "_auth_user_id" not in client.session
+
+
+def test_guardian_only_dashboard_shows_watched_profile_and_open_incident(
+    client, user, other_user, profile
+):
+    membership = GuardianMembership.objects.create(profile=profile, guardian=other_user)
+    incident = AlertIncident.objects.create(
+        profile=profile,
+        deadline_generation=profile.deadline_generation,
+        deadline_at=timezone.now() - timedelta(minutes=1),
+    )
+    AlertRecipient.objects.create(
+        incident=incident,
+        user=other_user,
+        user_id_snapshot=other_user.pk,
+    )
+    client.force_login(other_user)
+
+    response = client.get(reverse("core:dashboard"))
+
+    content = response.content.decode()
+    assert response.status_code == 200
+    assert "Profily, které hlídáte" in content
+    assert profile.name in content
+    assert reverse("alerts:detail", kwargs={"pk": incident.pk}) in content
+    assert membership.profile_id == profile.pk
+
+
+def test_guardian_self_revoke_immediately_removes_incident_access(
+    client, user, other_user, profile
+):
+    membership = GuardianMembership.objects.create(profile=profile, guardian=other_user)
+    incident = AlertIncident.objects.create(
+        profile=profile,
+        deadline_generation=profile.deadline_generation,
+        deadline_at=timezone.now() - timedelta(minutes=1),
+    )
+    AlertRecipient.objects.create(
+        incident=incident,
+        user=other_user,
+        user_id_snapshot=other_user.pk,
+    )
+    client.force_login(other_user)
+
+    revoked = client.post(reverse("guardians:self-revoke", kwargs={"pk": membership.pk}))
+
+    assert revoked.status_code == 302
+    membership.refresh_from_db()
+    assert membership.status == GuardianMembership.Status.REVOKED
+    assert client.get(reverse("alerts:detail", kwargs={"pk": incident.pk})).status_code == 404
+
+
+def test_owner_can_revoke_pending_invitation_but_another_user_cannot(
+    client, user, other_user, profile
+):
+    invitation = GuardianInvitation.objects.create(
+        profile=profile,
+        invited_by=user,
+        email=other_user.email,
+        token_digest="f" * 64,
+        expires_at=timezone.now() + timedelta(days=1),
+    )
+    endpoint = reverse("guardians:invite-revoke", kwargs={"pk": invitation.pk})
+    client.force_login(other_user)
+    assert client.post(endpoint).status_code == 404
+
+    client.force_login(user)
+    revoked = client.post(endpoint)
+
+    assert revoked.status_code == 302
+    invitation.refresh_from_db()
+    assert invitation.status == GuardianInvitation.Status.REVOKED
+
+
+def test_browser_checkin_location_is_one_shot_optional_and_validated(client, user, profile):
+    client.force_login(user)
+    endpoint = reverse("checkins:check-in", kwargs={"pk": profile.pk})
+
+    with_location = client.post(
+        endpoint,
+        {
+            "location_requested": "on",
+            "latitude": "50.075500",
+            "longitude": "14.437800",
+            "location_accuracy_meters": "12.50",
+        },
+    )
+    first = CheckIn.objects.get(profile=profile)
+    assert with_location.status_code == 302
+    assert str(first.latitude) == "50.075500"
+    assert str(first.longitude) == "14.437800"
+
+    client.get(reverse("checkins:profile-detail", kwargs={"pk": profile.pk}))
+    without_available_location = client.post(endpoint, {"location_requested": "on"})
+    assert without_available_location.status_code == 302
+    second = CheckIn.objects.filter(profile=profile).latest("accepted_at")
+    assert second.pk != first.pk
+    assert second.latitude is None
+
+    client.get(reverse("checkins:profile-detail", kwargs={"pk": profile.pk}))
+    malformed = client.post(endpoint, {"latitude": "50.075500"})
+    assert malformed.status_code == 302
+    assert CheckIn.objects.filter(profile=profile).count() == 2
+
+
+def test_owner_can_delete_checkin_location_without_deleting_historical_checkin(
+    client, user, other_user, profile
+):
+    checkin = perform_check_in(
+        profile=profile,
+        idempotency_key="web-location-retention",
+        latitude="50.075500",
+        longitude="14.437800",
+        location_accuracy_meters="8.50",
+    ).check_in
+    endpoint = reverse("checkins:check-in-location-delete", kwargs={"pk": checkin.pk})
+    client.force_login(other_user)
+    assert client.post(endpoint).status_code == 404
+
+    client.force_login(user)
+    deleted = client.post(endpoint)
+
+    assert deleted.status_code == 302
+    checkin.refresh_from_db()
+    assert checkin.latitude is None
+    assert checkin.longitude is None
+    assert checkin.location_accuracy_meters is None
+    assert CheckIn.objects.filter(pk=checkin.pk).exists()
+
+
+def test_combined_timeline_labels_queue_pause_and_incident_without_coordinates(
+    client, user, profile
+):
+    perform_check_in(profile=profile, idempotency_key="timeline-direct")
+    perform_check_in(
+        profile=profile,
+        idempotency_key="timeline-queued",
+        submitted_from_queue=True,
+        latitude="50.075500",
+        longitude="14.437800",
+    )
+    profile.refresh_from_db()
+    profile.next_deadline_at = timezone.now() - timedelta(minutes=1)
+    profile.save(update_fields=["next_deadline_at", "updated_at"])
+    assert sweep_expired_deadlines() == (1, 1)
+    perform_check_in(profile=profile, idempotency_key="timeline-resolver")
+    profile.refresh_from_db()
+    update_profile(profile=profile, values={"is_paused": True})
+    profile.refresh_from_db()
+    update_profile(profile=profile, values={"is_paused": False})
+    client.force_login(user)
+
+    response = client.get(reverse("checkins:history"), {"profile": profile.pk})
+
+    content = response.content.decode()
+    assert response.status_code == 200
+    assert response["Cache-Control"] == "no-store, private"
+    assert "Synchronizováno později" in content
+    assert "Profil pozastaven" in content
+    assert "Hlídání obnoveno" in content
+    assert "Vznikl incident" in content
+    assert "Incident vyřešen ohlášením" in content
+    assert "50.075500" not in content
+    assert "14.437800" not in content
+
+
+def test_alert_detail_distinguishes_provider_ticket_and_acknowledgement(
+    client, user, other_user, profile
+):
+    GuardianMembership.objects.create(profile=profile, guardian=other_user)
+    incident = AlertIncident.objects.create(
+        profile=profile,
+        deadline_generation=profile.deadline_generation,
+        deadline_at=timezone.now() - timedelta(minutes=1),
+    )
+    AlertRecipient.objects.create(
+        incident=incident,
+        user=other_user,
+        user_id_snapshot=other_user.pk,
+    )
+    device = PushDevice.objects.create(
+        user=other_user,
+        installation_id=uuid.uuid4(),
+        expo_push_token="ExponentPushToken[web-delivery-state]",
+        platform=PushDevice.Platform.ANDROID,
+    )
+    DeliveryAttempt.objects.create(
+        incident=incident,
+        device=device,
+        device_id_snapshot=device.pk,
+        status=DeliveryAttempt.Status.TICKET_RECEIVED,
+    )
+    client.force_login(other_user)
+    client.post(reverse("alerts:ack", kwargs={"pk": incident.pk}))
+
+    response = client.get(reverse("alerts:detail", kwargs={"pk": incident.pk}))
+
+    content = response.content.decode()
+    assert response.status_code == 200
+    assert response["Cache-Control"] == "no-store, private"
+    assert "Odesláno poskytovateli, doručení nepotvrzeno" in content
+    assert "Poskytovatel potvrdil doručení" not in content
+    assert "Eva Jiná" in content
+    assert "Nepotvrzuje telefonát, pomoc ani bezpečí" in content
+
+
+@pytest.mark.parametrize("route_name", ["core:privacy", "core:terms"])
+def test_legal_placeholders_are_explicit_non_indexable_release_blockers(client, route_name):
+    response = client.get(reverse(route_name))
+
+    assert response.status_code == 503
+    assert response["Cache-Control"] == "no-store"
+    assert response["X-Robots-Tag"] == "noindex, nofollow"
+    assert "Blokuje veřejné vydání" in response.content.decode()
