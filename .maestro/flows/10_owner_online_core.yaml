@@ -50,6 +50,7 @@ tags:
     timeout: 15000
 - tapOn:
     id: "tab-activity"
+    retryTapIfNoChange: true
 - extendedWaitUntil:
     visible:
       id: "statistics-section"
@@ -59,11 +60,13 @@ tags:
 - assertVisible: "Vyřešený incident"
 - tapOn:
     id: "tab-guardians"
+    retryTapIfNoChange: true
 - extendedWaitUntil:
     visible: "E2E Strážce"
     timeout: 15000
 - assertVisible: "1/5 aktivních"
 - tapOn:
     id: "tab-index"
+    retryTapIfNoChange: true
 - assertVisible:
     id: "checkin-submit"

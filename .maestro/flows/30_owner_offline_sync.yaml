@@ -14,6 +14,7 @@ tags:
     timeout: 15000
 - tapOn:
     id: "tab-activity"
+    retryTapIfNoChange: true
 - extendedWaitUntil:
     visible: "Synchronizováno později z offline fronty.*"
     timeout: 15000

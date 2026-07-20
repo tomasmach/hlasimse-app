@@ -6,6 +6,7 @@ tags:
 ---
 - tapOn:
     id: "tab-settings"
+    retryTapIfNoChange: true
 - tapOn:
     id: "account-export-open"
 - assertVisible: "Vaše data bez černé skříňky"
