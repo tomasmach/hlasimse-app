@@ -12,6 +12,7 @@ Veřejný release je povolen pouze při splnění všech blokujících položek.
 - [ ] SMS není implementováno ani veřejně slibováno.
 - [ ] Veřejné texty netvrdí „okamžité“ nebo garantované doručení ani potvrzený offline check-in.
 - [ ] Onboarding a nastavení vysvětlují, že služba nenahrazuje 112/155 a push je best-effort.
+- [ ] Store metadata, review podklady a screenshoty odpovídají skutečnému buildu a jsou uzavřené podle [store/README.md](store/README.md).
 
 ## 2. Kritické invarianty backendu
 
@@ -94,7 +95,7 @@ Simulátory slouží pro deterministické funkční scénáře. Neprokazují spo
 - [ ] Export, oprava, omezení a výmaz subjektu byly end-to-end otestovány.
 - [ ] Security review pokrývá autentizaci, autorizaci, rate limit, správu tajemství, admin přístupy a audit.
 - [ ] Kontakty privacy/security a proces hlášení incidentu podle GDPR jsou funkční.
-- [ ] App Store privacy labels a Google Play Data safety odpovídají skutečnému toku dat.
+- [ ] App Store privacy labels a Google Play Data safety odpovídají skutečnému toku dat a ověření v [store/privacy-and-data-safety.md](store/privacy-and-data-safety.md).
 
 ## 9. Supabase cutover
 
