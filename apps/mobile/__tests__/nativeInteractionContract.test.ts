@@ -37,6 +37,13 @@ it("exposes the server-confirmed check-in overlay as one dismiss action", () => 
   expect(source).toContain('accessibilityLabel="Check-in potvrzen serverem. Klepnutím zavřete."');
 });
 
+it("keeps check-in queueing available from the last confirmed offline profile", () => {
+  const source = readFileSync(resolve(mobileRoot, "app/(tabs)/index.tsx"), "utf8");
+  expect(source).toContain("if (isCheckingIn) return;");
+  expect(source).toContain("disabled={profile.is_paused || !profile.enabled}");
+  expect(source).toContain("serverový termín se nezmění, dokud požadavek nepřijme");
+});
+
 it("reloads safety history whenever its tab regains focus", () => {
   const source = readFileSync(resolve(mobileRoot, "app/(tabs)/activity.tsx"), "utf8");
   expect(source).toContain("useFocusEffect(");

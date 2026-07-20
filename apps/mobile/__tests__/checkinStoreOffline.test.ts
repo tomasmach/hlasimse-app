@@ -78,6 +78,17 @@ describe("offline check-in safety", () => {
       isUsingCachedProfiles: true,
     });
     expect(useCheckInStore.getState().profilesCachedAt).toEqual(expect.any(String));
+    mockApiRequest.mockRejectedValueOnce(new NetworkError());
+
+    await expect(useCheckInStore.getState().checkIn()).resolves.toEqual({
+      success: true,
+      offline: true,
+    });
+    expect(useCheckInStore.getState()).toMatchObject({
+      isUsingCachedProfiles: true,
+      pendingCount: 1,
+      profile: { next_deadline_at: confirmedProfile.next_deadline_at },
+    });
   });
 
   it("allows a guardian-only account to skip owned profile creation", async () => {

@@ -81,7 +81,7 @@ export default function CheckInScreen() {
   }, [isConnected, store.pendingCount, sync]);
 
   const handleCheckIn = async () => {
-    if (isCheckingIn || store.isUsingCachedProfiles) return;
+    if (isCheckingIn) return;
     setIsCheckingIn(true);
     let coords = null;
     if (includeLocation) {
@@ -207,7 +207,7 @@ export default function CheckInScreen() {
         {store.isUsingCachedProfiles ? (
           <View className="mt-5">
             <Notice title="Toto je uložený náhled, může být zastaralý" tone="warning">
-              <Text className="font-body text-[#7B4A08] leading-5">Naposledy potvrzeno serverem {formatDateTime(store.profilesCachedAt)}. Check-in ani pauzu nelze potvrdit bez spojení.</Text>
+              <Text className="font-body text-[#7B4A08] leading-5">Naposledy potvrzeno serverem {formatDateTime(store.profilesCachedAt)}. Check-in můžete bezpečně uložit do zařízení; serverový termín se nezmění, dokud požadavek nepřijme. Pauzu ani nastavení bez spojení měnit nelze.</Text>
             </Notice>
           </View>
         ) : null}
@@ -236,10 +236,10 @@ export default function CheckInScreen() {
             testID="checkin-submit"
             label={isCheckingIn ? "Čekáme na server" : "Potvrdit check-in"}
             loading={isCheckingIn}
-            disabled={store.isUsingCachedProfiles || profile.is_paused || !profile.enabled}
+            disabled={profile.is_paused || !profile.enabled}
             onPress={() => void handleCheckIn()}
             icon={<Check size={21} weight="bold" color="#251D18" />}
-            accessibilityHint="Odešle check-in serveru. Úspěch nastane až po potvrzení serverem."
+            accessibilityHint="Odešle check-in serveru. Bez spojení ho uloží do zařízení; úspěch nastane až po potvrzení serverem."
           />
           {profile.is_paused ? <Text className="font-body text-sm text-white/70 mt-3">Během potvrzené pauzy není check-in vyžadován. Obnovení má vlastní serverové potvrzení.</Text> : !profile.enabled ? <Text className="font-body text-sm text-white/70 mt-3">Archivovaný profil nemá aktivní termín. Obnovte ho ve správě profilu.</Text> : null}
         </View>
