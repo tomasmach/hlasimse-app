@@ -316,6 +316,23 @@ print(json.dumps({
   ) | tee "${E2E_ARTIFACT_DIR}/backend/ios-upgrade-local-state.json"
 }
 
+e2e_finalize_ios_upgrade_evidence() {
+  local staging_path="${E2E_ARTIFACT_DIR}/ios-upgrade.properties.partial"
+  local final_path="${E2E_ARTIFACT_DIR}/ios-upgrade.properties"
+
+  [[ -f "${staging_path}" && ! -L "${staging_path}" ]] \
+    || { e2e_log "iOS reinstall evidence staging is missing."; return 1; }
+  [[ ! -e "${final_path}" && ! -L "${final_path}" ]] \
+    || { e2e_log "Refusing to replace existing finalized iOS upgrade evidence."; return 1; }
+  {
+    printf 'authenticated_session_preserved=true\n'
+    printf 'selected_profile_preserved=true\n'
+    printf 'server_confirmed_sentinel_check_in=true\n'
+    printf 'preservation_authority=runner-owned-data-sentinel-plus-authenticated-selected-profile-and-server-confirmed-check-in\n'
+  } >>"${staging_path}"
+  mv "${staging_path}" "${final_path}"
+}
+
 e2e_ios_app_tree_sha256() {
   local app_path="$1"
   node -e '
@@ -733,6 +750,12 @@ e2e_reinstall_ios_bundle_without_clearing_data() {
   local device_id="$1"
   local data_before
   local data_after
+  local data_container_path_stable
+  local data_sentinel_relative="Documents/.hlasimse-e2e-reinstall-sentinel"
+  local data_sentinel_before
+  local data_sentinel_after
+  local data_sentinel_sha256_before
+  local data_sentinel_sha256_after
   local artifact_sha256_after
   local installed_bundle_after
   local installed_info_after
@@ -740,15 +763,48 @@ e2e_reinstall_ios_bundle_without_clearing_data() {
   local installed_app_sha256_after
   local installed_executable_sha256_after
   local installed_js_bundle_sha256_after
+  local upgrade_evidence_staging="${E2E_ARTIFACT_DIR}/ios-upgrade.properties.partial"
+  local upgrade_evidence_final="${E2E_ARTIFACT_DIR}/ios-upgrade.properties"
 
   data_before="$(xcrun simctl get_app_container "${device_id}" "${E2E_APP_ID}" data)"
+  [[ -d "${data_before}" && ! -L "${data_before}" \
+    && -d "${data_before}/Documents" && ! -L "${data_before}/Documents" ]] \
+    || { e2e_log "Installed iOS data container is unavailable before reinstall."; return 1; }
+  data_sentinel_before="${data_before}/${data_sentinel_relative}"
+  [[ ! -e "${data_sentinel_before}" && ! -L "${data_sentinel_before}" ]] \
+    || { e2e_log "Refusing to replace an existing iOS reinstall sentinel."; return 1; }
+  (
+    umask 077
+    printf 'app_id=%s\nartifact_sha256=%s\ndevice_id=%s\n' \
+      "${E2E_APP_ID}" "${IOS_E2E_APP_SHA256}" "${device_id}" \
+      >"${data_sentinel_before}"
+  )
+  [[ -f "${data_sentinel_before}" && ! -L "${data_sentinel_before}" ]] \
+    || { e2e_log "Failed to create the iOS reinstall data sentinel."; return 1; }
+  [[ "$(stat -f %Lp "${data_sentinel_before}")" == "600" ]] \
+    || { e2e_log "iOS reinstall data sentinel mode is not 0600."; return 1; }
+  data_sentinel_sha256_before="$(shasum -a 256 "${data_sentinel_before}" | awk '{print $1}')"
   artifact_sha256_after="$(e2e_ios_app_tree_sha256 "${IOS_E2E_APP_PATH}")"
   [[ "${artifact_sha256_after}" == "${IOS_E2E_APP_SHA256}" ]] \
     || { e2e_log "Immutable iOS Release artifact changed before reinstall."; return 1; }
+  [[ ! -e "${upgrade_evidence_staging}" && ! -L "${upgrade_evidence_staging}" \
+    && ! -e "${upgrade_evidence_final}" && ! -L "${upgrade_evidence_final}" ]] \
+    || { e2e_log "Refusing to overwrite existing iOS upgrade evidence."; return 1; }
 
   xcrun simctl terminate "${device_id}" "${E2E_APP_ID}" 2>/dev/null || true
   xcrun simctl install "${device_id}" "${IOS_E2E_APP_PATH}"
   data_after="$(xcrun simctl get_app_container "${device_id}" "${E2E_APP_ID}" data)"
+  [[ -d "${data_after}" && ! -L "${data_after}" \
+    && -d "${data_after}/Documents" && ! -L "${data_after}/Documents" ]] \
+    || { e2e_log "Installed iOS data container is unavailable after reinstall."; return 1; }
+  data_sentinel_after="${data_after}/${data_sentinel_relative}"
+  [[ -f "${data_sentinel_after}" && ! -L "${data_sentinel_after}" ]] \
+    || { e2e_log "iOS reinstall did not preserve the runner-owned data sentinel."; return 1; }
+  [[ "$(stat -f %Lp "${data_sentinel_after}")" == "600" ]] \
+    || { e2e_log "Reinstalled iOS data sentinel mode changed."; return 1; }
+  data_sentinel_sha256_after="$(shasum -a 256 "${data_sentinel_after}" | awk '{print $1}')"
+  [[ "${data_sentinel_sha256_after}" == "${data_sentinel_sha256_before}" ]] \
+    || { e2e_log "Reinstalled iOS data sentinel content changed."; return 1; }
   installed_bundle_after="$(xcrun simctl get_app_container "${device_id}" "${E2E_APP_ID}" app)"
   installed_info_after="${installed_bundle_after}/Info.plist"
   [[ "$(e2e_ios_plist_value "${installed_info_after}" CFBundleIdentifier)" == "${E2E_APP_ID}" ]] \
@@ -767,18 +823,22 @@ e2e_reinstall_ios_bundle_without_clearing_data() {
     || { e2e_log "Reinstalled iOS executable differs from the immutable Release artifact."; return 1; }
   [[ "${installed_js_bundle_sha256_after}" == "${IOS_E2E_JS_BUNDLE_SHA256}" ]] \
     || { e2e_log "Reinstalled iOS JS bundle differs from the immutable Release artifact."; return 1; }
-  [[ "${data_before}" == "${data_after}" ]] \
-    || { e2e_log "iOS data container changed during same-artifact reinstall."; return 1; }
+
+  if [[ "${data_before}" == "${data_after}" ]]; then
+    data_container_path_stable=true
+  else
+    data_container_path_stable=false
+  fi
 
   {
     printf 'bundle_id=%s\n' "${E2E_APP_ID}"
     printf 'data_container_before=%s\n' "${data_before}"
     printf 'data_container_after=%s\n' "${data_after}"
-    if [[ "${data_before}" == "${data_after}" ]]; then
-      printf 'data_container_path_stable=true\n'
-    else
-      printf 'data_container_path_stable=false\n'
-    fi
+    printf 'data_container_path_stable=%s\n' "${data_container_path_stable}"
+    printf 'data_container_sentinel_relative_path=%s\n' "${data_sentinel_relative}"
+    printf 'data_container_sentinel_mode=600\n'
+    printf 'data_container_sentinel_sha256=%s\n' "${data_sentinel_sha256_after}"
+    printf 'data_container_content_preserved=true\n'
     printf 'artifact_sha256_before=%s\n' "${IOS_E2E_APP_SHA256}"
     printf 'artifact_sha256_after=%s\n' "${artifact_sha256_after}"
     printf 'installed_app_sha256_after=%s\n' "${installed_app_sha256_after}"
@@ -788,8 +848,7 @@ e2e_reinstall_ios_bundle_without_clearing_data() {
     printf 'update_artifact_relation=same-built-app-reinstall-not-n-minus-one\n'
     printf 'n_minus_one_coverage=false\n'
     printf 'store_signed_update_coverage=false\n'
-    printf 'preservation_authority=secure-store-selected-profile-and-server-confirmed-sentinel-check-in\n'
-  } >"${E2E_ARTIFACT_DIR}/ios-upgrade.properties"
+  } >"${upgrade_evidence_staging}"
 }
 
 if ! xcrun simctl boot "${IOS_SIMULATOR_UDID}" 2>/dev/null; then
@@ -875,6 +934,7 @@ if [[ "${IOS_UPGRADE_CHECKINS_AFTER}" -ne $((IOS_UPGRADE_CHECKINS_BEFORE + 1)) ]
   exit 1
 fi
 e2e_assert_latest_owner_checkin_uses_upgrade_sentinel
+e2e_finalize_ios_upgrade_evidence
 e2e_seed_dataset cleanup-only ios-final-cleanup.json
 if [[ "${E2E_IOS_FOCUSED_ONLY:-false}" == "true" ]]; then
   IOS_EXPECTED_EVIDENCE=(

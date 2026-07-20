@@ -41,9 +41,13 @@ prompt does not block a server-confirmed check-in, verifies the resulting databa
 coordinates, and performs an in-place same-bundle install. Before that install it selects a
 non-default profile whose ID is persisted in SecureStore. The post-install flow proves that local
 selection survives and creates exactly one server-confirmed check-in on that profile. The
-CoreSimulator data-container path is diagnostic only because the simulator may relocate it during
-installation. This is an installation-preservation gate; a true N-1-to-N migration still requires
-a signed previous-release artifact. Set
+runner also writes a credential-free `0600` sentinel into the app's `Documents` directory before
+reinstall and verifies its exact SHA-256 through the newly resolved container path afterwards.
+The absolute CoreSimulator data-container path remains diagnostic only because the simulator may
+relocate it during installation. The final preservation claim is published only after the sentinel,
+authenticated UI state, selected profile, exactly-one check-in delta, and database profile assertion
+all pass. This is an installation-preservation gate; a true N-1-to-N migration still requires a
+signed previous-release artifact. Set
 `E2E_IOS_FOCUSED_ONLY=true` only when rerunning these focused iOS gates after a separately recorded
 green baseline journey on the same commit.
 

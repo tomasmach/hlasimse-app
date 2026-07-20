@@ -316,6 +316,12 @@ ruby -e '
     %q{xcrun simctl launch --terminate-running-process},
     %q{ios-install-tree.diff},
     %q{same-built-app-reinstall-not-n-minus-one},
+    %q{Documents/.hlasimse-e2e-reinstall-sentinel},
+    %q{umask 077},
+    %q{data_container_content_preserved=true},
+    %q{data_container_path_stable=%s},
+    %q{e2e_finalize_ios_upgrade_evidence},
+    %q{server_confirmed_sentinel_check_in=true},
     %q{ios_bundle_present_before_install},
   ]
   missing_lifecycle = required_lifecycle.reject { |fragment| ios.include?(fragment) }
@@ -355,6 +361,15 @@ ruby -e '
   abort("iOS harness must contain exactly one Xcode app build") unless release_build_count == 1
   abort("iOS E2E transport must not depend on a separate loopback-configured JS build") if ios.match?(/EXPO_PUBLIC_API_URL="http:\/\//) || ios.include?("e2e_derived_data")
   abort("iOS E2E JS must be byte-identical to production") unless ios.include?(%q{[[ "${IOS_PRODUCTION_JS_BUNDLE_SHA256}" == "${IOS_E2E_JS_BUNDLE_SHA256}" ]]})
+  abort("iOS reinstall still treats the absolute data-container path as an invariant") if ios.include?("iOS data container changed during same-artifact reinstall")
+  sentinel_before = ios.index(%q{>"${data_sentinel_before}"})
+  reinstall = ios.index(%q{xcrun simctl install "${device_id}" "${IOS_E2E_APP_PATH}"}, sentinel_before.to_i)
+  sentinel_after = ios.index(%q{[[ "${data_sentinel_sha256_after}" == "${data_sentinel_sha256_before}" ]]})
+  upgrade_flow = ios.index(%q{e2e_run_flow "${IOS_SIMULATOR_UDID}" 55_ios_upgrade_preserves_state})
+  upgrade_database_assertion = ios.rindex(%q{e2e_assert_latest_owner_checkin_uses_upgrade_sentinel})
+  upgrade_evidence_finalization = ios.rindex(%q{e2e_finalize_ios_upgrade_evidence})
+  ordered_upgrade_proof = [sentinel_before, reinstall, sentinel_after, upgrade_flow, upgrade_database_assertion, upgrade_evidence_finalization]
+  abort("iOS reinstall preservation proof is not ordered sentinel-before/install/sentinel-after/UI/database/finalize") unless ordered_upgrade_proof.all? && ordered_upgrade_proof.each_cons(2).all? { |left, right| left < right }
   abort("Production iOS ID does not reserve the E2E suffix") unless ios.include?(%q{[[ "${IOS_PRODUCTION_APP_ID}" == *.e2e ]]})
 
   forbidden_lifecycle = [

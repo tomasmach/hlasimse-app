@@ -83,7 +83,7 @@ URL (`127.0.0.1` for iOS Simulator, `10.0.2.2` for Android Emulator).
 | Guardian relation | guardian sees the watched profile; owner sees the active guardian |
 | Check-in | owner resolves the open incident only after the server confirms the check-in |
 | Location refusal | the real native permission prompt is denied; check-in still succeeds and the exact new PostgreSQL row has `NULL` latitude, longitude, and accuracy |
-| Same-bundle install | authenticated state and a non-default SecureStore profile selection survive an in-place install; the post-install server journey uses that profile |
+| Same-bundle install | a credential-free `0600` Documents sentinel retains its SHA-256 through the newly resolved container path; authenticated state and a non-default SecureStore profile selection survive; the post-install server journey uses that profile exactly once |
 | Pause | pause and resume each require a native confirmation and a changed server state |
 | Profiles/free tier | owner creates a second 1-hour profile without payment or paywall; a separately seeded boundary fixture shows exactly 5 active profiles and no sixth-profile action |
 | Guardian/free tier | the selected boundary profile shows exactly 5/5 active guardians and a disabled invitation action |
