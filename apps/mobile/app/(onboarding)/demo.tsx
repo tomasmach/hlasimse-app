@@ -1,113 +1,137 @@
-import { useState, useCallback, useRef, useEffect } from "react";
-import { View, Text } from "react-native";
+import { useEffect, useRef, useState } from "react";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { router } from "expo-router";
-import Animated, { FadeIn, FadeInUp } from "react-native-reanimated";
-import { useOnboardingStore } from "@/stores/onboarding";
-import { NOTIFICATION_MESSAGE } from "@/constants/onboarding";
-import { HeroButton } from "@/components/HeroButton";
-import { GradientButton } from "@/components/ui";
+import { SafeAreaView } from "react-native-safe-area-context";
+import * as Haptics from "expo-haptics";
+import Animated, {
+  FadeInDown,
+  ReduceMotion,
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withSpring,
+} from "react-native-reanimated";
+import { Check } from "phosphor-react-native";
+import { AuthButton } from "@/components/auth";
 import { MockNotification } from "@/components/onboarding/MockNotification";
-import { ProgressDots } from "@/components/onboarding/ProgressDots";
+import { OnboardingFrame } from "@/components/onboarding/OnboardingFrame";
+import { useOnboardingPersona } from "@/components/onboarding/useOnboardingPersona";
+import { NOTIFICATION_MESSAGE } from "@/constants/onboarding";
+import { COLORS } from "@/constants/design";
 
-type DemoPhase = "initial" | "loading" | "success" | "notification" | "cta";
+const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+type DemoPhase = "initial" | "loading" | "result";
 
 export default function DemoScreen() {
-  const { selectedPersona } = useOnboardingStore();
+  const { selectedPersona, loading: personaLoading } = useOnboardingPersona();
+  const reduceMotion = useReducedMotion();
+  const scale = useSharedValue(1);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [phase, setPhase] = useState<DemoPhase>("initial");
-  const successTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const notificationTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [notificationVisible, setNotificationVisible] = useState(false);
+  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
-  const handlePress = useCallback(() => {
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
+
+  const runDemo = () => {
     if (phase !== "initial") return;
     setPhase("loading");
+    void Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    timer.current = setTimeout(
+      () => {
+        setPhase("result");
+        setNotificationVisible(true);
+      },
+      reduceMotion ? 100 : 650,
+    );
+  };
 
-    // Simulate check-in
-    successTimeoutRef.current = setTimeout(() => {
-      setPhase("success");
-      // Show notification after success animation
-      notificationTimeoutRef.current = setTimeout(() => {
-        setPhase("notification");
-      }, 1500);
-    }, 800);
-  }, [phase]);
-
-  // Cleanup timeouts on unmount
-  useEffect(() => {
-    return () => {
-      if (successTimeoutRef.current) {
-        clearTimeout(successTimeoutRef.current);
-        successTimeoutRef.current = null;
-      }
-      if (notificationTimeoutRef.current) {
-        clearTimeout(notificationTimeoutRef.current);
-        notificationTimeoutRef.current = null;
-      }
-    };
-  }, []);
-
-  const handleNotificationHidden = useCallback(() => {
-    setPhase("cta");
-  }, []);
-
-  if (!selectedPersona) return null;
-
-  const notificationMsg = NOTIFICATION_MESSAGE[selectedPersona];
+  if (personaLoading || !selectedPersona) {
+    return (
+      <SafeAreaView className="flex-1 items-center justify-center bg-cream" testID="onboarding-demo-loading">
+        <ActivityIndicator color={COLORS.charcoal.default} />
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <View className="flex-1 bg-cream">
-      <ProgressDots currentStep={3} />
-
-      {/* Mock notification overlay */}
+    <View className="flex-1">
       <MockNotification
-        message={notificationMsg}
-        visible={phase === "notification"}
-        onHidden={handleNotificationHidden}
+        message={NOTIFICATION_MESSAGE[selectedPersona]}
+        visible={notificationVisible}
+        onHidden={() => setNotificationVisible(false)}
       />
-
-      <View className="flex-1 justify-center items-center px-8" style={{ marginTop: -80 }}>
-        {/* Text container with fixed height to prevent layout shift */}
-        <View className="items-center mb-12" style={{ minHeight: 100 }}>
-          {phase === "initial" && (
-            <Animated.View entering={FadeIn.duration(500)} className="items-center">
-              <Text className="text-3xl font-semibold text-charcoal text-center font-lora-semibold">
-                Zkuste to. Klepněte.
-              </Text>
-            </Animated.View>
-          )}
-
-          {(phase === "success" || phase === "notification") && (
-            <Animated.View entering={FadeIn.duration(300)} className="items-center">
-              <Text className="text-3xl font-semibold text-charcoal text-center font-lora-semibold">
-                Právě jste se ohlásili!
-              </Text>
-            </Animated.View>
-          )}
-
-          {phase === "cta" && (
-            <Animated.View entering={FadeIn.duration(500)} className="items-center">
-              <Text className="text-3xl font-semibold text-charcoal text-center font-lora-semibold">
-                Tohle uvidí vaši blízcí.{"\n"}Pokaždé.
-              </Text>
-            </Animated.View>
-          )}
-        </View>
-
-        <HeroButton
-          onPress={handlePress}
-          isLoading={phase === "loading"}
-          showSuccess={phase === "success" || phase === "notification" || phase === "cta"}
-          disabled={phase !== "initial"}
-        />
-      </View>
-
-      {phase === "cta" && (
-        <Animated.View entering={FadeInUp.duration(500)} className="absolute bottom-12 left-8 right-8">
-          <GradientButton
-            label="Chci začít"
+      <OnboardingFrame
+        step={3}
+        testID="onboarding-demo-screen"
+        title={phase === "result" ? "Nanečisto hotovo." : "Zkuste si hlavní gesto."}
+        intro={
+          phase === "result"
+            ? "V ostré aplikaci se úspěch ukáže až po potvrzení serverem."
+            : "Tahle ukázka nic neodesílá, nemění termín a nekontaktuje strážce."
+        }
+        footer={
+          <AuthButton
+            label="Pokračovat k účtu"
             onPress={() => router.push("/(onboarding)/signup")}
+            disabled={phase !== "result"}
+            testID="onboarding-demo-continue-button"
           />
-        </Animated.View>
-      )}
+        }
+      >
+        <View className="flex-1 items-center justify-center py-5">
+          <AnimatedPressable
+            style={style}
+            onPress={runDemo}
+            onPressIn={() => {
+              if (!reduceMotion && phase === "initial") {
+                scale.value = withSpring(0.97, { damping: 20, stiffness: 220 });
+              }
+            }}
+            onPressOut={() => {
+              scale.value = reduceMotion ? 1 : withSpring(1, { damping: 20, stiffness: 220 });
+            }}
+            disabled={phase !== "initial"}
+            className="h-[184px] w-[184px] items-center justify-center rounded-full bg-charcoal"
+            accessibilityRole="button"
+            accessibilityLabel={
+              phase === "result"
+                ? "Ukázkový check-in dokončen"
+                : phase === "loading"
+                  ? "Ukázkový check-in se zpracovává"
+                  : "Spustit ukázkový check-in nanečisto"
+            }
+            accessibilityHint="Nic neodesílá na server ani strážcům"
+            accessibilityState={{ disabled: phase !== "initial", busy: phase === "loading" }}
+            testID="onboarding-demo-checkin-button"
+          >
+            {phase === "loading" ? (
+              <ActivityIndicator size="large" color={COLORS.cream.default} />
+            ) : phase === "result" ? (
+              <Check size={60} color={COLORS.cream.default} weight="bold" />
+            ) : (
+              <>
+                <Text className="font-display text-[28px] text-cream">Jsem OK</Text>
+                <Text className="mt-2 font-body text-sm text-white/70">ukázka nanečisto</Text>
+              </>
+            )}
+          </AnimatedPressable>
+
+          <Animated.View
+            entering={FadeInDown.delay(120).duration(360).reduceMotion(ReduceMotion.System)}
+            className="mt-9 max-w-[320px]"
+          >
+            <Text className="text-center font-body text-[15px] leading-6 text-muted">
+              Push je pouze jeden z pokusů o upozornění. Jeho doručení nelze garantovat.
+            </Text>
+          </Animated.View>
+        </View>
+      </OnboardingFrame>
     </View>
   );
 }

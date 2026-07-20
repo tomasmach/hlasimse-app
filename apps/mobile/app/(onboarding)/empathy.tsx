@@ -1,23 +1,40 @@
-import { useEffect, useState } from "react";
-import { View, Text } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
 import { router } from "expo-router";
-import Animated, { FadeIn, FadeInDown } from "react-native-reanimated";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Animated, {
+  FadeIn,
+  FadeInDown,
+  ReduceMotion,
+  useReducedMotion,
+} from "react-native-reanimated";
 import { HeartHalf } from "phosphor-react-native";
-import { useOnboardingStore } from "@/stores/onboarding";
+import { AuthButton } from "@/components/auth";
+import { OnboardingFrame } from "@/components/onboarding/OnboardingFrame";
+import { useOnboardingPersona } from "@/components/onboarding/useOnboardingPersona";
 import { EMPATHY_CONTENT } from "@/constants/onboarding";
-import { COLORS, SHADOWS } from "@/constants/design";
-import { GradientButton } from "@/components/ui";
-import { ProgressDots } from "@/components/onboarding/ProgressDots";
+import { COLORS } from "@/constants/design";
 
-function AnimatedWords({ text, delayMs = 30 }: { text: string; delayMs?: number }) {
+function EditorialQuote({ text }: { text: string }) {
+  const reduceMotion = useReducedMotion();
   const words = text.split(" ");
+  if (reduceMotion) {
+    return <Text className="font-body text-[20px] leading-8 text-charcoal">{text}</Text>;
+  }
   return (
-    <View className="flex-row flex-wrap justify-center">
-      {words.map((word, i) => (
+    <View
+      className="flex-row flex-wrap"
+      accessible
+      accessibilityLabel={text}
+      testID="onboarding-empathy-copy"
+    >
+      {words.map((word, index) => (
         <Animated.Text
-          key={i}
-          entering={FadeIn.delay(300 + i * delayMs).duration(300)}
-          className="text-2xl text-charcoal-light leading-9 font-lora"
+          key={`${word}-${index}`}
+          entering={FadeIn.delay(180 + index * 24)
+            .duration(240)
+            .reduceMotion(ReduceMotion.System)}
+          className="font-body text-[20px] leading-8 text-charcoal"
+          importantForAccessibility="no-hide-descendants"
         >
           {word}{" "}
         </Animated.Text>
@@ -27,58 +44,42 @@ function AnimatedWords({ text, delayMs = 30 }: { text: string; delayMs?: number 
 }
 
 export default function EmpathyScreen() {
-  const { selectedPersona, loadPersona } = useOnboardingStore();
-  const [ready, setReady] = useState(false);
+  const { selectedPersona, loading } = useOnboardingPersona();
 
-  useEffect(() => {
-    const init = async () => {
-      if (!selectedPersona) await loadPersona();
-      setReady(true);
-    };
-    init();
-  }, [selectedPersona, loadPersona]);
-
-  if (!ready || !selectedPersona) return null;
-
-  const content = EMPATHY_CONTENT[selectedPersona];
+  if (loading || !selectedPersona) {
+    return (
+      <SafeAreaView className="flex-1 items-center justify-center bg-cream" testID="onboarding-empathy-loading">
+        <ActivityIndicator color={COLORS.charcoal.default} />
+      </SafeAreaView>
+    );
+  }
 
   return (
-    <View className="flex-1 bg-cream">
-      <ProgressDots currentStep={1} />
-
-      <View className="flex-1 px-8 justify-center items-center">
-        <Animated.View entering={FadeInDown.duration(600)} className="mb-8">
-          <Text className="text-3xl font-semibold text-charcoal text-center font-lora-semibold">
-            Víme, jaké to je
-          </Text>
-        </Animated.View>
-
-        <Animated.View
-          entering={FadeInDown.delay(200).duration(600)}
-          style={[{ borderColor: COLORS.peach.light }, SHADOWS.glow]}
-          className="bg-white mx-4 rounded-[32px] border"
-        >
-          <View className="px-8 py-10">
-            <View className="mb-8">
-              <AnimatedWords text={content} />
-            </View>
-
-            <Animated.View
-              entering={FadeIn.delay(content.split(" ").length * 30 + 800).duration(500)}
-              className="items-center"
-            >
-              <HeartHalf size={96} color={COLORS.coral.default} weight="regular" />
-            </Animated.View>
-          </View>
-        </Animated.View>
-      </View>
-
-      <View className="px-8 pb-12">
-        <GradientButton
-          label="Jak to funguje?"
+    <OnboardingFrame
+      step={1}
+      testID="onboarding-empathy-screen"
+      title="Méně nejistoty. Více jasných signálů."
+      intro="Rozumíme situaci, ale neslibujeme dohled, který aplikace nemůže zajistit."
+      footer={
+        <AuthButton
+          label="Ukázat, jak to funguje"
           onPress={() => router.push("/(onboarding)/solution")}
+          testID="onboarding-empathy-continue-button"
         />
+      }
+    >
+      <Animated.View
+        entering={FadeInDown.delay(100).duration(420).reduceMotion(ReduceMotion.System)}
+        className="border-l-2 border-charcoal py-3 pl-6 pr-2"
+      >
+        <EditorialQuote text={EMPATHY_CONTENT[selectedPersona]} />
+      </Animated.View>
+      <View className="mt-10 flex-row items-start gap-4 border-t border-sand pt-6">
+        <HeartHalf size={29} color={COLORS.charcoal.default} weight="regular" />
+        <Text className="flex-1 font-body text-[15px] leading-6 text-muted">
+          Hlásím se je doplňkový komunikační nástroj. V bezprostředním ohrožení volejte 112 nebo 155.
+        </Text>
       </View>
-    </View>
+    </OnboardingFrame>
   );
 }

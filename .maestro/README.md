@@ -11,6 +11,6 @@ the API and syncs it, requests an export, and deletes the owner fixture last.
 The flows deliberately avoid claiming push delivery. iOS Simulator and Android Emulator do not
 prove the production APNs/FCM path or background delivery behavior on physical devices.
 
-Selectors should prefer stable React Native `testID` values. Czech text selectors are currently
-limited to native confirmation dialogs, share-sheet behavior, and onboarding screens that do not
-yet expose stable IDs.
+Selectors prefer stable React Native `testID` values. Czech text selectors are limited to native
+confirmation dialogs, share-sheet behavior, and assertions whose wording is itself part of the
+safety contract.

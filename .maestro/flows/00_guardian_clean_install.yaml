@@ -7,25 +7,42 @@ tags:
 - launchApp:
     clearState: true
 - extendedWaitUntil:
-    visible: "Co vás přivedlo?"
+    visible:
+      id: "onboarding-persona-screen"
     timeout: 30000
-- tapOn: "Bydlím sám/sama"
+- tapOn:
+    id: "onboarding-persona-alone"
+- tapOn:
+    id: "onboarding-persona-continue-button"
 - extendedWaitUntil:
-    visible: "Víme, jaké to je"
+    visible:
+      id: "onboarding-empathy-screen"
     timeout: 10000
-- tapOn: "Jak to funguje?"
-- assertVisible: "Takhle to řešíme"
-- tapOn: "Chci to vidět"
+- tapOn:
+    id: "onboarding-empathy-continue-button"
 - extendedWaitUntil:
-    visible: "Zkuste to. Klepněte."
+    visible:
+      id: "onboarding-solution-screen"
     timeout: 10000
-- tapOn: "Odeslat hlášení"
+- tapOn:
+    id: "onboarding-solution-continue-button"
 - extendedWaitUntil:
-    visible: "Chci začít"
+    visible:
+      id: "onboarding-demo-screen"
     timeout: 10000
-- tapOn: "Chci začít"
-- assertVisible: "Pojďme na to"
-- tapOn: "Přihlásit se"
+- tapOn:
+    id: "onboarding-demo-checkin-button"
+- extendedWaitUntil:
+    visible: "Nanečisto hotovo."
+    timeout: 10000
+- tapOn:
+    id: "onboarding-demo-continue-button"
+- extendedWaitUntil:
+    visible:
+      id: "onboarding-register-screen"
+    timeout: 10000
+- tapOn:
+    id: "onboarding-register-login-button"
 - extendedWaitUntil:
     visible:
       id: "login-screen"

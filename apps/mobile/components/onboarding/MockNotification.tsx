@@ -1,79 +1,76 @@
-import { View, Text } from "react-native";
+import { useEffect } from "react";
+import { Text, View } from "react-native";
+import { BlurView } from "expo-blur";
 import Animated, {
+  Easing,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
-  withTiming,
   withDelay,
   withSequence,
-  Easing,
+  withTiming,
 } from "react-native-reanimated";
-import { useEffect } from "react";
-import { BlurView } from "expo-blur";
 import { COLORS, SHADOWS } from "@/constants/design";
 
-interface MockNotificationProps {
+type MockNotificationProps = {
   message: string;
   visible: boolean;
   onHidden?: () => void;
-}
+};
 
-const SHOW_DURATION = 2500;
+const SHOW_DURATION_MS = 2800;
 
-export function MockNotification({
-  message,
-  visible,
-  onHidden,
-}: MockNotificationProps) {
-  const translateY = useSharedValue(-120);
+export function MockNotification({ message, visible, onHidden }: MockNotificationProps) {
+  const reduceMotion = useReducedMotion();
+  const translateY = useSharedValue(-140);
 
   useEffect(() => {
-    if (visible) {
-      translateY.value = withSequence(
-        withTiming(0, { duration: 500, easing: Easing.out(Easing.cubic) }),
-        withDelay(
-          SHOW_DURATION,
-          withTiming(-120, {
-            duration: 400,
-            easing: Easing.in(Easing.cubic),
-          })
-        )
-      );
-      // Call onHidden after full animation
-      if (onHidden) {
-        const timeout = setTimeout(onHidden, 500 + SHOW_DURATION + 400);
-        return () => clearTimeout(timeout);
-      }
+    if (!visible) {
+      translateY.value = -140;
+      return;
     }
-  }, [visible, translateY, onHidden]);
+    if (reduceMotion) {
+      translateY.value = 0;
+    } else {
+      translateY.value = withSequence(
+        withTiming(0, { duration: 380, easing: Easing.out(Easing.cubic) }),
+        withDelay(
+          SHOW_DURATION_MS,
+          withTiming(-140, { duration: 320, easing: Easing.in(Easing.cubic) }),
+        ),
+      );
+    }
+    if (!onHidden) return;
+    const timeout = setTimeout(onHidden, reduceMotion ? SHOW_DURATION_MS : SHOW_DURATION_MS + 700);
+    return () => clearTimeout(timeout);
+  }, [onHidden, reduceMotion, translateY, visible]);
 
-  const animatedStyle = useAnimatedStyle(() => ({
+  const style = useAnimatedStyle(() => ({
     transform: [{ translateY: translateY.value }],
   }));
 
   if (!visible) return null;
-
   return (
     <Animated.View
-      className="absolute top-[50px] left-4 right-4 z-[100] rounded-2xl overflow-hidden border border-white"
-      style={[animatedStyle, SHADOWS.glowLarge]}
+      className="absolute left-4 right-4 top-[72px] z-[100] overflow-hidden rounded-[22px] border border-white"
+      style={[style, SHADOWS.floating]}
+      accessible
+      accessibilityLabel={`Ukázka upozornění. ${message}`}
+      accessibilityLiveRegion="polite"
+      testID="onboarding-demo-notification"
     >
-      <BlurView intensity={95} tint="light" className="rounded-2xl overflow-hidden">
-        <View style={{ backgroundColor: "rgba(255, 255, 255, 0.4)" }}>
-          <View className="flex-row items-center px-4 py-3">
-            <View
-              className="w-9 h-9 rounded-lg items-center justify-center"
-              style={{ backgroundColor: COLORS.coral.default }}
-            >
-              <Text className="text-white text-xs font-bold font-lora-bold">H</Text>
-            </View>
-            <View className="flex-1 ml-3">
-              <Text className="text-xs text-muted font-medium uppercase tracking-wider font-lora-medium">
-                Hlásím se
-              </Text>
-              <Text className="text-sm text-charcoal mt-0.5 font-lora">{message}</Text>
-            </View>
-            <Text className="text-xs text-muted font-lora">teď</Text>
+      <BlurView intensity={90} tint="light">
+        <View className="flex-row items-center bg-white/80 px-4 py-3">
+          <View className="h-10 w-10 items-center justify-center rounded-[12px] bg-charcoal">
+            <Text className="font-body-semibold text-sm text-cream">HS</Text>
           </View>
+          <View className="ml-3 flex-1">
+            <Text className="font-body-semibold text-xs tracking-[1px] text-[#9E382E]">
+              UKÁZKA UPOZORNĚNÍ
+            </Text>
+            <Text className="mt-1 font-body text-sm leading-5 text-charcoal">{message}</Text>
+          </View>
+          <Text className="font-body text-xs text-muted">teď</Text>
         </View>
       </BlurView>
     </Animated.View>

@@ -1,56 +1,68 @@
 import { useEffect, useState } from "react";
-import { ScrollView, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Pressable, Text, View } from "react-native";
 import { router, useLocalSearchParams } from "expo-router";
 import Animated, { FadeInDown, ReduceMotion } from "react-native-reanimated";
 import { CheckCircle, EnvelopeSimple, WarningCircle } from "phosphor-react-native";
 import { confirmEmailVerification, resendEmailVerification } from "@/lib/auth";
-import { GradientButton } from "@/components/ui";
-import { COLORS, SPACING } from "@/constants/design";
+import { AuthButton, AuthScreen } from "@/components/auth";
+import { COLORS } from "@/constants/design";
 
 type ScreenState = "sent" | "confirming" | "verified" | "expired" | "invalid";
 
 export default function VerifyEmailScreen() {
   const params = useLocalSearchParams<{ email?: string; token?: string }>();
-  const email = typeof params.email === "string" ? params.email : "";
+  const email = typeof params.email === "string" ? params.email.trim() : "";
   const token = typeof params.token === "string" ? params.token : "";
   const [state, setState] = useState<ScreenState>(token ? "confirming" : "sent");
   const [resending, setResending] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [message, setMessage] = useState<{ tone: "info" | "error"; text: string } | null>(null);
 
   useEffect(() => {
-    if (!token) return;
-    let mounted = true;
+    if (!token) {
+      setState("sent");
+      return;
+    }
+    let active = true;
+    setState("confirming");
+    setMessage(null);
     confirmEmailVerification(token)
       .then((result) => {
-        if (!mounted) return;
+        if (!active) return;
         setState(
           result.status === "verified" || result.status === "already_verified"
             ? "verified"
             : result.status,
         );
       })
-      .catch((error) => {
-        if (!mounted) return;
-        const text = error instanceof Error ? error.message.toLowerCase() : "";
-        setState(text.includes("expired") || text.includes("vypršel") ? "expired" : "invalid");
+      .catch((cause) => {
+        if (!active) return;
+        const copy = cause instanceof Error ? cause.message.toLowerCase() : "";
+        setState(copy.includes("expired") || copy.includes("vypršel") ? "expired" : "invalid");
       });
     return () => {
-      mounted = false;
+      active = false;
     };
   }, [token]);
 
   const resend = async () => {
     if (!email) {
-      router.replace("/(auth)/login");
+      setMessage({
+        tone: "error",
+        text: "Pro nový odkaz nejdřív vyplňte e-mail na přihlašovací obrazovce.",
+      });
       return;
     }
     setResending(true);
     setMessage(null);
     try {
       const result = await resendEmailVerification(email);
-      setMessage(result.detail);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Odkaz se nepodařilo odeslat.");
+      setMessage({ tone: "info", text: result.detail });
+      setState("sent");
+    } catch {
+      setMessage({
+        tone: "error",
+        text: "Požadavek se nepodařilo odeslat. Zkontrolujte připojení a zkuste to znovu.",
+      });
     } finally {
       setResending(false);
     }
@@ -60,63 +72,80 @@ export default function VerifyEmailScreen() {
   const failed = state === "expired" || state === "invalid";
   const title = verified
     ? "E-mail je ověřený."
+    : state === "expired"
+      ? "Platnost odkazu skončila."
+      : state === "invalid"
+        ? "Odkaz nelze použít."
+        : state === "confirming"
+          ? "Ověřujeme jednorázový odkaz."
+          : "Teď zkontrolujte e-mail.";
+  const intro = verified
+    ? "Účet je připravený. Přihlášení provedete samostatně; heslo se z odkazu nepřenáší."
     : failed
-      ? state === "expired"
-        ? "Odkaz vypršel."
-        : "Odkaz není platný."
+      ? "Odkaz mohl vypršet nebo už být použitý. Můžete si vyžádat nový."
       : state === "confirming"
-        ? "Ověřujeme odkaz."
-        : "Teď zkontrolujte e-mail.";
-  const body = verified
-    ? "Můžete se přihlásit a dokončit bezpečné nastavení účtu."
-    : failed
-      ? "Nechte si poslat nový jednorázový odkaz."
-      : "Otevřete jednorázový odkaz, který jsme poslali na zadanou adresu. Platí 24 hodin.";
+        ? "Počkejte, než server ověří platnost odkazu."
+        : "Otevřete jednorázový odkaz z e-mailu. Platí 24 hodin; samotná registrace vás nepřihlásí.";
 
   return (
-    <ScrollView
-      className="flex-1 bg-cream"
-      contentContainerStyle={{
-        flexGrow: 1,
-        justifyContent: "center",
-        paddingHorizontal: SPACING.page,
-        paddingVertical: 48,
-      }}
+    <AuthScreen
       testID="email-verification-screen"
+      eyebrow="Ověření účtu"
+      title={title}
+      intro={intro}
     >
       <Animated.View
-        entering={FadeInDown.duration(420).reduceMotion(ReduceMotion.System)}
-        className="rounded-[32px] border border-sand bg-white p-7"
+        entering={FadeInDown.duration(320).reduceMotion(ReduceMotion.System)}
+        className="rounded-[28px] border border-sand bg-white p-6"
       >
-        <View className="mb-7 h-16 w-16 items-center justify-center rounded-full bg-coral/10">
+        <View className="mb-6 h-14 w-14 items-center justify-center rounded-full bg-cream-dark">
           {verified ? (
-            <CheckCircle size={34} color={COLORS.success} weight="fill" />
+            <CheckCircle size={30} color="#245E3C" weight="fill" />
           ) : failed ? (
-            <WarningCircle size={34} color={COLORS.error} weight="fill" />
+            <WarningCircle size={30} color="#9E382E" weight="fill" />
+          ) : state === "confirming" ? (
+            <ActivityIndicator color={COLORS.charcoal.default} />
           ) : (
-            <EnvelopeSimple size={34} color={COLORS.coral.default} weight="bold" />
+            <EnvelopeSimple size={30} color={COLORS.charcoal.default} weight="regular" />
           )}
         </View>
         <Text
-          className="font-display text-[38px] leading-[42px] tracking-[-1.1px] text-charcoal"
+          className="font-display text-[24px] leading-8 text-charcoal"
           accessibilityRole="header"
           testID="email-verification-title"
         >
-          {title}
+          {verified ? "Ověření je hotové" : failed ? "Potřebujete nový odkaz" : "Odkaz je jednorázový"}
         </Text>
-        <Text className="mt-4 font-body text-[17px] leading-6 text-muted">{body}</Text>
-        {message && (
+        <Text className="mt-3 font-body text-[16px] leading-6 text-muted">
+          {verified
+            ? "Pokračujte na přihlášení a zadejte své údaje."
+            : "Nový požadavek má stejnou odpověď pro existující i neznámou adresu, aby neprozrazoval účty."}
+        </Text>
+
+        {message ? (
           <View
-            className="mt-6 rounded-2xl border border-sand bg-cream p-4"
-            accessibilityRole="alert"
+            className={`mt-6 rounded-[18px] border p-4 ${
+              message.tone === "error"
+                ? "border-[#C33D2F] bg-white"
+                : "border-sand bg-cream"
+            }`}
+            accessibilityRole={message.tone === "error" ? "alert" : undefined}
+            accessibilityLiveRegion={message.tone === "error" ? "assertive" : "polite"}
             testID="email-verification-message"
           >
-            <Text className="font-body text-[15px] leading-5 text-charcoal">{message}</Text>
+            <Text
+              className={`font-body text-[15px] leading-5 ${
+                message.tone === "error" ? "text-[#9E382E]" : "text-charcoal"
+              }`}
+            >
+              {message.text}
+            </Text>
           </View>
-        )}
-        <View className="mt-8 gap-4">
+        ) : null}
+
+        <View className="mt-7 gap-3">
           {verified ? (
-            <GradientButton
+            <AuthButton
               label="Přihlásit se"
               onPress={() =>
                 router.replace({ pathname: "/(auth)/login", params: email ? { email } : {} })
@@ -124,31 +153,31 @@ export default function VerifyEmailScreen() {
               testID="email-verification-login-button"
             />
           ) : (
-            <GradientButton
-              label={failed ? "Poslat nový odkaz" : "Poslat odkaz znovu"}
-              onPress={resend}
+            <AuthButton
+              label={failed ? "Vyžádat nový odkaz" : "Poslat odkaz znovu"}
+              onPress={() => void resend()}
               loading={resending || state === "confirming"}
-              disabled={resending || state === "confirming"}
+              disabled={state === "confirming"}
               testID="email-verification-resend-button"
             />
           )}
-          {!verified && !failed && state !== "confirming" && (
-            <TouchableOpacity
+          {!verified && state !== "confirming" ? (
+            <Pressable
               onPress={() =>
                 router.replace({ pathname: "/(auth)/login", params: email ? { email } : {} })
               }
-              className="min-h-12 items-center justify-center"
+              className="min-h-[48px] items-center justify-center"
               accessibilityRole="button"
-              accessibilityLabel="E-mail mám ověřený, přihlásit se"
+              accessibilityLabel="Přejít na přihlášení"
               testID="email-verification-confirmed-button"
             >
-              <Text className="font-body-semibold text-[16px] text-coral">
-                E-mail mám ověřený
+              <Text className="font-body-semibold text-[15px] text-[#9E382E]">
+                Přejít na přihlášení
               </Text>
-            </TouchableOpacity>
-          )}
+            </Pressable>
+          ) : null}
         </View>
       </Animated.View>
-    </ScrollView>
+    </AuthScreen>
   );
 }

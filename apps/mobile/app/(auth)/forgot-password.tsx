@@ -1,132 +1,125 @@
-import { useState } from "react";
-import {
-  View,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  ActivityIndicator,
-} from "react-native";
+import { useRef, useState } from "react";
+import { Pressable, Text, TextInput, View } from "react-native";
 import { Link } from "expo-router";
+import Animated, { FadeInDown, ReduceMotion } from "react-native-reanimated";
+import { EnvelopeSimple } from "phosphor-react-native";
 import { apiRequest } from "@/lib/api";
+import { AuthButton, AuthInput, AuthScreen } from "@/components/auth";
 import { COLORS } from "@/constants/design";
 
 export default function ForgotPasswordScreen() {
+  const emailRef = useRef<TextInput>(null);
   const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [requested, setRequested] = useState(false);
 
   const handleResetPassword = async () => {
     if (!email.trim()) {
-      setError("Vyplňte prosím e-mail.");
+      setError("Vyplňte e-mail.");
+      emailRef.current?.focus();
       return;
     }
-
     setLoading(true);
     setError(null);
-
     try {
       await apiRequest("/api/v1/auth/password-reset/", {
         method: "POST",
         auth: false,
         body: { email: email.trim().toLowerCase() },
       });
-      setSuccess(true);
+      setRequested(true);
     } catch {
-      setError("Odeslání odkazu se nezdařilo. Zkuste to prosím znovu.");
+      setError("Požadavek se nepodařilo odeslat. Zkontrolujte připojení a zkuste to znovu.");
     } finally {
       setLoading(false);
     }
   };
 
-  if (success) {
-    return (
-      <View className="flex-1 bg-cream justify-center px-6">
-        <View className="bg-success/10 border border-success rounded-xl p-6 items-center">
-          <Text className="text-charcoal text-xl font-bold mb-3 font-lora">
-            E-mail odeslán!
-          </Text>
-          <Text className="text-muted text-center mb-4 font-lora">
-            Zkontrolujte svou e-mailovou schránku. Odkaz pro obnovu hesla vám
-            byl odeslán na {email}.
+  return (
+    <AuthScreen
+      testID="forgot-password-screen"
+      eyebrow="Obnova přístupu"
+      title={requested ? "Teď zkontrolujte e-mail." : "Nastavte si nové heslo."}
+      intro={
+        requested
+          ? "Pokud účet pro zadanou adresu existuje, poslali jsme pokyny k bezpečné změně hesla."
+          : "Zadejte adresu účtu. Kvůli ochraně soukromí neprozradíme, jestli je u nás registrovaná."
+      }
+    >
+      {requested ? (
+        <Animated.View
+          entering={FadeInDown.duration(260).reduceMotion(ReduceMotion.System)}
+          className="rounded-[28px] border border-sand bg-white p-6"
+          accessibilityLiveRegion="polite"
+          testID="forgot-password-success"
+        >
+          <View className="mb-5 h-14 w-14 items-center justify-center rounded-full bg-cream-dark">
+            <EnvelopeSimple size={28} color={COLORS.charcoal.default} weight="regular" />
+          </View>
+          <Text className="font-display text-[25px] leading-8 text-charcoal">Další krok je v e-mailu</Text>
+          <Text className="mt-3 font-body text-[16px] leading-6 text-muted">
+            Odkaz použijte pouze na zařízení, kterému důvěřujete. Když zpráva nepřijde, zkontrolujte spam nebo požadavek zopakujte později.
           </Text>
           <Link href="/(auth)/login" asChild>
-            <TouchableOpacity className="bg-coral rounded-xl py-3 px-6">
-              <Text className="text-white font-lora-semibold">
-                Zpět na přihlášení
-              </Text>
-            </TouchableOpacity>
+            <Pressable
+              className="mt-6 min-h-[52px] items-center justify-center rounded-[18px] bg-charcoal px-5"
+              accessibilityRole="link"
+              testID="forgot-password-login-link"
+            >
+              <Text className="font-body-semibold text-[16px] text-cream">Zpět na přihlášení</Text>
+            </Pressable>
           </Link>
-        </View>
-      </View>
-    );
-  }
-
-  return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="flex-1 bg-cream"
-    >
-      <ScrollView
-        contentContainerClassName="flex-grow justify-center px-6 py-12"
-        keyboardShouldPersistTaps="handled"
-      >
-        <View className="items-center mb-12">
-          <Text className="text-4xl font-bold text-charcoal font-lora">
-            Obnova hesla
-          </Text>
-          <Text className="text-muted mt-2 text-center font-lora">
-            Zadejte svůj e-mail a my vám pošleme odkaz pro obnovu hesla
-          </Text>
-        </View>
-
-        {error && (
-          <View className="bg-coral/10 border border-coral rounded-xl p-3 mb-6">
-            <Text className="text-coral text-center font-lora">{error}</Text>
-          </View>
-        )}
-
-        <View className="gap-4 mb-6">
-          <TextInput
-            className="bg-white border border-sand rounded-xl px-4 py-3 text-charcoal"
-            placeholder="E-mail"
-            placeholderTextColor={COLORS.muted}
+        </Animated.View>
+      ) : (
+        <>
+          {error && error !== "Vyplňte e-mail." ? (
+            <View
+              className="mb-6 rounded-[18px] border border-[#C33D2F] bg-white p-4"
+              accessibilityRole="alert"
+              accessibilityLiveRegion="assertive"
+              testID="forgot-password-error"
+            >
+              <Text className="font-body text-[15px] leading-5 text-[#9E382E]">{error}</Text>
+            </View>
+          ) : null}
+          <AuthInput
+            ref={emailRef}
+            label="E-mail"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(value) => {
+              setEmail(value);
+              if (error) setError(null);
+            }}
             keyboardType="email-address"
             autoCapitalize="none"
+            autoCorrect={false}
             autoComplete="email"
+            textContentType="emailAddress"
+            returnKeyType="send"
+            onSubmitEditing={() => void handleResetPassword()}
             editable={!loading}
+            error={!email.trim() && error === "Vyplňte e-mail." ? error : undefined}
+            testID="forgot-password-email-input"
           />
-        </View>
-
-        <TouchableOpacity
-          className="bg-coral rounded-xl py-4 items-center mb-8"
-          onPress={handleResetPassword}
-          disabled={loading}
-          activeOpacity={0.8}
-        >
-          {loading ? (
-            <ActivityIndicator color={COLORS.white} />
-          ) : (
-            <Text className="text-white font-lora-semibold text-lg">
-              Odeslat odkaz
-            </Text>
-          )}
-        </TouchableOpacity>
-
-        <View className="flex-row justify-center">
-          <Text className="text-muted font-lora">Vzpomněli jste si? </Text>
+          <AuthButton
+            label="Poslat pokyny"
+            onPress={() => void handleResetPassword()}
+            loading={loading}
+            testID="forgot-password-submit-button"
+          />
           <Link href="/(auth)/login" asChild>
-            <TouchableOpacity disabled={loading}>
-              <Text className="text-coral font-lora-semibold">Přihlásit se</Text>
-            </TouchableOpacity>
+            <Pressable
+              disabled={loading}
+              className="mt-6 min-h-[48px] items-center justify-center"
+              accessibilityRole="link"
+              testID="forgot-password-back-link"
+            >
+              <Text className="font-body-semibold text-[15px] text-[#9E382E]">Zpět na přihlášení</Text>
+            </Pressable>
           </Link>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </>
+      )}
+    </AuthScreen>
   );
 }

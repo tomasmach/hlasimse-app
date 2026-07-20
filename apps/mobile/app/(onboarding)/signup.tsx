@@ -1,160 +1,221 @@
-import { useState, useRef } from "react";
+import { useRef, useState } from "react";
 import {
-  View,
-  Text,
-  TextInput,
   KeyboardAvoidingView,
   Platform,
+  Pressable,
   ScrollView,
-  TouchableOpacity,
+  Text,
+  TextInput,
+  View,
 } from "react-native";
 import { router } from "expo-router";
-import Animated, { FadeInDown } from "react-native-reanimated";
+import { SafeAreaView } from "react-native-safe-area-context";
+import Animated, { FadeInDown, ReduceMotion } from "react-native-reanimated";
+import { AuthButton, AuthInput } from "@/components/auth";
+import { ProgressDots } from "@/components/onboarding/ProgressDots";
 import { register } from "@/lib/auth";
 import { useOnboardingStore } from "@/stores/onboarding";
-import { AnimatedInput } from "@/components/ui/AnimatedInput";
-import { GradientButton } from "@/components/ui";
-import { ProgressDots } from "@/components/onboarding/ProgressDots";
+
+type Field = "name" | "email" | "password" | "confirmation";
 
 export default function SignUpScreen() {
+  const completeOnboarding = useOnboardingStore((state) => state.completeOnboarding);
+  const refs = {
+    name: useRef<TextInput>(null),
+    email: useRef<TextInput>(null),
+    password: useRef<TextInput>(null),
+    confirmation: useRef<TextInput>(null),
+  };
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const { completeOnboarding } = useOnboardingStore();
+  const [error, setError] = useState<{ field?: Field; message: string } | null>(null);
 
-  const emailRef = useRef<TextInput>(null);
-  const passwordRef = useRef<TextInput>(null);
+  const validate = (): { field: Field; message: string } | null => {
+    if (!name.trim()) return { field: "name", message: "Vyplňte své jméno." };
+    if (!email.trim()) return { field: "email", message: "Vyplňte e-mail." };
+    if (!password) return { field: "password", message: "Vyplňte heslo." };
+    if (password.length < 10) {
+      return { field: "password", message: "Heslo musí mít alespoň 10 znaků." };
+    }
+    if (password !== confirmation) {
+      return { field: "confirmation", message: "Zadaná hesla se neshodují." };
+    }
+    return null;
+  };
 
   const handleSignUp = async () => {
-    // Validation
-    if (!name.trim()) {
-      setError("Vyplňte prosím své jméno.");
+    const invalid = validate();
+    if (invalid) {
+      setError(invalid);
+      refs[invalid.field].current?.focus();
       return;
     }
-    if (!email.trim()) {
-      setError("Vyplňte prosím e-mail.");
-      return;
-    }
-    if (password.length < 10) {
-      setError("Heslo musí mít alespoň 10 znaků.");
-      return;
-    }
-
     setLoading(true);
     setError(null);
-
     try {
       await register({ email, password, firstName: name });
       await completeOnboarding();
       router.replace({ pathname: "/(auth)/verify-email", params: { email: email.trim() } });
-    } catch (err) {
-      console.error("Registration error:", err);
-      setError(err instanceof Error ? err.message : "Registrace se nezdařila.");
+    } catch (cause) {
+      setError({
+        message:
+          cause instanceof Error
+            ? cause.message
+            : "Registraci se nepodařilo dokončit. Zkuste to znovu.",
+      });
     } finally {
       setLoading(false);
     }
   };
 
+  const openLogin = async () => {
+    if (loading) return;
+    setLoading(true);
+    await completeOnboarding();
+    router.replace("/(auth)/login");
+    setLoading(false);
+  };
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="flex-1 bg-cream"
-    >
-      <ProgressDots currentStep={4} />
-
-      <ScrollView
-        contentContainerClassName="flex-grow justify-center px-8 pb-12"
-        keyboardShouldPersistTaps="handled"
+    <SafeAreaView className="flex-1 bg-cream" testID="onboarding-register-screen">
+      <KeyboardAvoidingView
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
+        className="flex-1"
       >
-        <Animated.View entering={FadeInDown.duration(500)}>
-          <Text className="text-4xl font-semibold text-charcoal text-center mb-3 font-lora-semibold">
-            Pojďme na to
-          </Text>
-          <Text className="text-lg text-muted text-center mb-10 font-lora">
-            Vytvoření účtu zabere minutu
-          </Text>
-        </Animated.View>
-
-        {error && (
+        <ProgressDots currentStep={4} />
+        <ScrollView
+          contentContainerClassName="flex-grow px-6 pb-12 pt-4"
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode={Platform.OS === "ios" ? "interactive" : "on-drag"}
+          automaticallyAdjustKeyboardInsets
+          showsVerticalScrollIndicator={false}
+        >
           <Animated.View
-            entering={FadeInDown.duration(300)}
-            className="bg-coral/10 border border-coral rounded-2xl p-3 mb-6"
+            entering={FadeInDown.duration(420).reduceMotion(ReduceMotion.System)}
+            className="mb-9"
           >
-            <Text className="text-coral text-center text-sm font-lora">{error}</Text>
+            <Text className="font-body-semibold text-sm tracking-[1.4px] text-[#9E382E]">
+              Poslední krok
+            </Text>
+            <Text
+              className="mt-3 font-display text-[39px] leading-[43px] tracking-[-1.2px] text-charcoal"
+              accessibilityRole="header"
+            >
+              Vytvořte si ověřený účet zdarma.
+            </Text>
+            <Text className="mt-4 font-body text-[17px] leading-6 text-muted">
+              Po registraci otevřete jednorázový odkaz z e-mailu. Automaticky vás nepřihlásíme.
+            </Text>
           </Animated.View>
-        )}
 
-        <View className="mb-8">
-          <AnimatedInput
+          {error && !error.field ? (
+            <View
+              className="mb-6 rounded-[18px] border border-[#C33D2F] bg-white p-4"
+              accessibilityRole="alert"
+              accessibilityLiveRegion="assertive"
+              testID="onboarding-register-error"
+            >
+              <Text className="font-body text-[15px] leading-5 text-[#9E382E]">{error.message}</Text>
+            </View>
+          ) : null}
+
+          <AuthInput
+            ref={refs.name}
             label="Jméno"
             value={name}
-            onChangeText={setName}
+            onChangeText={(value) => {
+              setName(value);
+              if (error) setError(null);
+            }}
             autoCapitalize="words"
             autoComplete="name"
             textContentType="name"
             returnKeyType="next"
-            onSubmitEditing={() => emailRef.current?.focus()}
+            onSubmitEditing={() => refs.email.current?.focus()}
             editable={!loading}
+            error={error?.field === "name" ? error.message : undefined}
             testID="onboarding-register-name-input"
-            accessibilityLabel="Jméno"
           />
-
-          <AnimatedInput
-            ref={emailRef}
+          <AuthInput
+            ref={refs.email}
             label="E-mail"
             value={email}
-            onChangeText={setEmail}
+            onChangeText={(value) => {
+              setEmail(value);
+              if (error) setError(null);
+            }}
             keyboardType="email-address"
             autoCapitalize="none"
+            autoCorrect={false}
             autoComplete="email"
             textContentType="emailAddress"
             returnKeyType="next"
-            onSubmitEditing={() => passwordRef.current?.focus()}
+            onSubmitEditing={() => refs.password.current?.focus()}
             editable={!loading}
+            error={error?.field === "email" ? error.message : undefined}
             testID="onboarding-register-email-input"
-            accessibilityLabel="E-mail"
           />
-
-          <AnimatedInput
-            ref={passwordRef}
-            label="Heslo (min. 10 znaků)"
+          <AuthInput
+            ref={refs.password}
+            label="Heslo, alespoň 10 znaků"
             value={password}
-            onChangeText={setPassword}
+            onChangeText={(value) => {
+              setPassword(value);
+              if (error) setError(null);
+            }}
             secureTextEntry
             autoComplete="new-password"
             textContentType="newPassword"
-            returnKeyType="done"
-            onSubmitEditing={handleSignUp}
+            returnKeyType="next"
+            onSubmitEditing={() => refs.confirmation.current?.focus()}
             editable={!loading}
+            error={error?.field === "password" ? error.message : undefined}
             testID="onboarding-register-password-input"
-            accessibilityLabel="Heslo"
           />
-        </View>
-
-        <GradientButton
-          label="Vytvořit účet"
-          onPress={handleSignUp}
-          loading={loading}
-          size="lg"
-          testID="onboarding-register-submit-button"
-          accessibilityLabel="Vytvořit účet"
-        />
-
-        <View className="flex-row justify-center mt-6">
-          <Text className="text-base text-muted font-lora">Už máte účet? </Text>
-          <TouchableOpacity
-            onPress={async () => {
-              await completeOnboarding();
-              router.replace("/(auth)/login");
+          <AuthInput
+            ref={refs.confirmation}
+            label="Heslo znovu"
+            value={confirmation}
+            onChangeText={(value) => {
+              setConfirmation(value);
+              if (error) setError(null);
             }}
-            disabled={loading}
-          >
-            <Text className="text-base text-coral font-semibold font-lora-semibold">Přihlásit se</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+            secureTextEntry
+            autoComplete="new-password"
+            textContentType="newPassword"
+            returnKeyType="go"
+            onSubmitEditing={() => void handleSignUp()}
+            editable={!loading}
+            error={error?.field === "confirmation" ? error.message : undefined}
+            testID="onboarding-register-confirm-password-input"
+          />
+
+          <Text className="mb-6 font-body text-sm leading-5 text-muted">
+            Všechny funkce jsou zdarma. Hlásím se není tísňová služba a doručení push nelze garantovat.
+          </Text>
+          <AuthButton
+            label="Vytvořit účet zdarma"
+            onPress={() => void handleSignUp()}
+            loading={loading}
+            testID="onboarding-register-submit-button"
+          />
+          <View className="mt-6 flex-row flex-wrap items-center justify-center">
+            <Text className="font-body text-[15px] text-muted">Už máte účet? </Text>
+            <Pressable
+              onPress={() => void openLogin()}
+              disabled={loading}
+              className="min-h-[48px] justify-center"
+              accessibilityRole="button"
+              testID="onboarding-register-login-button"
+            >
+              <Text className="font-body-semibold text-[15px] text-[#9E382E]">Přihlásit se</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }

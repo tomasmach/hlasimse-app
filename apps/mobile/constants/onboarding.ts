@@ -28,30 +28,30 @@ export const PERSONA_CARDS: PersonaCard[] = [
     id: "alone",
     icon: Person,
     title: "Bydlím sám/sama",
-    description: "Chci, aby o mně někdo věděl",
+    description: "Chci jednoduchý pravidelný check-in",
   },
   {
     id: "caregiver",
     icon: UsersThree,
     title: "Starám se o blízkého",
-    description: "Chci mít přehled o serverem potvrzených check-inech",
+    description: "Chci vidět potvrzené check-iny blízkého",
   },
   {
     id: "traveler",
     icon: Compass,
     title: "Cestuji sám/sama",
-    description: "Chci pojistku pro případ nouze",
+    description: "Chci dát blízkým další užitečný signál",
   },
 ];
 
 // Screen 2: Empathy messages
 export const EMPATHY_CONTENT: Record<Persona, string> = {
   alone:
-    "Když žijete sami, občas vás napadne: co kdyby se mi něco stalo a nikdo by nevěděl? Ten pocit znáte. A právě proto existujeme.",
+    "Když žijete sami, může být uklidňující mít jednoduchý způsob, jak se pravidelně ozvat. Bez každodenního vysvětlování a bez složitého ovládání.",
   caregiver:
-    "Máte svůj život, ale v hlavě pořád myšlenku: ozvala se maminka? Chcete mít přehled o potvrzených check-inech, aniž byste museli neustále volat.",
+    "Péče o blízkého neznamená, že mu musíte neustále volat. Serverem potvrzený check-in může být další domluvený signál, ne náhrada osobního kontaktu.",
   traveler:
-    "Milujete svobodu cestování, ale vaši blízcí se bojí. Nechcete se omezovat, ale chcete, aby věděli, že jste OK.",
+    "Na cestách se podmínky mění a připojení nemusí fungovat. Pravidelný check-in může blízkým přidat kontext, ale nenahrazuje plán cesty ani tísňovou komunikaci.",
 };
 
 // Screen 3: Solution timeline steps
@@ -65,60 +65,60 @@ export const SOLUTION_STEPS: Record<Persona, TimelineStep[]> = {
   alone: [
     {
       icon: Clock,
-      title: "Nastavíte si jak často se chcete hlásit",
-      description: "Jednou denně, dvakrát, jak potřebujete.",
+      title: "Nastavíte si interval",
+      description: "Od jedné hodiny do sedmi dní, vždy podle serverového času.",
     },
     {
       icon: HandTap,
-      title: "Jedním klepnutím řeknete: jsem OK",
-      description: "Zabere to dvě sekundy.",
+      title: "Odešlete check-in",
+      description: "Za potvrzený se počítá až po přijetí serverem.",
     },
     {
       icon: Bell,
-      title: "Když server nezaznamená check-in včas, vytvoří incident",
-      description: "Pokusí se upozornit strážce; doručení push nelze garantovat.",
+      title: "Po termínu vznikne incident",
+      description: "Server se pokusí upozornit strážce; doručení push nelze garantovat.",
     },
   ],
   caregiver: [
     {
       icon: UserPlus,
-      title: "Pozvete svého blízkého do appky",
-      description: "Stačí zadat email.",
+      title: "Vlastník profilu vás pozve",
+      description: "Pozvání přijmete pod ověřenou e-mailovou adresou.",
     },
     {
       icon: CheckCircle,
-      title: "Uvidíte serverem potvrzený check-in",
-      description: "Potvrzení znamená přijetí serverem, ne zdravotní dohled.",
+      title: "Uvidíte stav profilu",
+      description: "Potvrzení znamená přijetí check-inu serverem, ne zdravotní dohled.",
     },
     {
       icon: Warning,
-      title: "Pokud se neozve, vznikne incident",
+      title: "Po termínu vznikne incident",
       description: "Server se pokusí poslat push. Hlásím se není tísňová služba.",
     },
   ],
   traveler: [
     {
       icon: MapPin,
-      title: "K check-inu můžete volitelně přidat polohu",
+      title: "Poloha je vždy volitelná",
       description:
-        "Kdyby bylo potřeba, vaši blízcí uvidí kde jste byli naposledy.",
+        "Připojí se jen ke konkrétnímu check-inu a strážce ji uvidí pouze při otevřeném incidentu.",
     },
     {
       icon: Timer,
-      title: "Nastavíte interval podle plánu cesty",
-      description: "Flexibilní podle potřeby.",
+      title: "Interval přizpůsobíte cestě",
+      description: "Server počítá termín; offline požadavek čeká na skutečné přijetí.",
     },
     {
       icon: ShieldCheck,
-      title: "Když se neozvete, spustí se alarm",
-      description: "Vaši blízcí budou vědět.",
+      title: "Po termínu vznikne incident",
+      description: "Server se pokusí upozornit strážce, ale doručení push nemůže zaručit.",
     },
   ],
 };
 
 // Screen 4: Notification messages for wow moment
 export const NOTIFICATION_MESSAGE: Record<Persona, string> = {
-  alone: "Server právě potvrdil check-in vašeho blízkého.",
-  caregiver: "Server právě potvrdil check-in profilu Maminka.",
-  traveler: "Server právě potvrdil check-in vašeho cestovatele.",
+  alone: "Server potvrdil check-in profilu Domov.",
+  caregiver: "Server potvrdil check-in hlídaného profilu.",
+  traveler: "Server potvrdil check-in profilu Cesta.",
 };

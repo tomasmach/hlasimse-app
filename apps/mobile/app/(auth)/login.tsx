@@ -1,185 +1,165 @@
-import { useState } from "react";
-import {
-  View,
-  Text,
-  TouchableOpacity,
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-} from "react-native";
+import { useRef, useState } from "react";
+import { Pressable, Text, TextInput, View } from "react-native";
 import { Link, router, useLocalSearchParams } from "expo-router";
-import Animated, { FadeIn, FadeInDown, ReduceMotion } from "react-native-reanimated";
-import { LinearGradient } from "expo-linear-gradient";
-import { login } from "@/lib/auth";
+import Animated, { FadeInDown, ReduceMotion } from "react-native-reanimated";
 import { ApiError } from "@/lib/api";
+import { login } from "@/lib/auth";
 import { useAuthStore } from "@/stores/auth";
-import { AnimatedInput, GradientButton } from "@/components/ui";
-import { GRADIENTS, SPACING } from "@/constants/design";
+import { AuthButton, AuthInput, AuthScreen } from "@/components/auth";
 
 export default function LoginScreen() {
   const params = useLocalSearchParams<{ email?: string }>();
   const setUser = useAuthStore((state) => state.setUser);
+  const passwordRef = useRef<TextInput>(null);
+  const emailRef = useRef<TextInput>(null);
   const [email, setEmail] = useState(typeof params.email === "string" ? params.email : "");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleLogin = async () => {
-    if (!email.trim() || !password.trim()) {
-      setError("Vyplňte prosím e-mail a heslo.");
+    if (!email.trim()) {
+      setError("Vyplňte e-mail.");
+      emailRef.current?.focus();
+      return;
+    }
+    if (!password) {
+      setError("Vyplňte heslo.");
+      passwordRef.current?.focus();
       return;
     }
 
     setLoading(true);
     setError(null);
-
     try {
       setUser(await login(email, password));
       router.replace("/(tabs)");
-    } catch (err) {
-      console.error("Login error:", err);
+    } catch (cause) {
       setError(
-        err instanceof ApiError && err.status === 401
-          ? "E-mail nebo heslo není správné, případně e-mail ještě nebyl ověřený."
-          : err instanceof Error
-            ? err.message
-            : "Přihlášení se nezdařilo.",
+        cause instanceof ApiError && cause.status === 401
+          ? "Přihlášení se nepodařilo. Zkontrolujte údaje a ověření e-mailu."
+          : cause instanceof Error
+            ? cause.message
+            : "Přihlášení se nezdařilo. Zkuste to znovu.",
       );
     } finally {
       setLoading(false);
     }
   };
 
+  const openVerification = () => {
+    if (!email.trim()) {
+      setError("Nejdřív vyplňte e-mail, který chcete ověřit.");
+      emailRef.current?.focus();
+      return;
+    }
+    router.push({ pathname: "/(auth)/verify-email", params: { email: email.trim() } });
+  };
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="flex-1 bg-cream"
+    <AuthScreen
       testID="login-screen"
+      title="Vítejte zpátky."
+      intro="Přihlaste se k serverem potvrzeným check-inům a nastavení svých profilů."
     >
-      <ScrollView
-        contentContainerStyle={{
-          flexGrow: 1,
-          justifyContent: "center",
-          paddingHorizontal: SPACING.page,
-          paddingVertical: 48,
+      {error ? (
+        <Animated.View
+          entering={FadeInDown.duration(220).reduceMotion(ReduceMotion.System)}
+          className="mb-6 rounded-[18px] border border-[#C33D2F] bg-white p-4"
+          accessibilityRole="alert"
+          accessibilityLiveRegion="assertive"
+          testID="login-error"
+        >
+          <Text className="font-body text-[15px] leading-5 text-[#9E382E]">{error}</Text>
+        </Animated.View>
+      ) : null}
+
+      <AuthInput
+        ref={emailRef}
+        label="E-mail"
+        value={email}
+        onChangeText={(value) => {
+          setEmail(value);
+          if (error) setError(null);
         }}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        {/* Header */}
-        <Animated.View
-          entering={FadeIn.delay(100).reduceMotion(ReduceMotion.System)}
-          className="items-center mb-12"
+        keyboardType="email-address"
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoComplete="email"
+        textContentType="emailAddress"
+        returnKeyType="next"
+        onSubmitEditing={() => passwordRef.current?.focus()}
+        editable={!loading}
+        testID="login-email-input"
+      />
+      <AuthInput
+        ref={passwordRef}
+        label="Heslo"
+        value={password}
+        onChangeText={(value) => {
+          setPassword(value);
+          if (error) setError(null);
+        }}
+        secureTextEntry
+        autoComplete="password"
+        textContentType="password"
+        returnKeyType="go"
+        onSubmitEditing={() => void handleLogin()}
+        editable={!loading}
+        testID="login-password-input"
+      />
+
+      <Link href="/(auth)/forgot-password" asChild>
+        <Pressable
+          disabled={loading}
+          className="mb-7 min-h-[48px] self-end justify-center"
+          accessibilityRole="link"
+          accessibilityLabel="Obnovit zapomenuté heslo"
+          testID="login-forgot-password-link"
         >
-          <Text
-            className="font-display text-[40px] font-extrabold text-charcoal"
-            accessibilityRole="header"
-          >
-            Hlásím se
+          <Text className="font-body-semibold text-[15px] text-[#9E382E]">
+            Zapomenuté heslo
           </Text>
-          <LinearGradient
-            colors={GRADIENTS.coral}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            className="w-20 h-1 rounded-sm mt-2 mb-4"
-          />
-          <Text className="text-[17px] text-muted font-lora">
-            Přihlaste se ke svému účtu
-          </Text>
-        </Animated.View>
+        </Pressable>
+      </Link>
 
-        {/* Error */}
-        {error && (
-          <Animated.View
-            entering={FadeInDown.reduceMotion(ReduceMotion.System)}
-            className="bg-error/[0.15] border border-error rounded-2xl p-4 mb-6"
-            accessibilityRole="alert"
-            testID="login-error"
-          >
-            <Text className="text-error text-center text-[15px] font-lora">
-              {error}
-            </Text>
-          </Animated.View>
-        )}
+      <AuthButton
+        label="Přihlásit se"
+        onPress={() => void handleLogin()}
+        loading={loading}
+        testID="login-submit-button"
+      />
 
-        {/* Form */}
-        <Animated.View
-          entering={FadeIn.delay(200).reduceMotion(ReduceMotion.System)}
-          className="mb-8"
-        >
-          <AnimatedInput
-            label="E-mail"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoComplete="email"
-            editable={!loading}
-            testID="login-email-input"
-            accessibilityLabel="E-mail"
-          />
-
-          <AnimatedInput
-            label="Heslo"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoComplete="password"
-            editable={!loading}
-            testID="login-password-input"
-            accessibilityLabel="Heslo"
-          />
-
-          <Link href="/(auth)/forgot-password" asChild>
-            <TouchableOpacity className="self-end mt-2" disabled={loading}>
-              <Text className="text-coral text-[15px] font-lora-medium">
-                Zapomenuté heslo?
+      <View className="mt-7 items-center gap-2">
+        <View className="flex-row flex-wrap items-center justify-center">
+          <Text className="font-body text-[15px] text-muted">Nemáte účet? </Text>
+          <Link href="/(auth)/register" asChild>
+            <Pressable
+              disabled={loading}
+              className="min-h-[48px] justify-center"
+              accessibilityRole="link"
+              testID="login-register-link"
+            >
+              <Text className="font-body-semibold text-[15px] text-[#9E382E]">
+                Zaregistrovat se
               </Text>
-            </TouchableOpacity>
+            </Pressable>
           </Link>
-        </Animated.View>
-
-        {/* CTA */}
-        <Animated.View
-          entering={FadeIn.delay(300).reduceMotion(ReduceMotion.System)}
-          className="gap-6"
+        </View>
+        <Pressable
+          className="min-h-[48px] items-center justify-center px-3"
+          disabled={loading}
+          onPress={openVerification}
+          accessibilityRole="button"
+          accessibilityLabel="Poslat ověřovací e-mail znovu"
+          accessibilityState={{ disabled: loading }}
+          testID="login-resend-verification-button"
         >
-          <GradientButton
-            label="Přihlásit"
-            onPress={handleLogin}
-            loading={loading}
-            disabled={loading}
-            testID="login-submit-button"
-            accessibilityLabel="Přihlásit se"
-          />
-
-          <View className="flex-row justify-center">
-            <Text className="text-muted text-[15px] font-lora">Nemáte účet? </Text>
-            <Link href="/(auth)/register" asChild>
-              <TouchableOpacity disabled={loading}>
-                <Text className="text-coral text-[15px] font-lora-semibold">
-                  Registrovat se
-                </Text>
-              </TouchableOpacity>
-            </Link>
-          </View>
-          <TouchableOpacity
-            className="items-center"
-            disabled={loading || !email.trim()}
-            onPress={() =>
-              router.push({ pathname: "/(auth)/verify-email", params: { email: email.trim() } })
-            }
-            accessibilityRole="button"
-            accessibilityLabel="Poslat ověřovací e-mail znovu"
-            accessibilityState={{ disabled: loading || !email.trim() }}
-            testID="login-resend-verification-button"
-          >
-            <Text className="font-body text-[14px] text-muted">
-              E-mail ještě není ověřený? <Text className="font-body-semibold text-coral">Poslat odkaz znovu</Text>
-            </Text>
-          </TouchableOpacity>
-        </Animated.View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+          <Text className="text-center font-body-semibold text-[15px] text-[#9E382E]">
+            Poslat ověřovací odkaz znovu
+          </Text>
+        </Pressable>
+      </View>
+    </AuthScreen>
   );
 }

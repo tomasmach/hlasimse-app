@@ -1,163 +1,179 @@
-import { useState } from "react";
-import {
-  KeyboardAvoidingView,
-  Platform,
-  ScrollView,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { useRef, useState } from "react";
+import { Pressable, Text, TextInput, View } from "react-native";
 import { Link, router } from "expo-router";
 import Animated, { FadeInDown, ReduceMotion } from "react-native-reanimated";
-import { EnvelopeSimple } from "phosphor-react-native";
 import { register } from "@/lib/auth";
-import { AnimatedInput, GradientButton } from "@/components/ui";
-import { COLORS, SPACING } from "@/constants/design";
+import { AuthButton, AuthInput, AuthScreen } from "@/components/auth";
+
+type Field = "name" | "email" | "password" | "confirmation";
 
 export default function RegisterScreen() {
+  const refs = {
+    name: useRef<TextInput>(null),
+    email: useRef<TextInput>(null),
+    password: useRef<TextInput>(null),
+    confirmation: useRef<TextInput>(null),
+  };
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
+  const [confirmation, setConfirmation] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ field?: Field; message: string } | null>(null);
 
-  const validateForm = (): string | null => {
-    if (!name.trim()) return "Vyplňte prosím své jméno.";
-    if (!email.trim()) return "Vyplňte prosím e-mail.";
-    if (!password) return "Vyplňte prosím heslo.";
-    if (password.length < 10) return "Heslo musí mít alespoň 10 znaků.";
-    if (password !== confirmPassword) return "Hesla se neshodují.";
+  const validationError = (): { field: Field; message: string } | null => {
+    if (!name.trim()) return { field: "name", message: "Vyplňte své jméno." };
+    if (!email.trim()) return { field: "email", message: "Vyplňte e-mail." };
+    if (!password) return { field: "password", message: "Vyplňte heslo." };
+    if (password.length < 10) {
+      return { field: "password", message: "Heslo musí mít alespoň 10 znaků." };
+    }
+    if (password !== confirmation) {
+      return { field: "confirmation", message: "Zadaná hesla se neshodují." };
+    }
     return null;
   };
 
   const handleRegister = async () => {
-    const validationError = validateForm();
-    if (validationError) {
-      setError(validationError);
+    const invalid = validationError();
+    if (invalid) {
+      setError(invalid);
+      refs[invalid.field].current?.focus();
       return;
     }
+
     setLoading(true);
     setError(null);
     try {
       await register({ email, password, firstName: name });
       router.replace({ pathname: "/(auth)/verify-email", params: { email: email.trim() } });
-    } catch (err) {
-      console.error("Registration error:", err);
-      setError(err instanceof Error ? err.message : "Registrace se nezdařila.");
+    } catch (cause) {
+      setError({
+        message:
+          cause instanceof Error
+            ? cause.message
+            : "Registraci se nepodařilo dokončit. Zkuste to znovu.",
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const entrance = FadeInDown.duration(420).reduceMotion(ReduceMotion.System);
-
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      className="flex-1 bg-cream"
+    <AuthScreen
       testID="register-screen"
+      eyebrow="Účet zdarma"
+      title="Účet chrání ověřený e-mail."
+      intro="Po registraci pošleme jednorázový odkaz. Bez ověření se nelze přihlásit ani přijmout pozvání strážce."
     >
-      <ScrollView
-        contentContainerStyle={{
-          flexGrow: 1,
-          justifyContent: "center",
-          paddingHorizontal: SPACING.page,
-          paddingVertical: 48,
+      {error && !error.field ? (
+        <Animated.View
+          entering={FadeInDown.duration(220).reduceMotion(ReduceMotion.System)}
+          className="mb-6 rounded-[18px] border border-[#C33D2F] bg-white p-4"
+          accessibilityRole="alert"
+          accessibilityLiveRegion="assertive"
+          testID="register-error"
+        >
+          <Text className="font-body text-[15px] leading-5 text-[#9E382E]">
+            {error.message}
+          </Text>
+        </Animated.View>
+      ) : null}
+
+      <AuthInput
+        ref={refs.name}
+        label="Jméno"
+        value={name}
+        onChangeText={(value) => {
+          setName(value);
+          if (error) setError(null);
         }}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
-        <Animated.View entering={entrance} className="mb-10">
-          <View className="mb-6 h-14 w-14 items-center justify-center rounded-full bg-coral/10">
-            <EnvelopeSimple size={28} color={COLORS.coral.default} weight="bold" />
-          </View>
-          <Text className="font-display text-[40px] leading-[44px] tracking-[-1.2px] text-charcoal">
-            Váš účet začíná ověřeným e-mailem.
-          </Text>
-          <Text className="mt-4 font-body text-[17px] leading-6 text-muted">
-            Po registraci vám pošleme jednorázový odkaz. Bez ověření se nikdo nemůže vydávat za strážce.
-          </Text>
-        </Animated.View>
+        autoCapitalize="words"
+        autoComplete="name"
+        textContentType="name"
+        returnKeyType="next"
+        onSubmitEditing={() => refs.email.current?.focus()}
+        editable={!loading}
+        error={error?.field === "name" ? error.message : undefined}
+        testID="register-name-input"
+      />
+      <AuthInput
+        ref={refs.email}
+        label="E-mail"
+        value={email}
+        onChangeText={(value) => {
+          setEmail(value);
+          if (error) setError(null);
+        }}
+        keyboardType="email-address"
+        autoCapitalize="none"
+        autoCorrect={false}
+        autoComplete="email"
+        textContentType="emailAddress"
+        returnKeyType="next"
+        onSubmitEditing={() => refs.password.current?.focus()}
+        editable={!loading}
+        error={error?.field === "email" ? error.message : undefined}
+        testID="register-email-input"
+      />
+      <AuthInput
+        ref={refs.password}
+        label="Heslo, alespoň 10 znaků"
+        value={password}
+        onChangeText={(value) => {
+          setPassword(value);
+          if (error) setError(null);
+        }}
+        secureTextEntry
+        autoComplete="new-password"
+        textContentType="newPassword"
+        returnKeyType="next"
+        onSubmitEditing={() => refs.confirmation.current?.focus()}
+        editable={!loading}
+        error={error?.field === "password" ? error.message : undefined}
+        testID="register-password-input"
+      />
+      <AuthInput
+        ref={refs.confirmation}
+        label="Heslo znovu"
+        value={confirmation}
+        onChangeText={(value) => {
+          setConfirmation(value);
+          if (error) setError(null);
+        }}
+        secureTextEntry
+        autoComplete="new-password"
+        textContentType="newPassword"
+        returnKeyType="go"
+        onSubmitEditing={() => void handleRegister()}
+        editable={!loading}
+        error={error?.field === "confirmation" ? error.message : undefined}
+        testID="register-confirm-password-input"
+      />
 
-        {error && (
-          <Animated.View
-            entering={FadeInDown.duration(240).reduceMotion(ReduceMotion.System)}
-            className="mb-6 rounded-2xl border border-error bg-error/[0.1] p-4"
-            accessibilityRole="alert"
-            testID="register-error"
+      <Text className="mb-6 font-body text-sm leading-5 text-muted">
+        Všechny funkce jsou zdarma. Hlásím se není tísňová služba a nekontaktuje 112 ani 155.
+      </Text>
+      <AuthButton
+        label="Vytvořit účet zdarma"
+        onPress={() => void handleRegister()}
+        loading={loading}
+        testID="register-submit-button"
+      />
+
+      <View className="mt-7 flex-row flex-wrap items-center justify-center">
+        <Text className="font-body text-[15px] text-muted">Už máte účet? </Text>
+        <Link href="/(auth)/login" asChild>
+          <Pressable
+            disabled={loading}
+            className="min-h-[48px] justify-center"
+            accessibilityRole="link"
+            testID="register-login-link"
           >
-            <Text className="text-center font-body text-[15px] text-error">{error}</Text>
-          </Animated.View>
-        )}
-
-        <Animated.View entering={entrance.delay(80)} className="mb-8">
-          <AnimatedInput
-            label="Jméno"
-            value={name}
-            onChangeText={setName}
-            autoCapitalize="words"
-            autoComplete="name"
-            editable={!loading}
-            testID="register-name-input"
-            accessibilityLabel="Jméno"
-          />
-          <AnimatedInput
-            label="E-mail"
-            value={email}
-            onChangeText={setEmail}
-            keyboardType="email-address"
-            autoCapitalize="none"
-            autoComplete="email"
-            editable={!loading}
-            testID="register-email-input"
-            accessibilityLabel="E-mail"
-          />
-          <AnimatedInput
-            label="Heslo (min. 10 znaků)"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoComplete="new-password"
-            editable={!loading}
-            testID="register-password-input"
-            accessibilityLabel="Heslo"
-          />
-          <AnimatedInput
-            label="Heslo znovu"
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            secureTextEntry
-            autoComplete="new-password"
-            editable={!loading}
-            testID="register-confirm-password-input"
-            accessibilityLabel="Heslo znovu"
-          />
-        </Animated.View>
-
-        <GradientButton
-          label="Vytvořit účet zdarma"
-          onPress={handleRegister}
-          loading={loading}
-          disabled={loading}
-          testID="register-submit-button"
-          accessibilityLabel="Vytvořit účet zdarma"
-        />
-
-        <View className="mt-7 flex-row justify-center">
-          <Text className="font-body text-[15px] text-muted">Už máte účet? </Text>
-          <Link href="/(auth)/login" asChild>
-            <TouchableOpacity
-              disabled={loading}
-              accessibilityRole="link"
-              accessibilityLabel="Přihlásit se"
-              testID="register-login-link"
-            >
-              <Text className="font-body-semibold text-[15px] text-coral">Přihlásit se</Text>
-            </TouchableOpacity>
-          </Link>
-        </View>
-      </ScrollView>
-    </KeyboardAvoidingView>
+            <Text className="font-body-semibold text-[15px] text-[#9E382E]">Přihlásit se</Text>
+          </Pressable>
+        </Link>
+      </View>
+    </AuthScreen>
   );
 }
