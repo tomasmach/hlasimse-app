@@ -41,7 +41,7 @@ const deliveryLabel: Record<AlertDeliveryState, string> = {
   no_delivery_record: "Bez záznamu o odeslání",
   pending: "Čeká na pokus o odeslání",
   sent_to_provider: "Odesláno poskytovateli — doručení nepotvrzeno",
-  delivered: "Doručeno alespoň na jedno zařízení",
+  accepted_by_push_service: "Přijato službou APNs/FCM — zařízení nepotvrzeno",
   failed: "Pokus o doručení selhal",
 };
 

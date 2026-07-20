@@ -13,7 +13,7 @@ const delivery: Record<AlertDeliveryState, { label: string; detail: string; tone
   no_delivery_record: { label: "Bez záznamu o odeslání", detail: "Server zatím neeviduje pokus o push.", tone: "warning" },
   pending: { label: "Čeká na pokus o odeslání", detail: "Push je ve frontě nebo se bude opakovat.", tone: "warning" },
   sent_to_provider: { label: "Odesláno poskytovateli", detail: "Poskytovatel přijal požadavek nebo ticket. Doručení ani přečtení tím není potvrzeno.", tone: "info" },
-  delivered: { label: "Doručeno alespoň na jedno zařízení", detail: "Receipt potvrdil nejméně jedno zařízení. Neznamená to, že si člověk upozornění přečetl ani že uspěla všechna zařízení.", tone: "success" },
+  accepted_by_push_service: { label: "Přijato službou APNs/FCM", detail: "Push služba požadavek převzala. Zobrazení na zařízení ani přečtení tím není potvrzeno.", tone: "info" },
   failed: { label: "Pokus o doručení selhal", detail: "Nespoléhejte na push. Použijte jiný kontakt a podle situace tísňovou linku.", tone: "danger" },
 };
 const formatDateTime = (value: string | null) => value ? new Intl.DateTimeFormat("cs-CZ", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value)) : "—";

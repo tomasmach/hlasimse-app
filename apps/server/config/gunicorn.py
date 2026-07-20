@@ -19,14 +19,12 @@ max_requests = positive_int("GUNICORN_MAX_REQUESTS", 1000)
 max_requests_jitter = positive_int("GUNICORN_MAX_REQUESTS_JITTER", 100)
 worker_tmp_dir = "/dev/shm"
 
-accesslog = "-"
+# Raw request lines and Referer values can contain one-time verification or
+# password-reset tokens. Django emits route-pattern JSON access logs instead.
+accesslog = None
 errorlog = "-"
 capture_output = True
 loglevel = os.getenv("GUNICORN_LOG_LEVEL", "info")
-access_log_format = (
-    '%({x-request-id}i)s %(h)s %(l)s %(u)s %(t)s "%(r)s" %(s)s %(b)s "%(f)s" "%(a)s" %(L)s'
-)
-
 forwarded_allow_ips = os.getenv("GUNICORN_FORWARDED_ALLOW_IPS", "127.0.0.1")
 control_socket_disable = True
 limit_request_line = 4094

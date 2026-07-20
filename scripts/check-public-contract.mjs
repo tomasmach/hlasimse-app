@@ -52,6 +52,10 @@ const RULES = [
     label: "misleading offline-success claim",
     pattern: /(?:check[- ]?in|hlášení)[^\n.]{0,40}funguje\s+offline|offline\s+(?:check[- ]?in|hlášení)[^\n.]{0,40}(?:hotov|potvrzen)/giu,
   },
+  {
+    label: "push receipt misrepresented as device delivery",
+    pattern: /Doručeno alespoň na jedno zařízení|Poskytovatel potvrdil doručení|Receipt potvrdil/giu,
+  },
 ];
 
 async function collect(path) {

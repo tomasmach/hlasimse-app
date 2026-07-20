@@ -24,6 +24,7 @@ from core.models import (
     WorkerHeartbeat,
 )
 from core.push import (
+    EMAIL_EVENT_TYPES,
     MAX_DELIVERY_ATTEMPTS,
     MAX_EVENT_ATTEMPTS,
     STALE_PROCESSING_AFTER,
@@ -254,11 +255,24 @@ def test_partial_multi_device_failure_keeps_success_and_deactivates_bad_device(p
     assert "Partial delivery" in event.last_error
     assert attempts[0].status == DeliveryAttempt.Status.TICKET_RECEIVED
     assert attempts[1].status == DeliveryAttempt.Status.PERMANENT_FAILURE
-    assert first.active is True
-    assert second.active is False
-    deactivation = AuditEvent.objects.get(event_type="device.deactivated", aggregate_id=second.id)
+    assert first.active is False
+    assert second.active is True
+    deactivation = AuditEvent.objects.get(event_type="device.deactivated", aggregate_id=first.id)
     assert deactivation.actor is None
     assert deactivation.actor_kind == AuditEvent.ActorKind.SYSTEM
+
+
+def test_legacy_over_cap_account_is_limited_to_five_push_destinations(profile, other_user):
+    _, event = _create_incident_event(profile, other_user)
+    for number in range(6):
+        _device(other_user, suffix=f"legacy-over-cap-{number}")
+
+    tickets = [{"status": "ok", "id": f"ticket-capped-{number}"} for number in range(5)]
+
+    assert process_one_outbox_event(client=_tickets(*tickets))
+    event.refresh_from_db()
+    assert event.status == OutboxEvent.Status.PROCESSED
+    assert DeliveryAttempt.objects.filter(outbox_event=event).count() == 5
 
 
 def test_retry_is_deduplicated_by_event_and_device(profile, other_user):
@@ -369,7 +383,7 @@ def test_delivery_attempts_stop_at_maximum(profile, other_user):
     assert event.status == OutboxEvent.Status.FAILED
 
 
-def test_ticket_receipt_transitions_to_delivered(profile, other_user):
+def test_successful_receipt_records_provider_acceptance_not_device_delivery(profile, other_user):
     _, event = _create_incident_event(profile, other_user)
     _device(other_user)
     assert process_one_outbox_event(client=_tickets({"status": "ok", "id": "ticket-delivered"}))
@@ -383,7 +397,8 @@ def test_ticket_receipt_transitions_to_delivered(profile, other_user):
 
     assert fetch_push_receipts(client=_client(receipt)) == 1
     assert (
-        DeliveryAttempt.objects.get(outbox_event=event).status == DeliveryAttempt.Status.DELIVERED
+        DeliveryAttempt.objects.get(outbox_event=event).status
+        == DeliveryAttempt.Status.PROVIDER_ACCEPTED
     )
 
 
@@ -446,7 +461,10 @@ def test_receipt_watch_survives_timeout_with_observable_backoff(monkeypatch):
         observed_during_sleep.append((seconds, heartbeat.details.copy()))
 
     monkeypatch.setattr(receipt_command, "fetch_push_receipts", fetch)
-    monkeypatch.setattr(receipt_command.time, "sleep", observe_sleep)
+    monkeypatch.setattr(
+        "core.worker_runtime.GracefulStop.wait",
+        lambda _self, seconds: observe_sleep(seconds),
+    )
 
     call_command(
         "fetch_push_receipts",
@@ -523,8 +541,8 @@ def test_stale_processing_event_is_reclaimed_and_exhausted_stale_event_is_failed
     assert recoverable.status == OutboxEvent.Status.PROCESSED
 
     exhausted = OutboxEvent.objects.create(
-        event_type="checkin.accepted",
-        aggregate_type="check_in",
+        event_type="guardian.invited",
+        aggregate_type="guardian_invitation",
         aggregate_id=uuid.uuid4(),
         deduplication_key=f"exhausted:{uuid.uuid4()}",
         status=OutboxEvent.Status.PROCESSING,
@@ -536,13 +554,7 @@ def test_stale_processing_event_is_reclaimed_and_exhausted_stale_event_is_failed
     assert exhausted.status == OutboxEvent.Status.FAILED
 
 
-def test_checkin_is_explicit_noop_and_deleted_invitation_is_terminal():
-    checkin = OutboxEvent.objects.create(
-        event_type="checkin.accepted",
-        aggregate_type="check_in",
-        aggregate_id=uuid.uuid4(),
-        deduplication_key=f"checkin:{uuid.uuid4()}",
-    )
+def test_alert_queue_isolated_from_email_and_alerts_have_priority(profile, other_user):
     invitation = OutboxEvent.objects.create(
         event_type="guardian.invited",
         aggregate_type="guardian_invitation",
@@ -550,13 +562,15 @@ def test_checkin_is_explicit_noop_and_deleted_invitation_is_terminal():
         deduplication_key=f"invite:{uuid.uuid4()}",
     )
 
-    assert process_one_outbox_event()
-    checkin.refresh_from_db()
+    _, alert = _create_incident_event(
+        profile=profile,
+        recipient=other_user,
+    )
+
+    assert claim_outbox_event().id == alert.id
     invitation.refresh_from_db()
-    assert checkin.status == OutboxEvent.Status.PROCESSED
-    assert "No external delivery required" in checkin.last_error
     assert invitation.status == OutboxEvent.Status.PENDING
-    assert process_one_outbox_event()
+    assert process_one_outbox_event(event_types=EMAIL_EVENT_TYPES, worker_name="outbox_email")
     invitation.refresh_from_db()
     assert invitation.status == OutboxEvent.Status.PROCESSED
     assert "deleted" in invitation.last_error
@@ -564,21 +578,27 @@ def test_checkin_is_explicit_noop_and_deleted_invitation_is_terminal():
 
 
 def test_delivery_health_requires_fresh_workers_and_no_delivery_failures():
-    for worker_name in {"deadline_sweeper", "outbox", "push_receipts"}:
+    for worker_name in {
+        "deadline_sweeper",
+        "outbox_alerts",
+        "outbox_email",
+        "push_receipts",
+        "safety_reconciliation",
+    }:
         WorkerHeartbeat.objects.create(worker_name=worker_name)
     assert delivery_health()["healthy"] is True
 
-    heartbeat = WorkerHeartbeat.objects.get(worker_name="outbox")
+    heartbeat = WorkerHeartbeat.objects.get(worker_name="outbox_alerts")
     heartbeat.last_seen_at = timezone.now() - timedelta(minutes=6)
     heartbeat.save(update_fields=["last_seen_at"])
     health = delivery_health()
     assert health["healthy"] is False
-    assert health["stale_workers"] == ["outbox"]
+    assert health["stale_workers"] == ["outbox_alerts"]
 
     heartbeat.last_seen_at = timezone.now()
     heartbeat.details = {"healthy": False, "last_error": "provider unavailable"}
     heartbeat.save(update_fields=["last_seen_at", "details"])
-    assert delivery_health()["failing_workers"] == ["outbox"]
+    assert delivery_health()["failing_workers"] == ["outbox_alerts"]
 
 
 @pytest.mark.django_db(transaction=True)
@@ -586,8 +606,8 @@ def test_postgresql_concurrent_workers_claim_event_once():
     if connection.vendor != "postgresql":
         pytest.skip("Concurrent skip-locked claim requires PostgreSQL")
     event = OutboxEvent.objects.create(
-        event_type="checkin.accepted",
-        aggregate_type="check_in",
+        event_type="guardian.invited",
+        aggregate_type="guardian_invitation",
         aggregate_id=uuid.uuid4(),
         deduplication_key=f"concurrent-claim:{uuid.uuid4()}",
     )

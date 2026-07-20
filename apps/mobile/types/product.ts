@@ -127,7 +127,7 @@ export type DeliveryAttemptStatus =
   | "queued"
   | "ticket_received"
   | "receipt_processing"
-  | "delivered"
+  | "provider_accepted"
   | "retryable_failure"
   | "permanent_failure"
   | "dead_letter";
@@ -140,7 +140,7 @@ export type AlertDeliveryState =
   | "no_delivery_record"
   | "pending"
   | "sent_to_provider"
-  | "delivered"
+  | "accepted_by_push_service"
   | "failed";
 
 export interface AlertDeliveryStatus {

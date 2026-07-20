@@ -7,7 +7,7 @@ from email.utils import parsedate_to_datetime
 import httpx
 from django.conf import settings
 from django.db import connection, transaction
-from django.db.models import Q
+from django.db.models import Case, IntegerField, Q, Value, When
 from django.utils import timezone
 
 from .email_delivery import (
@@ -29,16 +29,14 @@ from .models import (
 from .services import deactivate_push_device
 
 ALERT_EVENT_TYPES = {"alert.opened", "alert.resolved", "alert.retry"}
-PROCESSABLE_EVENT_TYPES = ALERT_EVENT_TYPES | {
-    "checkin.accepted",
-    "guardian.invited",
-    "user.email_verification",
-}
+EMAIL_EVENT_TYPES = {"guardian.invited", "user.email_verification"}
+PROCESSABLE_EVENT_TYPES = ALERT_EVENT_TYPES | EMAIL_EVENT_TYPES
 PERMANENT_DEVICE_ERRORS = {"DeviceNotRegistered", "MessageTooBig"}
 GLOBAL_CONFIGURATION_ERRORS = {"InvalidCredentials"}
 MAX_DELIVERY_ATTEMPTS = 5
 MAX_EVENT_ATTEMPTS = 8
-STALE_PROCESSING_AFTER = timedelta(minutes=10)
+MAX_ACTIVE_DEVICES_PER_RECIPIENT = 5
+STALE_PROCESSING_AFTER = timedelta(seconds=90)
 RECEIPT_MAX_AGE = timedelta(hours=24)
 MAX_BACKOFF = timedelta(hours=4)
 
@@ -162,13 +160,16 @@ def _schedule_event_retry(
     return True
 
 
-def recover_stale_outbox_events() -> int:
+def recover_stale_outbox_events(*, event_types: set[str] | None = None) -> int:
     stale_before = timezone.now() - STALE_PROCESSING_AFTER
-    return OutboxEvent.objects.filter(
+    queryset = OutboxEvent.objects.filter(
         status=OutboxEvent.Status.PROCESSING,
         locked_at__lt=stale_before,
         attempts__gte=MAX_EVENT_ATTEMPTS,
-    ).update(
+    )
+    if event_types is not None:
+        queryset = queryset.filter(event_type__in=event_types)
+    return queryset.update(
         status=OutboxEvent.Status.FAILED,
         locked_at=None,
         processed_at=timezone.now(),
@@ -177,7 +178,8 @@ def recover_stale_outbox_events() -> int:
     )
 
 
-def claim_outbox_event() -> OutboxEvent | None:
+def claim_outbox_event(*, event_types: set[str] | None = None) -> OutboxEvent | None:
+    selected_event_types = event_types or PROCESSABLE_EVENT_TYPES
     stale_before = timezone.now() - STALE_PROCESSING_AFTER
     with transaction.atomic():
         queryset = OutboxEvent.objects.select_for_update(
@@ -185,14 +187,21 @@ def claim_outbox_event() -> OutboxEvent | None:
         )
         event = (
             queryset.filter(
-                event_type__in=PROCESSABLE_EVENT_TYPES,
+                event_type__in=selected_event_types,
                 attempts__lt=MAX_EVENT_ATTEMPTS,
             )
             .filter(
                 Q(status=OutboxEvent.Status.PENDING, available_at__lte=timezone.now())
                 | Q(status=OutboxEvent.Status.PROCESSING, locked_at__lt=stale_before)
             )
-            .order_by("available_at", "created_at")
+            .annotate(
+                queue_priority=Case(
+                    When(event_type__in=ALERT_EVENT_TYPES, then=Value(0)),
+                    default=Value(1),
+                    output_field=IntegerField(),
+                )
+            )
+            .order_by("queue_priority", "available_at", "created_at")
             .first()
         )
         if event is None:
@@ -285,9 +294,13 @@ def _mark_attempt_retryable(
 def _prepare_delivery_attempts(
     *, event: OutboxEvent, incident: AlertIncident, recipient_ids: list[uuid.UUID]
 ) -> tuple[list[tuple[DeliveryAttempt, PushDevice, dict]], int]:
-    devices = list(
-        PushDevice.objects.filter(user_id__in=recipient_ids, active=True).order_by("created_at")
-    )
+    devices: list[PushDevice] = []
+    for recipient_id in recipient_ids:
+        devices.extend(
+            PushDevice.objects.filter(user_id=recipient_id, active=True).order_by(
+                "-last_seen_at", "-created_at"
+            )[:MAX_ACTIVE_DEVICES_PER_RECIPIENT]
+        )
     queued: list[tuple[DeliveryAttempt, PushDevice, dict]] = []
     now = timezone.now()
     with transaction.atomic():
@@ -301,7 +314,7 @@ def _prepare_delivery_attempts(
                 .first()
             )
             if latest and latest.status in {
-                DeliveryAttempt.Status.DELIVERED,
+                DeliveryAttempt.Status.PROVIDER_ACCEPTED,
                 DeliveryAttempt.Status.TICKET_RECEIVED,
                 DeliveryAttempt.Status.RECEIPT_PROCESSING,
                 DeliveryAttempt.Status.PERMANENT_FAILURE,
@@ -376,7 +389,7 @@ def _finish_event_from_attempts(event: OutboxEvent) -> None:
         in {
             DeliveryAttempt.Status.TICKET_RECEIVED,
             DeliveryAttempt.Status.RECEIPT_PROCESSING,
-            DeliveryAttempt.Status.DELIVERED,
+            DeliveryAttempt.Status.PROVIDER_ACCEPTED,
         }
     ]
     terminal_failures = [
@@ -404,16 +417,17 @@ def _global_expo_error(payload: dict) -> str | None:
     return None
 
 
-def process_one_outbox_event(*, client: httpx.Client | None = None) -> bool:
-    recovered = recover_stale_outbox_events()
-    event = claim_outbox_event()
+def process_one_outbox_event(
+    *,
+    client: httpx.Client | None = None,
+    event_types: set[str] | None = None,
+    worker_name: str = "outbox",
+) -> bool:
+    recovered = recover_stale_outbox_events(event_types=event_types)
+    event = claim_outbox_event(event_types=event_types)
     if event is None:
         return recovered > 0
-    record_worker_heartbeat("outbox", event_id=str(event.id), event_type=event.event_type)
-
-    if event.event_type == "checkin.accepted":
-        _mark_event_processed(event, note="No external delivery required")
-        return True
+    record_worker_heartbeat(worker_name, event_id=str(event.id), event_type=event.event_type)
 
     if event.event_type == "guardian.invited":
         invitation = GuardianInvitation.objects.filter(pk=event.aggregate_id).first()
@@ -743,7 +757,9 @@ def fetch_push_receipts(*, client: httpx.Client | None = None, limit: int = 1000
                 continue
             processed += 1
             if receipt.get("status") == "ok":
-                attempt.status = DeliveryAttempt.Status.DELIVERED
+                # Expo's successful receipt only proves handoff to APNs/FCM. It
+                # does not prove that a guardian's device displayed the push.
+                attempt.status = DeliveryAttempt.Status.PROVIDER_ACCEPTED
                 attempt.next_retry_at = None
                 if attempt.outbox_event_id:
                     event_ids_to_finish.add(attempt.outbox_event_id)

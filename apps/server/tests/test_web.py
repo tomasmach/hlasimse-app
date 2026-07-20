@@ -631,6 +631,39 @@ def test_alert_detail_distinguishes_provider_ticket_and_acknowledgement(
     assert "Nepotvrzuje telefonát, pomoc ani bezpečí" in content
 
 
+def test_successful_push_receipt_never_claims_device_delivery(client, profile, other_user):
+    GuardianMembership.objects.create(profile=profile, guardian=other_user)
+    incident = AlertIncident.objects.create(
+        profile=profile,
+        deadline_generation=profile.deadline_generation,
+        deadline_at=timezone.now() - timedelta(minutes=1),
+    )
+    AlertRecipient.objects.create(
+        incident=incident,
+        user=other_user,
+        user_id_snapshot=other_user.pk,
+    )
+    device = PushDevice.objects.create(
+        user=other_user,
+        installation_id=uuid.uuid4(),
+        expo_push_token="ExponentPushToken[web-receipt-truth]",
+        platform=PushDevice.Platform.IOS,
+    )
+    DeliveryAttempt.objects.create(
+        incident=incident,
+        device=device,
+        device_id_snapshot=device.id,
+        status=DeliveryAttempt.Status.PROVIDER_ACCEPTED,
+    )
+    client.force_login(other_user)
+
+    content = client.get(reverse("alerts:detail", kwargs={"pk": incident.pk})).content.decode()
+
+    assert "Přijato službou APNs/FCM, doručení zařízení nepotvrzeno" in content
+    assert "Doručeno alespoň" not in content
+    assert "potvrdil doručení" not in content
+
+
 @pytest.mark.parametrize("route_name", ["core:privacy", "core:terms"])
 def test_legal_placeholders_are_explicit_non_indexable_release_blockers(client, route_name):
     response = client.get(reverse(route_name))

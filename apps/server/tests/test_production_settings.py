@@ -7,7 +7,7 @@ def production_environment() -> dict[str, str]:
     return {
         **os.environ,
         "DJANGO_DEBUG": "false",
-        "DJANGO_SECRET_KEY": "s" * 64,
+        "DJANGO_SECRET_KEY": "test-only-7BvQ9xLm2Nw4Rc6Ty8Uk1Pa3Sd5Fg7Hj9Kl2Zx4Cv6Bn8Mq",
         "DJANGO_ALLOWED_HOSTS": "app.example.cz",
         "DATABASE_URL": "postgresql://user:password@database.example.cz/hlasimse",
         "APP_BASE_URL": "https://app.example.cz",
@@ -108,3 +108,113 @@ def test_production_rejects_invalid_version_and_unsafe_store_url():
 
         assert result.returncode != 0
         assert name in result.stderr
+
+
+def test_production_requires_encrypted_postgresql_and_preserves_stronger_mode():
+    environment = production_environment()
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from config.settings import DATABASES; "
+            "assert DATABASES['default']['OPTIONS']['sslmode'] == 'require'",
+        ],
+        capture_output=True,
+        check=False,
+        env=environment,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+    environment["DATABASE_URL"] += "?sslmode=verify-full"
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from config.settings import DATABASES; "
+            "assert DATABASES['default']['OPTIONS']['sslmode'] == 'verify-full'",
+        ],
+        capture_output=True,
+        check=False,
+        env=environment,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_production_rejects_insecure_remote_database_and_smtp():
+    cases = (
+        {"DATABASE_URL": "postgresql://user:password@database.example.cz/hlasimse?sslmode=disable"},
+        {"EMAIL_USE_TLS": "false", "EMAIL_USE_SSL": "false"},
+        {
+            "DATABASE_ALLOW_INSECURE_LOCAL_COMPOSE": "true",
+            "DATABASE_URL": "postgresql://user:password@database.example.cz/hlasimse",
+        },
+        {
+            "EMAIL_ALLOW_INSECURE_LOCAL_COMPOSE": "true",
+            "EMAIL_USE_TLS": "false",
+            "EMAIL_HOST": "smtp.example.cz",
+        },
+    )
+    for overrides in cases:
+        environment = {**production_environment(), **overrides}
+        result = subprocess.run(
+            [sys.executable, "-c", "import config.settings"],
+            capture_output=True,
+            check=False,
+            env=environment,
+            text=True,
+        )
+        assert result.returncode != 0, overrides
+
+
+def test_local_compose_exceptions_are_narrow_and_explicit():
+    environment = {
+        **production_environment(),
+        "DATABASE_URL": "postgresql://user:password@postgres:5432/hlasimse",
+        "DATABASE_ALLOW_INSECURE_LOCAL_COMPOSE": "true",
+        "APP_BASE_URL": "https://localhost",
+        "EMAIL_HOST": "mailpit",
+        "EMAIL_USE_TLS": "false",
+        "EMAIL_USE_SSL": "false",
+        "EMAIL_ALLOW_INSECURE_LOCAL_COMPOSE": "true",
+    }
+    result = subprocess.run(
+        [sys.executable, "-c", "import config.settings"],
+        capture_output=True,
+        check=False,
+        env=environment,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_production_disables_admin_and_rejects_weak_secrets():
+    environment = production_environment()
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "from config.settings import ADMIN_ENABLED; assert ADMIN_ENABLED is False",
+        ],
+        capture_output=True,
+        check=False,
+        env=environment,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+    for overrides in (
+        {"DJANGO_ADMIN_ENABLED": "true"},
+        {"DJANGO_SECRET_KEY": "s" * 64},
+        {"DJANGO_SECRET_KEY": "replace-with-a-production-secret-key-that-is-long-enough"},
+        {"WEB_TRUSTED_PROXY_CIDRS": "not-a-network"},
+    ):
+        result = subprocess.run(
+            [sys.executable, "-c", "import config.settings"],
+            capture_output=True,
+            check=False,
+            env={**production_environment(), **overrides},
+            text=True,
+        )
+        assert result.returncode != 0, overrides

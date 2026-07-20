@@ -101,7 +101,7 @@ export const useGuardiansStore = create<GuardiansState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       const data = await apiRequest<ServerGuardian[]>(`/api/v1/profiles/${profileId}/guardians/`);
-      set({ myGuardians: data.map(guardianFromServer), isLoading: false });
+      set({ myGuardians: data.filter((guardian) => guardian.status === "active").map(guardianFromServer), isLoading: false });
     } catch (error) {
       set({ error: error instanceof Error ? error.message : "Nepodařilo se načíst strážce.", isLoading: false });
     }

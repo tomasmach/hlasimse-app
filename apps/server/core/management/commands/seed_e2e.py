@@ -31,8 +31,11 @@ from core.services import (
 
 OWNER_EMAIL = "e2e.owner@hlasimse.invalid"
 GUARDIAN_EMAIL = "e2e.guardian@hlasimse.invalid"
-E2E_EMAILS = (OWNER_EMAIL, GUARDIAN_EMAIL)
-SEED_MODES = ("guardian-open", "owner-no-profile", "cleanup-only")
+BOUNDARY_GUARDIAN_EMAILS = tuple(
+    f"e2e.boundary-guardian-{number}@hlasimse.invalid" for number in range(2, 6)
+)
+E2E_EMAILS = (OWNER_EMAIL, GUARDIAN_EMAIL, *BOUNDARY_GUARDIAN_EMAILS)
+SEED_MODES = ("guardian-open", "free-boundaries", "owner-no-profile", "cleanup-only")
 
 
 def assert_safe_e2e_database() -> None:
@@ -68,7 +71,7 @@ def assert_safe_e2e_database() -> None:
 
 
 def delete_previous_e2e_dataset() -> set:
-    """Delete only aggregates reachable from the two exact reserved users.
+    """Delete only aggregates reachable from the exact reserved E2E users.
 
     Outbox aggregate IDs are intentionally not foreign keys. Remove delivery rows
     first (their outbox relation is PROTECT), then the matching outbox rows, then
@@ -130,7 +133,7 @@ def delete_previous_e2e_dataset() -> set:
 
 class Command(BaseCommand):
     help = (
-        "Reset and seed the two reserved @hlasimse.invalid simulator accounts. "
+        "Reset and seed the bounded reserved @hlasimse.invalid simulator accounts. "
         "The command refuses non-debug and non-local databases."
     )
 
@@ -146,6 +149,8 @@ class Command(BaseCommand):
             default="guardian-open",
             help=(
                 "guardian-open creates the two-account active-incident fixture; "
+                "free-boundaries creates five profiles, five guardians on the selected "
+                "seven-day profile; "
                 "owner-no-profile creates verified accounts with no safety profile; "
                 "cleanup-only removes the exact reserved fixture graph without recreating it."
             ),
@@ -184,6 +189,16 @@ class Command(BaseCommand):
                     password=run_credential,
                     first_name="E2E Strážce",
                 )
+                boundary_guardians = []
+                if options["mode"] == "free-boundaries":
+                    boundary_guardians = [
+                        User.objects.create_user(
+                            email=email,
+                            password=run_credential,
+                            first_name=f"E2E Strážce {number}",
+                        )
+                        for number, email in enumerate(BOUNDARY_GUARDIAN_EMAILS, start=2)
+                    ]
             if options["mode"] == "guardian-open":
                 profile = create_profile(
                     owner=owner,
@@ -211,6 +226,23 @@ class Command(BaseCommand):
                     profile=profile,
                     deadline_generation=profile.deadline_generation,
                 )
+            elif options["mode"] == "free-boundaries":
+                profile = create_profile(
+                    owner=owner,
+                    name="E2E hranice 7 dní",
+                    interval_seconds=7 * 24 * 60 * 60,
+                )
+                for number in range(2, 6):
+                    create_profile(
+                        owner=owner,
+                        name=f"E2E profil {number} z 5",
+                        interval_seconds=3_600,
+                    )
+                for boundary_guardian in [guardian, *boundary_guardians]:
+                    GuardianMembership.objects.create(
+                        profile=profile,
+                        guardian=boundary_guardian,
+                    )
 
         result = {
             "database_vendor": connection.vendor,
@@ -225,5 +257,16 @@ class Command(BaseCommand):
             "incident_status": incident.status if incident else None,
             "incidents_created": incidents_created,
             "outbox_events_created": events_created,
+            "active_profile_count": (
+                CheckInProfile.objects.filter(owner=owner, enabled=True).count()
+                if options["mode"] != "cleanup-only"
+                else 0
+            ),
+            "active_guardian_count": (
+                profile.guardians.filter(status=GuardianMembership.Status.ACTIVE).count()
+                if profile
+                else 0
+            ),
+            "profile_interval_seconds": profile.interval_seconds if profile else None,
         }
         self.stdout.write(json.dumps(result, sort_keys=True))

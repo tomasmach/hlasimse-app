@@ -124,7 +124,7 @@ Jde o porušení atomického invariantu a SEV-1.
 
 ## Ruční zásahy
 
-Ruční opakování doručení je povoleno pouze přes auditovanou admin akci, která používá existující outbox/idempotency mechanismus. Operátor nesmí sestavovat push payload ručně ani měnit stav „delivered“.
+Ruční opakování doručení je povoleno pouze přes auditovaný management postup, který používá existující outbox/idempotency mechanismus. Operátor nesmí sestavovat push payload ručně ani měnit stav na „provider accepted“; ani tento stav není důkaz doručení zařízení.
 
 Ruční vytvoření nebo uzavření incidentu vyžaduje princip čtyř očí, důvod, actor ID a audit event. Nikdy se nesmí zpětně změnit původní deadline, `triggered_at`, attempts nebo recipient snapshot.
 
@@ -152,4 +152,3 @@ Nikdy neuvádějte počet nebo identitu konkrétních ohrožených osob, polohu,
 ## Po incidentu
 
 Do 48 hodin u SEV-1/2 vytvořte blameless postmortem: dopad, přesnou timeline, detekci, technickou i organizační příčinu, proč ochrany nezabránily dopadu, obnovu, data o SLO/error budgetu a vlastníky nápravných akcí s termíny. Každá oprava přidá automatický test, alarm nebo jasnou runbook změnu. Feature releasy zůstávají zastavené, dokud není spolehlivost v rámci error budgetu a kritická opatření uzavřená.
-

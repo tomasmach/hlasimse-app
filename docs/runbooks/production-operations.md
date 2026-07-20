@@ -7,14 +7,16 @@ secret-management provider.
 
 ## Runtime contract
 
-One immutable image runs five process roles:
+One immutable image runs eight process roles:
 
 | Role | Command | Required instances |
 | --- | --- | --- |
 | Web/API | `gunicorn --config config/gunicorn.py config.wsgi:application` | At least 2 across failure domains in production |
 | Deadline sweep | `python manage.py sweep_deadlines --watch` | At least 1; database locks make concurrent instances safe |
-| Outbox | `python manage.py process_outbox --watch` | At least 1 |
+| Alert outbox | `python manage.py process_outbox --watch --queue alert --poll-interval 0.25` | At least 1; never shared with email delivery |
+| Email outbox | `python manage.py process_outbox --watch --queue email --poll-interval 2` | At least 1 |
 | Push receipts | `python manage.py fetch_push_receipts --watch` | At least 1 |
+| Safety reconciliation | `python manage.py reconcile_safety_state --repair --fail-on-gaps --watch` | At least 1; only deterministic repairs |
 | Delivery monitor | `python manage.py check_delivery_health` every 30 seconds | At least 1 plus external paging |
 | Migration job | `python manage.py migrate --noinput && python manage.py createcachetable` | Exactly 1 per release |
 
@@ -29,6 +31,11 @@ proxy IPs; never use `*` on a publicly reachable container. The application defa
 redirects, secure cookies, one-year HSTS, and manifest-backed static files when
 `DJANGO_DEBUG=false`.
 
+Gunicorn raw access logs are intentionally disabled because verification and password-reset secrets
+occur in URL paths. Django emits JSON access records keyed by route pattern and correlation ID,
+without raw path parameters, query strings, request bodies, Referer, e-mail, or IP address. Configure
+the edge proxy to redact these token routes as well and propagate only a valid UUID `X-Request-ID`.
+
 ## Required production configuration
 
 Inject configuration from the deployment platform's secret manager. Never bake it into the image,
@@ -36,7 +43,8 @@ Compose file, CI logs, shell history, or repository.
 
 - `DJANGO_SECRET_KEY`: unique, random, at least 50 characters.
 - `DJANGO_ALLOWED_HOSTS`: exact public hostnames.
-- `DATABASE_URL`: PostgreSQL connection with TLS required by the selected database provider.
+- `DATABASE_URL`: PostgreSQL connection with `sslmode=require`, `verify-ca`, or preferably
+  `verify-full`; startup rejects weaker modes.
 - `APP_BASE_URL`: canonical HTTPS web origin.
 - `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS` or
   `EMAIL_USE_SSL`, `DEFAULT_FROM_EMAIL`, `SERVER_EMAIL`.
@@ -51,6 +59,11 @@ Also configure SPF, DKIM, and DMARC for the sending domain. The selected infrast
 encrypted backups, point-in-time recovery, metrics, paging, log retention, TLS certificates, and at
 least two failure domains. These are release blockers until a provider and an on-call owner exist.
 
+`DATABASE_ALLOW_INSECURE_LOCAL_COMPOSE` and `EMAIL_ALLOW_INSECURE_LOCAL_COMPOSE` exist only for the
+loopback-only rehearsal topology and are restricted in code to hosts named `postgres` and `mailpit`.
+Never set them on a hosted deployment. The Django admin URL is intentionally absent in production;
+operator actions must use reviewed, audited management procedures rather than a public admin panel.
+
 ## Local production-like rehearsal
 
 Create a private environment file from the placeholder example. Use a URL-safe PostgreSQL password
@@ -62,7 +75,7 @@ chmod 600 apps/server/.env.compose.local
 docker compose --env-file apps/server/.env.compose.local -f compose.production.yml config --quiet
 docker compose --env-file apps/server/.env.compose.local -f compose.production.yml build
 docker compose --env-file apps/server/.env.compose.local -f compose.production.yml --profile ops run --rm migrate
-docker compose --env-file apps/server/.env.compose.local -f compose.production.yml up -d postgres mailpit outbox receipts sweep delivery-monitor web
+docker compose --env-file apps/server/.env.compose.local -f compose.production.yml up -d postgres mailpit outbox-alerts outbox-email receipts reconciliation sweep delivery-monitor web
 ```
 
 The web endpoint is bound only to `127.0.0.1:8000`; Mailpit's local inspection UI is at
@@ -115,8 +128,10 @@ old process is gone.
    configuration.
 6. Roll web replicas gradually. Require readiness success before routing traffic and retain old
    healthy replicas until the new cohort is stable.
-7. Roll the outbox worker, then push-receipt worker. Confirm both heartbeats.
-8. Roll the deadline sweeper last. Confirm all three workers and delivery queues with
+7. Roll the alert-outbox worker first, then email-outbox, push-receipt, and safety-reconciliation
+   workers. Confirm all four heartbeats. The alert worker must retain its dedicated queue and
+   sub-second idle poll.
+8. Roll the deadline sweeper last. Confirm all five workers and delivery queues with
    `python manage.py check_delivery_health` after at least 90 seconds.
 9. Exercise registration, check-in, guardian invitation, incident notification, acknowledgement,
    resolution, password reset, and account export in the production smoke-test accounts.
@@ -143,7 +158,7 @@ loss, `DROP`, or irreversible operations during an incident.
 1. Stop rollout and remove new web replicas from traffic.
 2. If newly generated outbox event formats are not understood by the old release, keep the new
    outbox and receipt workers running while rolling web back. Otherwise roll workers in reverse
-   order: sweeper, receipt, outbox, web.
+   order: sweeper, receipt, email outbox, alert outbox, web.
 3. Deploy the previous image digest and require readiness plus delivery-health success.
 4. If the schema is incompatible, deploy a forward-fix image. Restore a backup only for confirmed
    database corruption or data loss, with incident command approval and an explicit recovery-point

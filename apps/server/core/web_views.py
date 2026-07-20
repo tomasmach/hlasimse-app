@@ -205,14 +205,45 @@ def resend_verification_view(request):
     return render(request, "core/auth/resend_verification.html", {"form": form})
 
 
-def verify_email_view(request, token):
-    result = verify_signed_token(token)
-    return render(
+def stage_email_verification_view(request, token):
+    if request.method != "GET":
+        return HttpResponse(status=405)
+    request.session.cycle_key()
+    request.session.pop("pending_email_verification_token", None)
+    request.session.pop("pending_email_verification_staged_at", None)
+    if len(token) <= 1024:
+        request.session["pending_email_verification_token"] = token
+        request.session["pending_email_verification_staged_at"] = timezone.now().timestamp()
+    response = redirect("accounts:verify-email-confirm")
+    response["Cache-Control"] = "no-store"
+    response["Referrer-Policy"] = "no-referrer"
+    return response
+
+
+@web_auth_rate_limit("verification_confirm")
+def confirm_email_verification_view(request):
+    token = request.session.get("pending_email_verification_token", "")
+    staged_at = request.session.get("pending_email_verification_staged_at", 0)
+    staged_age = (
+        timezone.now().timestamp() - staged_at if isinstance(staged_at, int | float) else -1
+    )
+    staged_recently = 0 <= staged_age <= 15 * 60
+    if request.method == "POST":
+        request.session.pop("pending_email_verification_token", None)
+        request.session.pop("pending_email_verification_staged_at", None)
+        result = verify_signed_token(token) if token and staged_recently else None
+        status = result.status if result is not None else "invalid"
+    else:
+        status = "confirmation_required" if token and staged_recently else "invalid"
+    response = render(
         request,
         "core/auth/verify_email_result.html",
-        {"verification_status": result.status},
+        {"verification_status": status},
         status=200,
     )
+    response["Cache-Control"] = "no-store"
+    response["Referrer-Policy"] = "no-referrer"
+    return response
 
 
 def _notification_health(profiles):
@@ -852,8 +883,8 @@ def alert_detail_view(request, pk):
         for value, _label in alert.deliveries.model.Status.choices
     }
     delivery_counts = {key: value for key, value in delivery_counts.items() if value}
-    if delivery_counts.get("delivered"):
-        delivery_state = "delivered"
+    if delivery_counts.get("provider_accepted"):
+        delivery_state = "accepted_by_push_service"
     elif delivery_counts.get("ticket_received") or delivery_counts.get("receipt_processing"):
         delivery_state = "sent_to_provider"
     elif delivery_counts.get("queued") or delivery_counts.get("retryable_failure"):

@@ -1,7 +1,8 @@
 # Release test evidence
 
-This directory documents the evidence format and release gates. It does not contain a successful
-simulator run yet. The runner writes raw logs, JUnit reports, screenshots, build logs, seed output,
+This directory documents the evidence format and release gates. Successful local simulator runs
+remain in the run-specific artifact directory until their raw evidence is reviewed. The runner
+writes logs, JUnit reports, screenshots, build logs, seed output,
 the tested Git commit, and exit status to a timestamped directory under `/tmp/hlasimse-e2e/` by
 default. Copy an immutable run summary here only after reviewing those raw artifacts.
 
@@ -11,7 +12,7 @@ Prerequisites:
 
 - Node.js compatible with the mobile package, npm dependencies installed, and Expo CLI available
 - Python 3.14 and `uv`
-- Maestro 2.4 or newer (override `E2E_MAESTRO_BIN` when it is installed elsewhere)
+- Maestro 2.6.1, the pinned and tested harness version (override `E2E_MAESTRO_BIN` when it is installed elsewhere)
 - Xcode/iOS Simulator for iOS, or Android SDK/ADB and the named AVD for Android
 - ports 8000 and 8081 free; the runner refuses to stop or reuse an unowned backend on 8000
 - a development build identity in `apps/mobile/app.json`
@@ -52,23 +53,27 @@ URL (`127.0.0.1` for iOS Simulator, `10.0.2.2` for Android Emulator).
 | Guardian relation | guardian sees the watched profile; owner sees the active guardian |
 | Check-in | owner resolves the open incident only after the server confirms the check-in |
 | Pause | pause and resume each require a native confirmation and a changed server state |
-| Profiles/free tier | owner creates a second 120-minute profile without payment or paywall |
+| Profiles/free tier | owner creates a second 1-hour profile without payment or paywall; a separately seeded boundary fixture shows exactly 5 active profiles and no sixth-profile action |
+| Guardian/free tier | the selected boundary profile shows exactly 5/5 active guardians and a disabled invitation action |
+| Interval/free tier | the selected boundary profile exposes the server-seeded upper bound of 10,080 minutes (7 days) in profile management |
 | History/statistics | server-confirmed check-in, resolved incident, and metric sections load |
 | Offline semantics | owned API process is stopped; request is labeled pending and deadline unchanged |
 | Recovery | API returns; queued request syncs and appears as later synchronization in history |
 | Export | server export opens the operating-system share sheet and reports completion |
 | Deletion | owner enters the fixture password, confirms destructive action, and returns to login |
 
-The delete flow targets only `e2e.owner@hlasimse.invalid`. Before every run, `seed_e2e` removes
-delivery attempts and outbox events belonging to the two exact reserved accounts, then resets only
-their normal FK graph. It refuses `DEBUG=False`, non-local SQLite, remote PostgreSQL, and PostgreSQL
+The delete flow targets only `e2e.owner@hlasimse.invalid`. After it completes, the runner seeds a
+separate boundary fixture containing exactly five active profiles and five active guardians on the
+selected 7-day profile. Before every seed mode, `seed_e2e` removes delivery attempts and outbox
+events belonging to the six exact reserved accounts, then resets only their normal FK graph. It
+refuses `DEBUG=False`, non-local SQLite, remote PostgreSQL, and PostgreSQL
 database names without a distinct `e2e` or `test` segment.
 Each platform runner generates a fresh random login credential in memory and passes it to the seed
 and Maestro processes through environment variables. The value is never printed or stored in the
 seed output. The runner redacts the value from Maestro console output and all generated textual
 artifacts after every flow. Treat screenshots and diagnostic trees as sensitive anyway; keep
 `/tmp/hlasimse-e2e/` local and delete it after the evidence review.
-After a completely successful journey, `cleanup-only` removes the remaining guardian fixture and
+After a completely successful journey, `cleanup-only` removes the remaining boundary fixture and
 its bounded graph. A failed run intentionally leaves its reserved `.invalid` fixture available for
 diagnosis; rerunning the seed or calling its guarded cleanup mode removes it safely.
 

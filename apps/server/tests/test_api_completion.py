@@ -294,6 +294,25 @@ def test_guardian_can_revoke_only_own_membership(api_client, user, other_user, p
     assert membership.status == GuardianMembership.Status.REVOKED
 
 
+def test_profile_guardian_list_returns_only_active_memberships(
+    api_client, user, other_user, profile
+):
+    active = GuardianMembership.objects.create(profile=profile, guardian=other_user)
+    revoked_user = User.objects.create_user(
+        email="revoked@example.test", password="Safely-testing-123"
+    )
+    GuardianMembership.objects.create(
+        profile=profile,
+        guardian=revoked_user,
+        status=GuardianMembership.Status.REVOKED,
+    )
+
+    response = authenticate(api_client, user).get(f"/api/v1/profiles/{profile.id}/guardians/")
+
+    assert response.status_code == 200
+    assert [item["id"] for item in response.json()] == [str(active.id)]
+
+
 def test_alert_delivery_status_distinguishes_provider_ticket_from_delivery(
     api_client, user, other_user, profile
 ):
@@ -327,6 +346,42 @@ def test_alert_delivery_status_distinguishes_provider_ticket_from_delivery(
     assert response.json()["delivery_status"] == {
         "state": "sent_to_provider",
         "attempt_counts": {"ticket_received": 1},
+    }
+
+
+def test_alert_delivery_status_never_claims_receipt_is_device_delivery(
+    api_client, user, other_user, profile
+):
+    GuardianMembership.objects.create(profile=profile, guardian=other_user)
+    incident = AlertIncident.objects.create(
+        profile=profile,
+        deadline_generation=profile.deadline_generation,
+        deadline_at=timezone.now(),
+    )
+    AlertRecipient.objects.create(
+        incident=incident,
+        user=other_user,
+        user_id_snapshot=other_user.id,
+    )
+    device = PushDevice.objects.create(
+        user=other_user,
+        installation_id=uuid.uuid4(),
+        expo_push_token="ExponentPushToken[api-receipt-truth]",
+        platform=PushDevice.Platform.ANDROID,
+    )
+    DeliveryAttempt.objects.create(
+        incident=incident,
+        device=device,
+        device_id_snapshot=device.id,
+        status=DeliveryAttempt.Status.PROVIDER_ACCEPTED,
+    )
+
+    response = authenticate(api_client, other_user).get(f"/api/v1/alerts/{incident.id}/")
+
+    assert response.status_code == 200
+    assert response.json()["delivery_status"] == {
+        "state": "accepted_by_push_service",
+        "attempt_counts": {"provider_accepted": 1},
     }
 
 

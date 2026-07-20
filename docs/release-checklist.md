@@ -35,6 +35,9 @@ Veřejný release je povolen pouze při splnění všech blokujících položek.
 - [ ] Fault-injection testy pokrývají pád databáze, workeru a push API před i po odeslání.
 - [ ] Bezpečnostní testy pokrývají IDOR, odebrání strážce, expiraci session, rate limiting, CSRF webu a autorizaci polohy.
 - [ ] Dependency a secret scan jsou bez nevyřešeného critical/high nálezu.
+- [ ] CI `Production container gate` postavil přesný release Dockerfile, ověřil produkční
+  konfiguraci, migrace, statické soubory a live probe a Trivy scan image nemá žádný
+  nevyřešený high/critical nález.
 - [ ] Migrační test obnoví anonymizovaný produkčně reprezentativní snapshot do nové verze.
 
 ## 4. Povinná testovací matice
@@ -128,4 +131,3 @@ Simulátory slouží pro deterministické funkční scénáře. Neprokazují spo
 | Product/Legal |  |  |  |  |
 
 Jediné „ne“ nebo chybějící důkaz release blokuje.
-

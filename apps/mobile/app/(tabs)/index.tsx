@@ -20,6 +20,10 @@ const formatDateTime = (value: string | null) => value
   ? new Intl.DateTimeFormat("cs-CZ", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
   : "Termín není aktivní";
 
+const formatLastCheckIn = (value: string | null) => value
+  ? new Intl.DateTimeFormat("cs-CZ", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
+  : "Zatím žádné serverem potvrzené ohlášení";
+
 function Countdown({ deadline, paused, enabled }: { deadline: string | null; paused: boolean; enabled: boolean }) {
   const countdown = useCountdown(deadline);
   if (!enabled) {
@@ -80,6 +84,10 @@ export default function CheckInScreen() {
     if (isConnected && store.pendingCount > 0) void sync();
   }, [isConnected, store.pendingCount, sync]);
 
+  useEffect(() => {
+    setIncludeLocation(false);
+  }, [store.profile?.id]);
+
   const handleCheckIn = async () => {
     if (isCheckingIn) return;
     setIsCheckingIn(true);
@@ -99,6 +107,7 @@ export default function CheckInScreen() {
       }
     }
     const result = await store.checkIn(coords);
+    setIncludeLocation(false);
     const feedback = getCheckInFeedback(result);
     if (feedback.showServerConfirmation) setShowSuccess(true);
     if (feedback.toast) setToast({ visible: true, ...feedback.toast });
@@ -218,6 +227,11 @@ export default function CheckInScreen() {
           <Text className="font-body text-[15px] text-muted mt-3">{formatDateTime(profile.next_deadline_at)}</Text>
           {profile.is_paused ? <Text className="font-body text-[15px] leading-6 text-muted mt-2">{profile.paused_until ? `Automatické obnovení: ${formatDateTime(profile.paused_until)}` : "Pauza nemá nastavený konec. Nezapomeňte profil obnovit."}</Text> : null}
         </Animated.View>
+
+        <View className="py-5 border-y border-sand">
+          <Text className="font-body-medium text-sm text-muted">Poslední serverem potvrzené ohlášení</Text>
+          <Text className="font-display text-[22px] leading-7 text-charcoal mt-2">{formatLastCheckIn(profile.last_checked_in_at)}</Text>
+        </View>
 
         <OfflineBanner
           pendingCount={store.pendingCount}

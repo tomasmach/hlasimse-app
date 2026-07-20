@@ -17,6 +17,17 @@ it("loads invitation IDs without requiring acceptance tokens", async () => {
   expect(request).toHaveBeenCalledWith("/api/v1/guardian-invitations/");
 });
 
+it("defensively excludes revoked guardians from active UI counts", async () => {
+  request.mockResolvedValue([
+    { id: "active-1", email: "active@example.test", display_name: "Aktivní", status: "active", created_at: "2026-07-19" },
+    { id: "revoked-1", email: "revoked@example.test", display_name: "Odebraný", status: "revoked", created_at: "2026-07-18" },
+  ]);
+
+  await useGuardiansStore.getState().fetchMyGuardians("profile-1");
+
+  expect(useGuardiansStore.getState().myGuardians.map((guardian) => guardian.id)).toEqual(["active-1"]);
+});
+
 it("accepts and declines invitations through authenticated decision endpoints", async () => {
   const invitation = { id: "invite-1", profile_id: "profile-1", profile_name: "Denní", owner_display_name: "Jana", status: "pending" as const, expires_at: "", created_at: "", inviter: { id: "", email: "", name: "Jana" }, check_in_profile: { id: "profile-1", name: "Denní" } };
   useGuardiansStore.setState({ pendingInvites: [invitation] });

@@ -85,7 +85,7 @@ def test_checkin_api_is_idempotent_and_uses_server_time(api_client, user, profil
     assert abs((profile.last_checked_in_at - timezone.now()).total_seconds()) < 5
     assert profile.next_deadline_at == profile.last_checked_in_at + timedelta(days=1)
     assert check_in.client_recorded_at < check_in.accepted_at - timedelta(days=29)
-    assert OutboxEvent.objects.filter(event_type="checkin.accepted").count() == 1
+    assert OutboxEvent.objects.filter(event_type="checkin.accepted").count() == 0
     assert "latitude" not in first.json()
     assert "longitude" not in first.json()
 

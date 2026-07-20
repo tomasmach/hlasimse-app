@@ -26,7 +26,13 @@ def _invitation(profile):
 
 
 def _fresh_delivery_heartbeats():
-    for worker_name in {"deadline_sweeper", "outbox", "push_receipts"}:
+    for worker_name in {
+        "deadline_sweeper",
+        "outbox_alerts",
+        "outbox_email",
+        "push_receipts",
+        "safety_reconciliation",
+    }:
         WorkerHeartbeat.objects.update_or_create(worker_name=worker_name)
 
 

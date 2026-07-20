@@ -1,3 +1,4 @@
+import ipaddress
 import os
 from datetime import timedelta
 from pathlib import Path
@@ -91,15 +92,29 @@ if MOBILE_MAINTENANCE_RETRY_AFTER_SECONDS <= 0:
 
 development_secret = "unsafe-development-key-change-me"
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", development_secret)
-if not DEBUG and (development_secret == SECRET_KEY or len(SECRET_KEY) < 50):
+if not DEBUG and (
+    development_secret == SECRET_KEY
+    or len(SECRET_KEY) < 50
+    or len(set(SECRET_KEY)) < 12
+    or any(
+        fragment in SECRET_KEY.casefold()
+        for fragment in ("change-me", "placeholder", "replace-with")
+    )
+):
     raise ImproperlyConfigured(
-        "Production requires an explicit DJANGO_SECRET_KEY of at least 50 characters"
+        "Production requires a high-entropy DJANGO_SECRET_KEY of at least 50 characters"
     )
 
 allowed_hosts_value = os.getenv("DJANGO_ALLOWED_HOSTS", "" if not DEBUG else "localhost,127.0.0.1")
 ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_value.split(",") if host.strip()]
 if not DEBUG and not ALLOWED_HOSTS:
     raise ImproperlyConfigured("Production requires an explicit DJANGO_ALLOWED_HOSTS")
+
+ADMIN_ENABLED = env_bool("DJANGO_ADMIN_ENABLED", default=DEBUG)
+if not DEBUG and ADMIN_ENABLED:
+    raise ImproperlyConfigured(
+        "The Django admin is disabled in production; use audited management procedures instead"
+    )
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -115,6 +130,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "core.request_logging.CorrelationIdMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "core.middleware.MobileReleaseGateMiddleware",
@@ -157,6 +173,24 @@ DATABASES = {
 }
 if not DEBUG and DATABASES["default"]["ENGINE"] != "django.db.backends.postgresql":
     raise ImproperlyConfigured("Production DATABASE_URL must use PostgreSQL")
+DATABASE_ALLOW_INSECURE_LOCAL_COMPOSE = env_bool(
+    "DATABASE_ALLOW_INSECURE_LOCAL_COMPOSE", default=False
+)
+if not DEBUG:
+    database_hostname = (urlsplit(database_url or "").hostname or "").casefold()
+    if DATABASE_ALLOW_INSECURE_LOCAL_COMPOSE:
+        if database_hostname != "postgres":
+            raise ImproperlyConfigured(
+                "DATABASE_ALLOW_INSECURE_LOCAL_COMPOSE is restricted to the local 'postgres' host"
+            )
+    else:
+        database_options = DATABASES["default"].setdefault("OPTIONS", {})
+        ssl_mode = str(database_options.get("sslmode", "require")).casefold()
+        if ssl_mode not in {"require", "verify-ca", "verify-full"}:
+            raise ImproperlyConfigured(
+                "Production PostgreSQL must use sslmode=require, verify-ca, or verify-full"
+            )
+        database_options["sslmode"] = ssl_mode
 
 CACHES = {
     "default": (
@@ -177,11 +211,16 @@ CACHES = {
 WEB_TRUSTED_PROXY_CIDRS = tuple(
     value.strip() for value in os.getenv("WEB_TRUSTED_PROXY_CIDRS", "").split(",") if value.strip()
 )
+try:
+    tuple(ipaddress.ip_network(value, strict=False) for value in WEB_TRUSTED_PROXY_CIDRS)
+except ValueError as exc:
+    raise ImproperlyConfigured("WEB_TRUSTED_PROXY_CIDRS contains an invalid network") from exc
 WEB_AUTH_RATE_LIMITS = {
     "login": {"ip": (20, 300), "identity": (8, 300)},
     "registration": {"ip": (10, 3600), "identity": (3, 3600)},
     "password_reset_request": {"ip": (10, 3600), "identity": (3, 3600)},
     "verification_resend": {"ip": (10, 3600), "identity": (3, 3600)},
+    "verification_confirm": {"ip": (20, 900)},
     "password_reset_confirm": {"ip": (20, 900), "identity": (10, 900)},
 }
 
@@ -223,8 +262,8 @@ REST_FRAMEWORK = {
     "DEFAULT_PERMISSION_CLASSES": ("core.permissions.IsVerifiedUser",),
     "DEFAULT_RENDERER_CLASSES": ("rest_framework.renderers.JSONRenderer",),
     "DEFAULT_THROTTLE_CLASSES": (
-        "rest_framework.throttling.AnonRateThrottle",
-        "rest_framework.throttling.UserRateThrottle",
+        "core.throttling.TrustedProxyAnonRateThrottle",
+        "core.throttling.TrustedProxyUserRateThrottle",
     ),
     "DEFAULT_THROTTLE_RATES": {"anon": "20/min", "user": "240/min"},
     "EXCEPTION_HANDLER": "core.exceptions.api_exception_handler",
@@ -249,6 +288,27 @@ SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
 SECURE_HSTS_PRELOAD = not DEBUG
 X_FRAME_OPTIONS = "DENY"
 SECURE_CONTENT_TYPE_NOSNIFF = True
+SECURE_REFERRER_POLICY = "same-origin"
+
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"json": {"()": "core.request_logging.JsonFormatter"}},
+    "handlers": {
+        "console": {
+            "class": "logging.StreamHandler",
+            "formatter": "json",
+        }
+    },
+    "root": {"handlers": ["console"], "level": "INFO"},
+    "loggers": {
+        "django.request": {
+            "handlers": ["console"],
+            "level": "WARNING",
+            "propagate": False,
+        }
+    },
+}
 
 EXPO_ACCESS_TOKEN = os.getenv("EXPO_ACCESS_TOKEN", "")
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
@@ -271,6 +331,7 @@ EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
 EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", default=not DEBUG)
 EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", default=False)
+EMAIL_ALLOW_INSECURE_LOCAL_COMPOSE = env_bool("EMAIL_ALLOW_INSECURE_LOCAL_COMPOSE", default=False)
 EMAIL_TIMEOUT = float(os.getenv("EMAIL_TIMEOUT", "10"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Hlásím se <noreply@hlasim.se>")
 SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
@@ -284,6 +345,13 @@ if not DEBUG:
         raise ImproperlyConfigured("Production APP_BASE_URL must use HTTPS")
     if EMAIL_BACKEND != "django.core.mail.backends.smtp.EmailBackend":
         raise ImproperlyConfigured("Production requires the Django SMTP email backend")
+    if EMAIL_ALLOW_INSECURE_LOCAL_COMPOSE:
+        if EMAIL_HOST.casefold() != "mailpit" or APP_BASE_URL != "https://localhost":
+            raise ImproperlyConfigured(
+                "EMAIL_ALLOW_INSECURE_LOCAL_COMPOSE is restricted to local Mailpit"
+            )
+    elif not EMAIL_USE_TLS and not EMAIL_USE_SSL:
+        raise ImproperlyConfigured("Production SMTP must use TLS or SSL")
     required_email_settings = {
         "EMAIL_HOST": EMAIL_HOST,
         "EMAIL_HOST_USER": EMAIL_HOST_USER,

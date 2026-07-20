@@ -9,6 +9,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 
 from core.management.commands.seed_e2e import (
+    BOUNDARY_GUARDIAN_EMAILS,
     E2E_EMAILS,
     GUARDIAN_EMAIL,
     OWNER_EMAIL,
@@ -33,7 +34,7 @@ def e2e_run_credential():
     return secrets.token_urlsafe(48)
 
 
-def run_seed(capsys, e2e_run_credential):
+def run_seed(capsys, e2e_run_credential, *, mode="guardian-open"):
     # pytest-django intentionally swaps in a test database and DEBUG=False. The
     # fail-closed database predicate is covered independently below.
     with (
@@ -44,7 +45,7 @@ def run_seed(capsys, e2e_run_credential):
             clear=False,
         ),
     ):
-        call_command("seed_e2e", confirm_local_e2e=True)
+        call_command("seed_e2e", confirm_local_e2e=True, mode=mode)
     return json.loads(capsys.readouterr().out.strip())
 
 
@@ -94,7 +95,7 @@ def test_seed_is_idempotent_and_preserves_unrelated_users(capsys, e2e_run_creden
     DeliveryAttempt.objects.create(
         incident=old_incident,
         outbox_event=old_event,
-        status="delivered",
+        status="provider_accepted",
         attempt_number=1,
     )
     old_aggregate_ids = {
@@ -148,8 +149,40 @@ def test_owner_no_profile_mode_is_explicit_and_clean(capsys, e2e_run_credential)
 
 
 @pytest.mark.django_db
+def test_free_boundaries_mode_builds_exact_free_tier_limits(capsys, e2e_run_credential):
+    with (
+        patch("core.management.commands.seed_e2e.assert_safe_e2e_database"),
+        patch.dict(
+            os.environ,
+            {"HLASIMSE_E2E_CREDENTIAL": e2e_run_credential},
+            clear=False,
+        ),
+    ):
+        call_command("seed_e2e", confirm_local_e2e=True, mode="free-boundaries")
+    result = json.loads(capsys.readouterr().out.strip())
+
+    owner = User.objects.get(email=OWNER_EMAIL)
+    profile = CheckInProfile.objects.get(owner=owner, name="E2E hranice 7 dní")
+    active_guardians = profile.guardians.filter(status=GuardianMembership.Status.ACTIVE)
+
+    assert result["mode"] == "free-boundaries"
+    assert result["active_profile_count"] == 5
+    assert result["active_guardian_count"] == 5
+    assert result["profile_interval_seconds"] == 604_800
+    assert CheckInProfile.objects.filter(owner=owner, enabled=True).count() == 5
+    assert active_guardians.count() == 5
+    assert profile.interval_seconds == 604_800
+    assert set(active_guardians.values_list("guardian__email", flat=True)) == {
+        GUARDIAN_EMAIL,
+        *BOUNDARY_GUARDIAN_EMAILS,
+    }
+    assert User.objects.filter(email__in=E2E_EMAILS).count() == 6
+
+
+@pytest.mark.django_db
 def test_cleanup_only_removes_reserved_fixture_without_recreating_it(capsys, e2e_run_credential):
-    run_seed(capsys, e2e_run_credential)
+    run_seed(capsys, e2e_run_credential, mode="free-boundaries")
+    assert User.objects.filter(email__in=E2E_EMAILS).count() == 6
     with patch("core.management.commands.seed_e2e.assert_safe_e2e_database"):
         call_command("seed_e2e", confirm_local_e2e=True, mode="cleanup-only")
     result = json.loads(capsys.readouterr().out.strip())

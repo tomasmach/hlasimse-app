@@ -371,22 +371,6 @@ def perform_check_in(
                     },
                 },
             )
-        OutboxEvent.objects.get_or_create(
-            deduplication_key=f"checkin:{check_in.id}",
-            defaults={
-                "event_type": "checkin.accepted",
-                "aggregate_type": "check_in",
-                "aggregate_id": check_in.id,
-                "payload": {
-                    "check_in_id": str(check_in.id),
-                    "profile_id": str(locked.id),
-                    "deadline_generation": locked.deadline_generation,
-                    "next_deadline_at": (
-                        locked.next_deadline_at.isoformat() if locked.next_deadline_at else None
-                    ),
-                },
-            },
-        )
         record_audit_event(
             event_type="checkin.confirmed",
             aggregate_type="check_in",

@@ -1,9 +1,8 @@
-import time
-
 from django.core.management.base import BaseCommand
 
 from core.push import record_worker_heartbeat
 from core.services import sweep_expired_deadlines
+from core.worker_runtime import graceful_stop_signals
 
 
 class Command(BaseCommand):
@@ -17,16 +16,17 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         total_incidents = 0
         total_events = 0
-        while True:
-            incidents, events = sweep_expired_deadlines(limit=options["limit"])
-            total_incidents += incidents
-            total_events += events
-            record_worker_heartbeat(
-                "deadline_sweeper",
-                incidents_created=total_incidents,
-                events_created=total_events,
-            )
-            if not options["watch"]:
-                break
-            time.sleep(max(options["poll_interval"], 1.0))
+        with graceful_stop_signals() as stop:
+            while not stop.requested:
+                incidents, events = sweep_expired_deadlines(limit=options["limit"])
+                total_incidents += incidents
+                total_events += events
+                record_worker_heartbeat(
+                    "deadline_sweeper",
+                    incidents_created=total_incidents,
+                    events_created=total_events,
+                )
+                if not options["watch"] or stop.requested:
+                    break
+                stop.wait(max(options["poll_interval"], 1.0))
         self.stdout.write(f"incidents_created={total_incidents} events_created={total_events}")

@@ -136,3 +136,33 @@ jobs:
 
       - name: Run test suite on PostgreSQL
         run: uv run pytest
+
+  production-container:
+    name: Production container gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Build production server image
+        run: docker build --tag hlasimse-server:ci apps/server
+
+      - name: Validate production image and runtime
+        run: scripts/ci/validate-production-image.sh hlasimse-server:ci
+
+      - name: Export production image for scanning
+        run: docker image save --output "$RUNNER_TEMP/hlasimse-server.tar" hlasimse-server:ci
+
+      - name: Scan production image
+        run: >-
+          docker run --rm
+          --volume "$RUNNER_TEMP:/scan:ro"
+          aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f
+          image
+          --input /scan/hlasimse-server.tar
+          --scanners vuln,secret
+          --severity HIGH,CRITICAL
+          --exit-code 1
+          --no-progress
+          --timeout 10m

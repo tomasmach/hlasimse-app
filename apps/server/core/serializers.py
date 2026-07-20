@@ -315,6 +315,8 @@ class WatchedProfileSerializer(serializers.ModelSerializer):
 
 
 class PushDeviceSerializer(serializers.ModelSerializer):
+    MAX_ACTIVE_DEVICES_PER_USER = 5
+
     class Meta:
         model = PushDevice
         fields = (
@@ -336,6 +338,9 @@ class PushDeviceSerializer(serializers.ModelSerializer):
         installation_id = validated_data.pop("installation_id")
         submitted_token = validated_data["expo_push_token"]
         with transaction.atomic():
+            # Serialize registrations for one account so concurrent requests cannot
+            # both observe a free slot and exceed the active-device limit.
+            user = get_user_model().objects.select_for_update().get(pk=user.pk)
             device = (
                 PushDevice.objects.select_for_update()
                 .filter(installation_id=installation_id)
@@ -351,6 +356,22 @@ class PushDeviceSerializer(serializers.ModelSerializer):
             if token_device is not None and (device is None or token_device.pk != device.pk):
                 raise serializers.ValidationError(
                     {"expo_push_token": "Push token už patří jiné instalaci."}
+                )
+            already_active_for_user = (
+                device is not None and device.user_id == user.id and device.active
+            )
+            if (
+                not already_active_for_user
+                and PushDevice.objects.filter(user=user, active=True).count()
+                >= self.MAX_ACTIVE_DEVICES_PER_USER
+            ):
+                raise serializers.ValidationError(
+                    {
+                        "non_field_errors": [
+                            "Účet už má maximální počet 5 aktivních zařízení. "
+                            "Nejprve odstraňte některé starší zařízení."
+                        ]
+                    }
                 )
             if device is not None and device.user_id != user.id:
                 # Rebinding requires both installation UUID and its current provider token.
@@ -488,8 +509,8 @@ class AlertIncidentSerializer(serializers.ModelSerializer):
         counts = {key: value for key, value in counts.items() if value}
         if not counts:
             state = "no_delivery_record"
-        elif counts.get("delivered"):
-            state = "delivered"
+        elif counts.get("provider_accepted"):
+            state = "accepted_by_push_service"
         elif counts.get("ticket_received") or counts.get("receipt_processing"):
             state = "sent_to_provider"
         elif counts.get("queued") or counts.get("retryable_failure"):

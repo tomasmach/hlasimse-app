@@ -44,6 +44,14 @@ it("keeps check-in queueing available from the last confirmed offline profile", 
   expect(source).toContain("serverový termín se nezmění, dokud požadavek nepřijme");
 });
 
+it("treats location as a one-attempt choice and shows the last confirmed check-in", () => {
+  const source = readFileSync(resolve(mobileRoot, "app/(tabs)/index.tsx"), "utf8");
+  expect(source).toContain("setIncludeLocation(false);\n    const feedback");
+  expect(source).toContain("}, [store.profile?.id]);");
+  expect(source).toContain("Poslední serverem potvrzené ohlášení");
+  expect(source).toContain("formatLastCheckIn(profile.last_checked_in_at)");
+});
+
 it("reloads safety history whenever its tab regains focus", () => {
   const source = readFileSync(resolve(mobileRoot, "app/(tabs)/activity.tsx"), "utf8");
   expect(source).toContain("useFocusEffect(");

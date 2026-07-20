@@ -9,6 +9,7 @@ from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.core.mail import EmailMultiAlternatives
 from django.db import IntegrityError, transaction
+from django.test import Client
 from django.urls import reverse
 from django.utils import timezone
 
@@ -281,7 +282,13 @@ def test_verification_outbox_retries_and_deleted_account_is_terminal(api_client,
         raise smtplib.SMTPServerDisconnected("provider timeout with private details")
 
     monkeypatch.setattr(EmailMultiAlternatives, "send", fail_smtp)
-    for worker_name in {"deadline_sweeper", "outbox", "push_receipts"}:
+    for worker_name in {
+        "deadline_sweeper",
+        "outbox_alerts",
+        "outbox_email",
+        "push_receipts",
+        "safety_reconciliation",
+    }:
         WorkerHeartbeat.objects.update_or_create(worker_name=worker_name)
 
     assert process_one_outbox_event()
@@ -324,9 +331,21 @@ def test_web_registration_verification_and_stale_session_gate(client, settings):
     assert client.get(reverse("core:dashboard")).status_code == 302
 
     challenge = _challenge()
-    result = client.get(
+    staged = client.get(
         reverse("accounts:verify-email", kwargs={"token": verification_token(challenge)})
     )
+    assert staged.status_code == 302
+    assert staged.url == reverse("accounts:verify-email-confirm")
+    user.refresh_from_db()
+    assert user.email_verified_at is None
+
+    confirmation = client.get(reverse("accounts:verify-email-confirm"))
+    assert confirmation.status_code == 200
+    assert "Pouhé otevření odkazu účet neaktivuje" in confirmation.content.decode()
+    user.refresh_from_db()
+    assert user.email_verified_at is None
+
+    result = client.post(reverse("accounts:verify-email-confirm"))
     assert result.status_code == 200
     assert "E-mail je ověřený" in result.content.decode()
 
@@ -336,3 +355,34 @@ def test_web_registration_verification_and_stale_session_gate(client, settings):
     )
     assert logged_in.status_code == 302
     assert logged_in.url == reverse("core:dashboard")
+
+
+def test_overlong_verification_link_clears_previously_staged_token(client, settings, api_client):
+    _register(api_client)
+    challenge = _challenge()
+    user = challenge.user
+    settings.ROOT_URLCONF = "core.web_urls"
+
+    client.get(reverse("accounts:verify-email", kwargs={"token": verification_token(challenge)}))
+    client.get(reverse("accounts:verify-email", kwargs={"token": "x" * 1025}))
+    result = client.post(reverse("accounts:verify-email-confirm"))
+
+    assert "Odkaz není platný" in result.content.decode()
+    user.refresh_from_db()
+    assert user.email_verified_at is None
+
+
+def test_email_verification_confirmation_requires_csrf(settings, api_client):
+    _register(api_client)
+    challenge = _challenge()
+    settings.ROOT_URLCONF = "core.web_urls"
+    csrf_client = Client(enforce_csrf_checks=True)
+    csrf_client.get(
+        reverse("accounts:verify-email", kwargs={"token": verification_token(challenge)})
+    )
+
+    response = csrf_client.post(reverse("accounts:verify-email-confirm"))
+
+    assert response.status_code == 403
+    challenge.user.refresh_from_db()
+    assert challenge.user.email_verified_at is None

@@ -92,11 +92,20 @@ e2e_prepare_backend() {
     cd "${E2E_ROOT_DIR}/apps/server"
     uv sync --frozen
     uv run python manage.py migrate --noinput
+  )
+  e2e_seed_dataset guardian-open seed.json
+  e2e_start_backend
+}
+
+e2e_seed_dataset() {
+  local mode="$1"
+  local artifact_name="$2"
+  (
+    cd "${E2E_ROOT_DIR}/apps/server"
     HLASIMSE_E2E_CREDENTIAL="${E2E_RUN_CREDENTIAL}" uv run python manage.py seed_e2e \
       --confirm-local-e2e \
-      --mode guardian-open
-  ) | tee "${E2E_ARTIFACT_DIR}/backend/seed.json"
-  e2e_start_backend
+      --mode "$mode"
+  ) | tee "${E2E_ARTIFACT_DIR}/backend/${artifact_name}"
 }
 
 e2e_start_backend() {
@@ -228,12 +237,9 @@ e2e_run_journey() {
 
   e2e_run_flow "$device_id" 40_owner_export
   e2e_run_flow "$device_id" 90_owner_delete_account
-  (
-    cd "${E2E_ROOT_DIR}/apps/server"
-    uv run python manage.py seed_e2e \
-      --confirm-local-e2e \
-      --mode cleanup-only
-  ) | tee "${E2E_ARTIFACT_DIR}/backend/cleanup.json"
+  e2e_seed_dataset free-boundaries boundary-seed.json
+  e2e_run_flow "$device_id" 95_owner_free_boundaries
+  e2e_seed_dataset cleanup-only cleanup.json
 }
 
 e2e_cleanup() {

@@ -20,7 +20,6 @@ from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
 from rest_framework.pagination import CursorPagination, PageNumberPagination
 from rest_framework.response import Response
-from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -81,11 +80,12 @@ from .services import (
     respond_to_invitation,
     revoke_guardian_membership,
 )
+from .throttling import TrustedProxySimpleRateThrottle
 
 logger = logging.getLogger(__name__)
 
 
-class RegistrationThrottle(SimpleRateThrottle):
+class RegistrationThrottle(TrustedProxySimpleRateThrottle):
     rate = "5/hour"
     scope = "registration"
 
@@ -150,7 +150,7 @@ class MeView(generics.RetrieveUpdateAPIView):
         return self.request.user
 
 
-class PasswordResetRequestThrottle(SimpleRateThrottle):
+class PasswordResetRequestThrottle(TrustedProxySimpleRateThrottle):
     rate = "5/hour"
     scope = "password_reset_request"
 
@@ -158,7 +158,7 @@ class PasswordResetRequestThrottle(SimpleRateThrottle):
         return self.cache_format % {"scope": self.scope, "ident": self.get_ident(request)}
 
 
-class PasswordResetConfirmThrottle(SimpleRateThrottle):
+class PasswordResetConfirmThrottle(TrustedProxySimpleRateThrottle):
     rate = "10/hour"
     scope = "password_reset_confirm"
 
@@ -332,7 +332,11 @@ class ProfileViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=["get"])
     def guardians(self, request, pk=None):
-        memberships = self.get_object().guardians.select_related("guardian")
+        memberships = (
+            self.get_object()
+            .guardians.filter(status=GuardianMembership.Status.ACTIVE)
+            .select_related("guardian")
+        )
         return Response(GuardianSerializer(memberships, many=True).data)
 
     @action(detail=True, methods=["delete"], url_path=r"guardians/(?P<guardian_id>[^/.]+)")

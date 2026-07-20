@@ -36,8 +36,13 @@ account_patterns = (
             name="resend-verification",
         ),
         path(
+            "overeni-emailu/potvrdit/",
+            web_views.confirm_email_verification_view,
+            name="verify-email-confirm",
+        ),
+        path(
             "overeni-emailu/<str:token>/",
-            web_views.verify_email_view,
+            web_views.stage_email_verification_view,
             name="verify-email",
         ),
         path("prihlaseni/", web_views.SessionLoginView.as_view(), name="login"),

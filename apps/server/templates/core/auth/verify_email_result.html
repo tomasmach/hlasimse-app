@@ -2,7 +2,10 @@
 {% block title %}Ověření e-mailu — Hlásím se{% endblock %}
 {% block auth_content %}
 <header class="form-heading">
-  {% if verification_status == "verified" %}
+  {% if verification_status == "confirmation_required" %}
+    <h1>Potvrďte svou e-mailovou adresu.</h1>
+    <p>Ověření dokončete vědomým potvrzením. Pouhé otevření odkazu účet neaktivuje.</p>
+  {% elif verification_status == "verified" %}
     <h1>E-mail je ověřený.</h1>
     <p>Teď se můžete bezpečně přihlásit a dokončit nastavení.</p>
   {% elif verification_status == "already_verified" %}
@@ -16,7 +19,12 @@
     <p>Mohl být nahrazen novějším odkazem nebo účet už neexistuje.</p>
   {% endif %}
 </header>
-{% if verification_status == "verified" or verification_status == "already_verified" %}
+{% if verification_status == "confirmation_required" %}
+  <form method="post">
+    {% csrf_token %}
+    <button class="button button--coral button--wide" type="submit">Potvrdit e-mail</button>
+  </form>
+{% elif verification_status == "verified" or verification_status == "already_verified" %}
   <a class="button button--coral button--wide" href="{% url 'accounts:login' %}">Přihlásit se</a>
 {% else %}
   <a class="button button--coral button--wide" href="{% url 'accounts:resend-verification' %}">Poslat nový odkaz</a>
