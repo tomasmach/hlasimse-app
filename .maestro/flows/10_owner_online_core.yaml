@@ -26,7 +26,7 @@ tags:
     visible:
       id: "checkin-submit"
     timeout: 20000
-- assertVisible: "E2E bezpečnostní profil"
+- assertVisible: "Vybraný profil E2E bezpečnostní profil"
 - tapOn:
     id: "checkin-submit"
 - extendedWaitUntil:

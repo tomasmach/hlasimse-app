@@ -25,7 +25,7 @@ tags:
 - tapOn:
     id: "profile-create-submit"
 - extendedWaitUntil:
-    visible: "E2E druhý profil"
+    visible: "Vybraný profil E2E druhý profil"
     timeout: 15000
 - assertVisible:
     id: "checkin-submit"
