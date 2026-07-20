@@ -201,7 +201,10 @@ class DashboardView(LoginRequiredMixin, TemplateView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         profiles = list(
-            CheckInProfile.objects.filter(owner=self.request.user).order_by("created_at")
+            CheckInProfile.objects.filter(
+                owner=self.request.user,
+                archived_at__isnull=True,
+            ).order_by("created_at")
         )
         for profile in profiles:
             profile.enabled = profile.enabled and not profile.is_paused
@@ -257,7 +260,12 @@ def profile_create_view(request):
 
 @login_required(login_url="accounts:login")
 def profile_edit_view(request, pk):
-    profile = get_object_or_404(CheckInProfile, pk=pk, owner=request.user)
+    profile = get_object_or_404(
+        CheckInProfile,
+        pk=pk,
+        owner=request.user,
+        archived_at__isnull=True,
+    )
     form = CheckInProfileForm(
         request.POST if request.method == "POST" else None,
         instance=profile,
@@ -287,7 +295,12 @@ def _interval_label(seconds):
 
 @login_required(login_url="accounts:login")
 def profile_detail_view(request, pk):
-    profile = get_object_or_404(CheckInProfile, pk=pk, owner=request.user)
+    profile = get_object_or_404(
+        CheckInProfile,
+        pk=pk,
+        owner=request.user,
+        archived_at__isnull=True,
+    )
     profile.interval_label = _interval_label(profile.interval_seconds)
     session_keys = request.session.get("web_checkin_keys", {})
     session_keys[str(profile.pk)] = uuid.uuid4().hex
@@ -312,7 +325,12 @@ def profile_detail_view(request, pk):
 @require_POST
 @login_required(login_url="accounts:login")
 def check_in_view(request, pk):
-    profile = get_object_or_404(CheckInProfile, pk=pk, owner=request.user)
+    profile = get_object_or_404(
+        CheckInProfile,
+        pk=pk,
+        owner=request.user,
+        archived_at__isnull=True,
+    )
     if profile.is_paused:
         messages.error(request, "Pozastavený profil je nutné před ohlášením obnovit.")
         return redirect("checkins:profile-detail", pk=profile.pk)
@@ -336,7 +354,12 @@ def check_in_view(request, pk):
 
 @login_required(login_url="accounts:login")
 def profile_pause_view(request, pk):
-    profile = get_object_or_404(CheckInProfile, pk=pk, owner=request.user)
+    profile = get_object_or_404(
+        CheckInProfile,
+        pk=pk,
+        owner=request.user,
+        archived_at__isnull=True,
+    )
     form = PauseProfileForm(request.POST if request.method == "POST" else None)
     if request.method == "POST" and form.is_valid():
         pausing = profile.enabled and not profile.is_paused
@@ -433,10 +456,12 @@ def history_view(request):
 def guardians_view(request):
     guardians = GuardianMembership.objects.filter(
         profile__owner=request.user,
+        profile__archived_at__isnull=True,
         status=GuardianMembership.Status.ACTIVE,
     ).select_related("profile", "guardian")
     invites = GuardianInvitation.objects.filter(
         profile__owner=request.user,
+        profile__archived_at__isnull=True,
         status=GuardianInvitation.Status.PENDING,
         expires_at__gt=timezone.now(),
     ).select_related("profile")
@@ -444,6 +469,7 @@ def guardians_view(request):
         normalized_email=request.user.email.lower(),
         status=GuardianInvitation.Status.PENDING,
         expires_at__gt=timezone.now(),
+        profile__archived_at__isnull=True,
     ).select_related("profile", "invited_by")
     return render(
         request,
@@ -488,6 +514,7 @@ def guardian_remove_view(request, pk):
         GuardianMembership,
         pk=pk,
         profile__owner=request.user,
+        profile__archived_at__isnull=True,
         status=GuardianMembership.Status.ACTIVE,
     )
     revoke_guardian_membership(membership=membership, actor=request.user)
@@ -615,6 +642,7 @@ def _export_payload(user):
                 "paused_until": _iso(item.paused_until),
                 "last_checked_in_at": _iso(item.last_checked_in_at),
                 "next_deadline_at": _iso(item.next_deadline_at),
+                "archived_at": _iso(item.archived_at),
                 "created_at": _iso(item.created_at),
             }
             for item in profiles
@@ -632,6 +660,7 @@ def _export_payload(user):
                     if item.location_accuracy_meters is not None
                     else None
                 ),
+                "submitted_from_queue": item.submitted_from_queue,
             }
             for item in checkins
         ],

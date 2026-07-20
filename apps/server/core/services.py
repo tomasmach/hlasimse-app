@@ -34,6 +34,13 @@ class CheckInResult:
     created: bool
 
 
+@dataclass(frozen=True)
+class ProfileArchiveResult:
+    profile: CheckInProfile
+    archived: bool
+    blocking_incident: AlertIncident | None = None
+
+
 def create_profile(
     *,
     owner,
@@ -52,7 +59,10 @@ def create_profile(
         raise ValidationError({"paused_until": "Čas obnovení musí být v budoucnosti."})
     with transaction.atomic():
         get_user_model().objects.select_for_update().get(pk=owner.pk)
-        if CheckInProfile.objects.filter(owner=owner).count() >= MAX_PROFILES_PER_USER:
+        if (
+            CheckInProfile.objects.filter(owner=owner, archived_at__isnull=True).count()
+            >= MAX_PROFILES_PER_USER
+        ):
             raise ValidationError({"profiles": "Každý účet může mít nejvýše 5 profilů."})
         profile = CheckInProfile(
             owner=owner,
@@ -197,6 +207,8 @@ def _resume_expired_pause_locked(*, profile: CheckInProfile, now) -> bool:
 def update_profile(*, profile: CheckInProfile, values: dict) -> CheckInProfile:
     with transaction.atomic():
         locked = CheckInProfile.objects.select_for_update().get(pk=profile.pk)
+        if locked.archived_at is not None:
+            raise ValidationError({"profile": "Archivovaný profil nelze upravit."})
         now = timezone.now()
         _resume_expired_pause_locked(profile=locked, now=now)
         _materialize_due_incident_locked(profile=locked, now=now, actor=locked.owner)
@@ -270,6 +282,7 @@ def perform_check_in(
     latitude: Decimal | None = None,
     longitude: Decimal | None = None,
     location_accuracy_meters: Decimal | None = None,
+    submitted_from_queue: bool = False,
 ) -> CheckInResult:
     with transaction.atomic():
         locked = CheckInProfile.objects.select_for_update().get(pk=profile.pk)
@@ -277,6 +290,8 @@ def perform_check_in(
         if existing:
             return CheckInResult(existing, locked, False)
         now = timezone.now()
+        if locked.archived_at is not None:
+            raise ValidationError({"profile": "Archivovaný profil nepřijímá ohlášení."})
         _resume_expired_pause_locked(profile=locked, now=now)
         if not locked.enabled:
             raise ValidationError({"profile": "Kontrolní profil není aktivní."})
@@ -308,6 +323,7 @@ def perform_check_in(
                     location_accuracy_meters=location_accuracy_meters,
                     deadline_generation=locked.deadline_generation,
                     response_deadline_at=locked.next_deadline_at,
+                    submitted_from_queue=submitted_from_queue,
                 )
         except IntegrityError:
             check_in = CheckIn.objects.get(profile=locked, idempotency_key=idempotency_key)
@@ -381,9 +397,76 @@ def perform_check_in(
                 "deadline_generation": locked.deadline_generation,
                 "resolved_incident_count": len(open_incidents),
                 "has_optional_position": latitude is not None,
+                "submitted_from_queue": submitted_from_queue,
             },
         )
         return CheckInResult(check_in, locked, True)
+
+
+def archive_profile(*, profile: CheckInProfile, actor) -> ProfileArchiveResult:
+    """Make a profile inert while retaining all safety and audit history.
+
+    A due generation is materialized before deciding whether archival is safe. The
+    result object (rather than an exception) lets that incident commit before the
+    caller returns a conflict response.
+    """
+    with transaction.atomic():
+        locked = CheckInProfile.objects.select_for_update().get(pk=profile.pk)
+        if locked.owner_id != actor.id or locked.archived_at is not None:
+            raise PermissionDenied("Profil není dostupný.")
+        now = timezone.now()
+        _resume_expired_pause_locked(profile=locked, now=now)
+        _materialize_due_incident_locked(profile=locked, now=now, actor=actor)
+        blocking_incident = (
+            AlertIncident.objects.select_for_update()
+            .filter(profile=locked, status=AlertIncident.Status.OPEN)
+            .first()
+        )
+        if blocking_incident is not None:
+            return ProfileArchiveResult(
+                profile=locked,
+                archived=False,
+                blocking_incident=blocking_incident,
+            )
+
+        locked.archived_at = now
+        locked.enabled = False
+        locked.is_paused = True
+        locked.paused_until = None
+        locked.next_deadline_at = None
+        locked.deadline_generation += 1
+        locked.full_clean()
+        locked.save(
+            update_fields=[
+                "archived_at",
+                "enabled",
+                "is_paused",
+                "paused_until",
+                "next_deadline_at",
+                "deadline_generation",
+                "updated_at",
+            ]
+        )
+        revoked_memberships = GuardianMembership.objects.filter(
+            profile=locked,
+            status=GuardianMembership.Status.ACTIVE,
+        ).update(status=GuardianMembership.Status.REVOKED, updated_at=now)
+        revoked_invitations = GuardianInvitation.objects.filter(
+            profile=locked,
+            status=GuardianInvitation.Status.PENDING,
+        ).update(status=GuardianInvitation.Status.REVOKED, updated_at=now)
+        record_audit_event(
+            event_type="profile.archived",
+            aggregate_type="check_in_profile",
+            aggregate_id=locked.id,
+            actor=actor,
+            metadata={
+                "deadline_generation": locked.deadline_generation,
+                "revoked_membership_count": revoked_memberships,
+                "revoked_invitation_count": revoked_invitations,
+            },
+        )
+        return ProfileArchiveResult(profile=locked, archived=True)
 
 
 def create_invitation(
@@ -397,7 +480,9 @@ def create_invitation(
     raw_token = secrets.token_urlsafe(32)
     digest = hashlib.sha256(raw_token.encode()).hexdigest()
     with transaction.atomic():
-        CheckInProfile.objects.select_for_update().get(pk=profile.pk)
+        locked_profile = CheckInProfile.objects.select_for_update().get(pk=profile.pk)
+        if locked_profile.archived_at is not None:
+            raise ValidationError({"profile": "Archivovaný profil nepřijímá pozvánky."})
         now = timezone.now()
         GuardianInvitation.objects.filter(
             profile=profile,
@@ -460,7 +545,11 @@ def accept_invitation(*, raw_token: str, user) -> GuardianMembership:
         )
         if invitation_ref is None:
             raise ValidationError({"token": "Pozvánka neexistuje."})
-        CheckInProfile.objects.select_for_update().get(pk=invitation_ref["profile_id"])
+        locked_profile = CheckInProfile.objects.select_for_update().get(
+            pk=invitation_ref["profile_id"]
+        )
+        if locked_profile.archived_at is not None:
+            raise ValidationError({"token": "Pozvánka už není platná."})
         invitation = GuardianInvitation.objects.select_for_update().get(pk=invitation_ref["id"])
         if invitation.normalized_email != user.email.lower():
             raise PermissionDenied("Pozvánka patří jinému e-mailu.")
@@ -536,7 +625,11 @@ def respond_to_invitation(*, invitation_id, user, decision: str):
         )
         if invitation_ref is None:
             raise PermissionDenied("Pozvánka není dostupná.")
-        CheckInProfile.objects.select_for_update().get(pk=invitation_ref["profile_id"])
+        locked_profile = CheckInProfile.objects.select_for_update().get(
+            pk=invitation_ref["profile_id"]
+        )
+        if locked_profile.archived_at is not None:
+            raise ValidationError({"invitation": "Pozvánka už není platná."})
         invitation = GuardianInvitation.objects.select_for_update().get(pk=invitation_ref["id"])
         if decision == "accept":
             return invitation, _accept_invitation_locked(
@@ -604,6 +697,7 @@ def sweep_expired_deadlines(*, now=None, limit: int = 500) -> tuple[int, int]:
     now = now or timezone.now()
     paused_ids = list(
         CheckInProfile.objects.filter(
+            archived_at__isnull=True,
             is_paused=True,
             paused_until__isnull=False,
             paused_until__lte=now,
@@ -621,6 +715,7 @@ def sweep_expired_deadlines(*, now=None, limit: int = 500) -> tuple[int, int]:
     )
     profile_ids = list(
         CheckInProfile.objects.filter(
+            archived_at__isnull=True,
             enabled=True,
             is_paused=False,
             next_deadline_at__isnull=False,

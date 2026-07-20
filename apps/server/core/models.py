@@ -120,11 +120,16 @@ class CheckInProfile(UUIDModel):
     last_checked_in_at = models.DateTimeField(null=True, blank=True)
     next_deadline_at = models.DateTimeField(null=True, blank=True, db_index=True)
     deadline_generation = models.PositiveBigIntegerField(default=0)
+    archived_at = models.DateTimeField(null=True, blank=True, db_index=True)
 
     class Meta:
         ordering = ["created_at"]
         constraints = [
-            models.UniqueConstraint(fields=["owner", "name"], name="unique_profile_name_per_owner"),
+            models.UniqueConstraint(
+                fields=["owner", "name"],
+                condition=Q(archived_at__isnull=True),
+                name="unique_active_profile_name_per_owner",
+            ),
             models.CheckConstraint(
                 condition=Q(interval_seconds__gte=MIN_INTERVAL_SECONDS)
                 & Q(interval_seconds__lte=MAX_INTERVAL_SECONDS)
@@ -134,6 +139,16 @@ class CheckInProfile(UUIDModel):
             models.CheckConstraint(
                 condition=Q(is_paused=True) | Q(paused_until__isnull=True),
                 name="profile_pause_until_requires_pause",
+            ),
+            models.CheckConstraint(
+                condition=Q(archived_at__isnull=True)
+                | (
+                    Q(enabled=False)
+                    & Q(is_paused=True)
+                    & Q(paused_until__isnull=True)
+                    & Q(next_deadline_at__isnull=True)
+                ),
+                name="archived_profile_is_inert",
             ),
         ]
 
@@ -157,6 +172,7 @@ class CheckIn(UUIDModel):
     )
     deadline_generation = models.PositiveBigIntegerField()
     response_deadline_at = models.DateTimeField(null=True, blank=True)
+    submitted_from_queue = models.BooleanField(default=False)
 
     class Meta:
         ordering = ["-accepted_at"]

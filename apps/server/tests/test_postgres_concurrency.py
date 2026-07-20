@@ -12,6 +12,7 @@ from core.models import (
     AlertIncident,
     AuditEvent,
     CheckIn,
+    CheckInProfile,
     EmailVerificationChallenge,
     GuardianInvitation,
     GuardianMembership,
@@ -142,6 +143,44 @@ def test_simultaneous_sweep_and_checkin_cannot_skip_a_late_incident():
     assert incident.status == AlertIncident.Status.RESOLVED
     assert incident.resolved_by_check_in == profile.check_ins.get()
     assert AlertIncident.objects.filter(profile=profile).count() == 1
+
+
+def test_simultaneous_due_profile_archive_and_checkin_preserves_incident_history():
+    owner = User.objects.create_user(email="archive-race@example.cz", password="Long-pass-123")
+    profile = create_profile(owner=owner, name="Archive race", interval_seconds=3_600)
+    profile.next_deadline_at = timezone.now() - timedelta(minutes=1)
+    profile.save(update_fields=["next_deadline_at", "updated_at"])
+
+    def race(number):
+        if number == 0:
+            client = APIClient()
+            client.force_authenticate(user=User.objects.get(pk=owner.pk))
+            return client.delete(f"/api/v1/profiles/{profile.id}/").status_code
+        result = perform_check_in(
+            profile=CheckInProfile.objects.get(pk=profile.pk),
+            idempotency_key="archive-deadline-race",
+        )
+        return str(result.check_in.id)
+
+    results = run_two_workers(race)
+
+    profile.refresh_from_db()
+    incident = AlertIncident.objects.get(profile=profile)
+    check_in = CheckIn.objects.get(profile=profile)
+    assert results[0] in {204, 409}
+    assert incident.status == AlertIncident.Status.RESOLVED
+    assert incident.resolved_by_check_in == check_in
+    assert not AlertIncident.objects.filter(
+        profile=profile,
+        status=AlertIncident.Status.OPEN,
+    ).exists()
+    if results[0] == 204:
+        assert profile.archived_at is not None
+        assert profile.enabled is False
+        assert profile.is_paused is True
+        assert profile.next_deadline_at is None
+    else:
+        assert profile.archived_at is None
 
 
 def test_concurrent_reconciliation_materializes_one_incident_and_audit_event():

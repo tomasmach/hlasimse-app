@@ -105,6 +105,27 @@ def test_alert_push_payload_never_contains_location(profile, other_user):
     assert other_user.email not in encoded
 
 
+def test_alert_push_payload_has_versioned_incident_route(profile, other_user):
+    device = _device(other_user)
+    incident = AlertIncident.objects.create(
+        profile=profile,
+        deadline_generation=profile.deadline_generation,
+        deadline_at=timezone.now() - timedelta(minutes=1),
+    )
+
+    payload = build_alert_message(incident=incident, device=device)["data"]
+
+    assert payload == {
+        "schema_version": 1,
+        "type": "alert_incident",
+        "incident_id": str(incident.id),
+        "profile_id": str(profile.id),
+        "deadline_generation": incident.deadline_generation,
+        "route": f"/incident/{incident.id}",
+    }
+    assert "alert_id" not in payload
+
+
 def test_alert_uses_recipient_snapshot_after_live_membership_changes(profile, other_user):
     _, event = _create_incident_event(profile, other_user)
     device = _device(other_user)

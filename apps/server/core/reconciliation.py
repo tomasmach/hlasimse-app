@@ -168,6 +168,7 @@ def reconcile_domain_state(*, repair: bool = False, now=None) -> ReconciliationR
     repairs: list[str] = []
 
     expired_profiles = CheckInProfile.objects.filter(
+        archived_at__isnull=True,
         enabled=True,
         is_paused=False,
         next_deadline_at__isnull=False,

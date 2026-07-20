@@ -8,7 +8,7 @@ from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
 from django.db import transaction
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
@@ -18,7 +18,7 @@ from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
 from rest_framework import generics, mixins, permissions, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
-from rest_framework.pagination import PageNumberPagination
+from rest_framework.pagination import CursorPagination, PageNumberPagination
 from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
@@ -41,6 +41,7 @@ from .email_verification import (
 from .models import (
     AlertAcknowledgement,
     AlertIncident,
+    AuditEvent,
     CheckIn,
     CheckInProfile,
     GuardianInvitation,
@@ -72,6 +73,7 @@ from .serializers import (
 from .services import (
     accept_invitation,
     accessible_incidents,
+    archive_profile,
     create_invitation,
     deactivate_push_device,
     perform_check_in,
@@ -284,7 +286,26 @@ class ProfileViewSet(viewsets.ModelViewSet):
     serializer_class = ProfileSerializer
 
     def get_queryset(self):
-        return CheckInProfile.objects.filter(owner=self.request.user)
+        return CheckInProfile.objects.filter(
+            owner=self.request.user,
+            archived_at__isnull=True,
+        )
+
+    def destroy(self, request, *args, **kwargs):
+        result = archive_profile(profile=self.get_object(), actor=request.user)
+        if result.blocking_incident is not None:
+            return Response(
+                {
+                    "code": "profile_has_open_incident",
+                    "detail": (
+                        "Profil nelze archivovat během aktivního incidentu. "
+                        "Nejprve incident bezpečně vyřešte potvrzeným ohlášením."
+                    ),
+                    "incident_id": str(result.blocking_incident.id),
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @action(detail=True, methods=["post"], url_path="check-in")
     def check_in(self, request, pk=None):
@@ -344,6 +365,128 @@ class ProfileViewSet(viewsets.ModelViewSet):
         if settings.DEBUG or settings.EMAIL_BACKEND.endswith("locmem.EmailBackend"):
             data["acceptance_token"] = token
         return Response(data, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["get"])
+    def timeline(self, request, pk=None):
+        # Archived profiles intentionally disappear from normal profile routes, but
+        # their owner retains read-only access to the safety history.
+        profile = get_object_or_404(CheckInProfile, pk=pk, owner=request.user)
+        check_in_ids = CheckIn.objects.filter(profile=profile).values("id")
+        incident_ids = AlertIncident.objects.filter(profile=profile).values("id")
+        events = AuditEvent.objects.filter(
+            Q(
+                aggregate_type="check_in_profile",
+                aggregate_id=profile.id,
+                event_type__in=(
+                    "profile.created",
+                    "profile.paused",
+                    "profile.resumed",
+                    "profile.archived",
+                ),
+            )
+            | Q(
+                aggregate_type="check_in",
+                aggregate_id__in=check_in_ids,
+                event_type="checkin.confirmed",
+            )
+            | Q(
+                aggregate_type="alert_incident",
+                aggregate_id__in=incident_ids,
+                event_type__in=("incident.opened", "incident.resolved"),
+            )
+        ).order_by("-occurred_at", "-id")
+        paginator = ProfileTimelinePagination()
+        page = paginator.paginate_queryset(events, request, view=self)
+        data = _serialize_timeline_page(page)
+        response = paginator.get_paginated_response(data)
+        response["Cache-Control"] = "no-store, private"
+        response["Pragma"] = "no-cache"
+        return response
+
+
+class ProfileTimelinePagination(CursorPagination):
+    page_size = 50
+    page_size_query_param = "page_size"
+    max_page_size = 100
+    ordering = ("-occurred_at", "-id")
+
+
+def _serialize_timeline_page(events):
+    event_list = list(events)
+    check_in_ids = [
+        event.aggregate_id for event in event_list if event.event_type == "checkin.confirmed"
+    ]
+    incident_ids = [
+        event.aggregate_id
+        for event in event_list
+        if event.event_type in {"incident.opened", "incident.resolved"}
+    ]
+    check_ins = {
+        item.id: item
+        for item in CheckIn.objects.filter(pk__in=check_in_ids).annotate(
+            resolved_incident_count=Count("resolved_incidents", distinct=True)
+        )
+    }
+    incidents = {item.id: item for item in AlertIncident.objects.filter(pk__in=incident_ids)}
+    output = []
+    for event in event_list:
+        metadata = event.metadata
+        if event.event_type == "checkin.confirmed":
+            check_in = check_ins[event.aggregate_id]
+            details = {
+                "check_in_id": str(check_in.id),
+                "deadline_generation": check_in.deadline_generation,
+                "next_deadline_at": check_in.response_deadline_at,
+                "submitted_from_queue": check_in.submitted_from_queue,
+                "resolved_incident_count": check_in.resolved_incident_count,
+            }
+        elif event.event_type == "incident.opened":
+            incident = incidents[event.aggregate_id]
+            details = {
+                "incident_id": str(incident.id),
+                "deadline_at": incident.deadline_at,
+                "deadline_generation": incident.deadline_generation,
+            }
+        elif event.event_type == "incident.resolved":
+            incident = incidents[event.aggregate_id]
+            details = {
+                "incident_id": str(incident.id),
+                "resolved_at": incident.resolved_at,
+                "resolved_by_check_in_id": str(incident.resolved_by_check_in_id),
+            }
+        elif event.event_type in {"profile.paused", "profile.resumed"}:
+            details = {
+                "automatic": metadata.get("automatic", False),
+                "deadline_generation": metadata["deadline_generation"],
+                "has_scheduled_resume": metadata.get("has_scheduled_resume", False),
+            }
+        elif event.event_type == "profile.archived":
+            details = {
+                "deadline_generation": metadata["deadline_generation"],
+                "revoked_membership_count": metadata["revoked_membership_count"],
+                "revoked_invitation_count": metadata["revoked_invitation_count"],
+            }
+        else:
+            details = {
+                "enabled": metadata["enabled"],
+                "is_paused": metadata["is_paused"],
+                "interval_seconds": metadata["interval_seconds"],
+                "deadline_generation": metadata["deadline_generation"],
+            }
+        output.append(
+            {
+                "id": str(event.id),
+                "event_type": event.event_type,
+                "occurred_at": event.occurred_at,
+                "profile_id": str(
+                    metadata.get("profile_id", event.aggregate_id)
+                    if event.aggregate_type != "check_in_profile"
+                    else event.aggregate_id
+                ),
+                "details": details,
+            }
+        )
+    return output
 
 
 class CheckInHistoryPagination(PageNumberPagination):
@@ -455,6 +598,7 @@ class ReceivedInvitationListView(generics.ListAPIView):
             normalized_email=self.request.user.email.strip().lower(),
             status=GuardianInvitation.Status.PENDING,
             expires_at__gt=timezone.now(),
+            profile__archived_at__isnull=True,
         ).select_related("profile", "profile__owner")
 
 
@@ -496,6 +640,7 @@ class WatchedProfileListView(generics.ListAPIView):
     def get_queryset(self):
         return (
             CheckInProfile.objects.filter(
+                archived_at__isnull=True,
                 guardians__guardian=self.request.user,
                 guardians__status=GuardianMembership.Status.ACTIVE,
             )

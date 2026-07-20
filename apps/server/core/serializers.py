@@ -121,6 +121,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "last_checked_in_at",
             "next_deadline_at",
             "deadline_generation",
+            "archived_at",
             "created_at",
             "updated_at",
         )
@@ -129,6 +130,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "last_checked_in_at",
             "next_deadline_at",
             "deadline_generation",
+            "archived_at",
             "created_at",
             "updated_at",
         )
@@ -149,6 +151,7 @@ class ProfileSerializer(serializers.ModelSerializer):
 class CheckInInputSerializer(serializers.Serializer):
     idempotency_key = serializers.CharField(max_length=128, required=False)
     client_recorded_at = serializers.DateTimeField(required=False, allow_null=True)
+    submitted_from_queue = serializers.BooleanField(required=False, default=False)
     latitude = serializers.DecimalField(
         max_digits=9, decimal_places=6, min_value=-90, max_value=90, required=False
     )
@@ -184,6 +187,7 @@ class CheckInReceiptSerializer(serializers.ModelSerializer):
             "accepted_at",
             "deadline_generation",
             "next_deadline_at",
+            "submitted_from_queue",
         )
 
 
@@ -203,6 +207,7 @@ class CheckInHistorySerializer(serializers.ModelSerializer):
             "client_recorded_at",
             "deadline_generation",
             "response_deadline_at",
+            "submitted_from_queue",
             "server_confirmed",
             "resolved_incident_count",
         )

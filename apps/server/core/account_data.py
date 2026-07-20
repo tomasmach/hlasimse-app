@@ -49,6 +49,7 @@ def build_account_export(user) -> dict:
                 "last_checked_in_at": profile.last_checked_in_at,
                 "next_deadline_at": profile.next_deadline_at,
                 "deadline_generation": profile.deadline_generation,
+                "archived_at": profile.archived_at,
                 "created_at": profile.created_at,
                 "updated_at": profile.updated_at,
             }
@@ -69,6 +70,7 @@ def build_account_export(user) -> dict:
                 ),
                 "deadline_generation": check_in.deadline_generation,
                 "response_deadline_at": check_in.response_deadline_at,
+                "submitted_from_queue": check_in.submitted_from_queue,
             }
             for check_in in CheckIn.objects.filter(profile_id__in=profile_ids).order_by(
                 "accepted_at"

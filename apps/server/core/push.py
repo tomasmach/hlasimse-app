@@ -75,11 +75,12 @@ def build_alert_message(
         "sound": "default",
         "priority": "high",
         "data": {
+            "schema_version": 1,
             "type": data_type,
-            "alert_id": str(incident.id),
+            "incident_id": str(incident.id),
             "profile_id": str(incident.profile_id),
             "deadline_generation": incident.deadline_generation,
-            "route": "/guardians",
+            "route": f"/incident/{incident.id}",
         },
     }
 

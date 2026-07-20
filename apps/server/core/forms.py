@@ -126,9 +126,10 @@ class GuardianInvitationForm(forms.Form):
 
     def __init__(self, *args, owner, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["profile"].queryset = CheckInProfile.objects.filter(owner=owner).order_by(
-            "created_at"
-        )
+        self.fields["profile"].queryset = CheckInProfile.objects.filter(
+            owner=owner,
+            archived_at__isnull=True,
+        ).order_by("created_at")
 
 
 class AccountSettingsForm(forms.ModelForm):
