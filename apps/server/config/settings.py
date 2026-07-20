@@ -175,9 +175,7 @@ CACHES = {
 }
 
 WEB_TRUSTED_PROXY_CIDRS = tuple(
-    value.strip()
-    for value in os.getenv("WEB_TRUSTED_PROXY_CIDRS", "").split(",")
-    if value.strip()
+    value.strip() for value in os.getenv("WEB_TRUSTED_PROXY_CIDRS", "").split(",") if value.strip()
 )
 WEB_AUTH_RATE_LIMITS = {
     "login": {"ip": (20, 300), "identity": (8, 300)},
