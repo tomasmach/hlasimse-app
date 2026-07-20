@@ -15,5 +15,10 @@ tags:
       - tapOn:
           id: "tab-activity"
       - extendedWaitUntil:
-          visible: "Synchronizováno později z offline fronty.*"
+          visible:
+            id: "statistics-section"
           timeout: 5000
+- scrollUntilVisible:
+    element: "Synchronizováno později z offline fronty.*"
+    direction: DOWN
+    centerElement: true
