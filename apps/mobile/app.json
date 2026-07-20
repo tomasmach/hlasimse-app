@@ -9,6 +9,7 @@
     "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": false,
+      "buildNumber": "1",
       "bundleIdentifier": "com.anonymous.hlasimse",
       "infoPlist": {
         "NSUserNotificationsUsageDescription": "Potřebujeme oprávnění k notifikacím, abychom vás mohli upozornit, když se někdo neohlásí včas."
@@ -21,6 +22,7 @@
         "backgroundColor": "#FFF8F5"
       },
       "predictiveBackGestureEnabled": false,
+      "versionCode": 1,
       "package": "com.anonymous.hlasimse"
     },
     "web": {
@@ -49,6 +51,12 @@
       ],
       "expo-status-bar",
       "expo-web-browser",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Poloha je při ohlášení volitelná. Pokud ji připojíte, vaši strážci ji uvidí pouze během otevřeného incidentu."
+        }
+      ],
       "expo-sharing"
     ],
     "experiments": {
