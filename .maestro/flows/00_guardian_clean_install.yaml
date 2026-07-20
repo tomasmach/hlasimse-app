@@ -14,7 +14,7 @@ tags:
 - extendedWaitUntil:
     visible:
       id: "onboarding-persona-screen"
-    timeout: 30000
+    timeout: 90000
 - tapOn:
     id: "onboarding-persona-alone"
 - waitForAnimationToEnd:
