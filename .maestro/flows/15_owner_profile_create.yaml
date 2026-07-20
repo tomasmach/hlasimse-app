@@ -25,11 +25,11 @@ tags:
 - tapOn:
     id: "profile-create-name-input"
 - inputText: "E2E druhý profil"
-- hideKeyboard
-- tapOn:
-    id: "profile-create-interval-input"
-- eraseText: 4
-- inputText: "120"
+- scrollUntilVisible:
+    element: "1 hodina"
+    direction: DOWN
+    centerElement: true
+- tapOn: "1 hodina"
 - scrollUntilVisible:
     element:
       id: "profile-create-submit"
