@@ -87,8 +87,10 @@ if [[ "$(adb -s "${ANDROID_SERIAL}" shell getprop sys.boot_completed 2>/dev/null
   exit 2
 fi
 
-ANDROID_MEMORY_KB="$(adb -s "${ANDROID_SERIAL}" shell awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null | tr -d '\r')"
-ANDROID_CORE_COUNT="$(adb -s "${ANDROID_SERIAL}" shell nproc 2>/dev/null | tr -d '\r')"
+ANDROID_MEMORY_KB="$(adb -s "${ANDROID_SERIAL}" shell cat /proc/meminfo 2>/dev/null \
+  | awk '/^MemTotal:/ {print $2; exit}' | tr -d '\r' || true)"
+ANDROID_CORE_COUNT="$(adb -s "${ANDROID_SERIAL}" shell cat /proc/cpuinfo 2>/dev/null \
+  | awk '/^processor[[:space:]]*:/ {count += 1} END {if (count) print count}' | tr -d '\r' || true)"
 ANDROID_MIN_MEMORY_KB="$((E2E_ANDROID_MEMORY_MB * 900))"
 if [[ ! "${ANDROID_MEMORY_KB}" =~ ^[0-9]+$ ]] || ((ANDROID_MEMORY_KB < ANDROID_MIN_MEMORY_KB)); then
   e2e_log "Android emulator has ${ANDROID_MEMORY_KB:-unknown} KiB RAM; the release journey requires about ${E2E_ANDROID_MEMORY_MB} MB."
