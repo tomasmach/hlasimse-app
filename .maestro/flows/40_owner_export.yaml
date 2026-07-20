@@ -29,7 +29,17 @@ tags:
     id: "account-export-submit"
 - waitForAnimationToEnd:
     timeout: 15000
-- pressKey: BACK
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn:
+          id: "PopoverDismissRegion"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - pressKey: BACK
 - extendedWaitUntil:
     visible: "Export server připravil a otevřel systémovou nabídku sdílení."
     timeout: 10000
