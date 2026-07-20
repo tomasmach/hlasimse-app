@@ -27,6 +27,13 @@ tags:
     visible: "Don.t allow"
     timeout: 10000
 - tapOn: "Don.t allow"
+- extendedWaitUntil:
+    visible:
+      id: "checkin-success-overlay"
+    timeout: 15000
+- assertVisible: "Check-in potvrzen serverem"
+- tapOn:
+    id: "checkin-success-continue"
 - scrollUntilVisible:
     element: "Serverový termín aktivní"
     direction: UP

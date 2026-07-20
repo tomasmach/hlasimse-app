@@ -273,6 +273,67 @@ ruby -e '
 
 ruby -ryaml -e '
   root = ARGV.fetch(0)
+  online_submit_count = 0
+  Dir.glob(File.join(root, ".maestro/flows/*.yaml")).sort.each do |path|
+    metadata, commands = YAML.load_stream(File.read(path))
+    next if Array(metadata["tags"]).map(&:to_s).include?("offline")
+
+    event_for = lambda do |command|
+      next unless command.is_a?(Hash)
+      tap = command["tapOn"]
+      next ["tap", tap["id"], tap["optional"] == true] if tap.is_a?(Hash) && tap["id"]
+      wait = command["extendedWaitUntil"]
+      visible = wait["visible"] if wait.is_a?(Hash)
+      next ["wait-visible", visible["id"], wait["optional"] == true] if visible.is_a?(Hash) && visible["id"]
+      nil
+    end
+
+    validate_commands = nil
+    visit_nested = nil
+    visit_nested = lambda do |value, context|
+      case value
+      when Array
+        value.each_with_index { |item, index| visit_nested.call(item, "#{context}[#{index}]") }
+      when Hash
+        value.each do |key, child|
+          if key.to_s == "commands" && child.is_a?(Array)
+            validate_commands.call(child, "#{context}.commands")
+          else
+            visit_nested.call(child, "#{context}.#{key}")
+          end
+        end
+      end
+    end
+
+    validate_commands = lambda do |command_array, context|
+      events = command_array.map { |command| event_for.call(command) }
+      submit_indexes = events.each_index.select do |index|
+        events[index]&.first(2) == ["tap", "checkin-submit"]
+      end
+      online_submit_count += submit_indexes.length
+      submit_indexes.each_with_index do |submit_index, occurrence|
+        abort("#{File.basename(path)} #{context}: online check-in submit must not be optional") if events[submit_index][2]
+        next_submit = submit_indexes[occurrence + 1] || events.length
+        wait_index = ((submit_index + 1)...next_submit).find do |index|
+          events[index] == ["wait-visible", "checkin-success-overlay", false]
+        end
+        abort("#{File.basename(path)} #{context}: online check-in does not await the confirmation modal in the same command path") unless wait_index
+        continue_index = ((wait_index + 1)...next_submit).find do |index|
+          events[index] == ["tap", "checkin-success-continue", false]
+        end
+        abort("#{File.basename(path)} #{context}: confirmation modal is not explicitly dismissed in the same command path") unless continue_index
+      end
+      command_array.each_with_index do |command, index|
+        visit_nested.call(command, "#{context}[#{index}]")
+      end
+    end
+    validate_commands.call(commands, "root")
+  end
+  abort("No online check-in submit was discovered") if online_submit_count.zero?
+' "${ROOT_DIR}"
+
+ruby -ryaml -e '
+  root = ARGV.fetch(0)
   runner = File.read(File.join(root, "scripts/e2e/run-android.sh"))
   entrypoints = runner.scan(/e2e_run_flow\s+"\$\{ANDROID_SERIAL\}"\s+([A-Za-z0-9_-]+)/).flatten.uniq
   abort("Android runner has no statically discoverable flow entrypoints") if entrypoints.empty?

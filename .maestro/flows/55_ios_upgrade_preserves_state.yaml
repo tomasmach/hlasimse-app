@@ -20,6 +20,13 @@ tags:
 - tapOn:
     id: "checkin-submit"
 - extendedWaitUntil:
+    visible:
+      id: "checkin-success-overlay"
+    timeout: 15000
+- assertVisible: "Check-in potvrzen serverem"
+- tapOn:
+    id: "checkin-success-continue"
+- extendedWaitUntil:
     notVisible: "Zatím žádné serverem potvrzené ohlášení"
     timeout: 15000
 - assertVisible: "Serverový termín aktivní"
