@@ -30,7 +30,8 @@ export interface CheckInReceipt {
   accepted_at: string;
   deadline_generation: number;
   next_deadline_at: string | null;
-  submitted_from_queue?: boolean;
+  /** Server-owned provenance; true only after replay from the local queue. */
+  submitted_from_queue: boolean;
 }
 
 export interface GuardianWithUser {

@@ -14,7 +14,7 @@ export interface CheckInHistoryItem {
   server_confirmed: true;
   resolved_incident_count: number;
   /** Set by the server; never infer this from the device clock. */
-  submitted_from_queue?: boolean;
+  submitted_from_queue: boolean;
 }
 
 export type CheckInHistoryPage = Paginated<CheckInHistoryItem>;
@@ -54,27 +54,66 @@ export type ProfileTimelineEventType =
   | "incident.opened"
   | "incident.resolved";
 
-export interface ProfileTimelineEvent {
+interface ProfileTimelineEventBase<TType extends ProfileTimelineEventType, TDetails> {
   id: string;
-  event_type: ProfileTimelineEventType;
+  event_type: TType;
   occurred_at: IsoDateTime;
   profile_id: string;
-  details: {
-    check_in_id?: string;
-    incident_id?: string;
-    deadline_at?: IsoDateTime;
-    resolved_at?: IsoDateTime;
-    next_deadline_at?: IsoDateTime | null;
-    submitted_from_queue?: boolean;
-    resolved_incident_count?: number;
-    automatic?: boolean;
-    has_scheduled_resume?: boolean;
-    revoked_membership_count?: number;
-    revoked_invitation_count?: number;
-    interval_seconds?: number;
-    deadline_generation?: number;
-  };
+  details: TDetails;
 }
+
+export type ProfileTimelineEvent =
+  | ProfileTimelineEventBase<
+      "profile.created",
+      {
+        enabled: boolean;
+        is_paused: boolean;
+        interval_seconds: number;
+        deadline_generation: number;
+      }
+    >
+  | ProfileTimelineEventBase<
+      "profile.paused" | "profile.resumed",
+      {
+        automatic: boolean;
+        deadline_generation: number;
+        has_scheduled_resume: boolean;
+      }
+    >
+  | ProfileTimelineEventBase<
+      "profile.archived",
+      {
+        deadline_generation: number;
+        revoked_membership_count: number;
+        revoked_invitation_count: number;
+      }
+    >
+  | ProfileTimelineEventBase<
+      "checkin.confirmed",
+      {
+        check_in_id: string;
+        deadline_generation: number;
+        next_deadline_at: IsoDateTime | null;
+        submitted_from_queue: boolean;
+        resolved_incident_count: number;
+      }
+    >
+  | ProfileTimelineEventBase<
+      "incident.opened",
+      {
+        incident_id: string;
+        deadline_at: IsoDateTime;
+        deadline_generation: number;
+      }
+    >
+  | ProfileTimelineEventBase<
+      "incident.resolved",
+      {
+        incident_id: string;
+        resolved_at: IsoDateTime;
+        resolved_by_check_in_id: string;
+      }
+    >;
 
 export interface ProfileTimelinePage {
   next: string | null;
@@ -164,6 +203,7 @@ export interface ExportProfile {
   last_checked_in_at: IsoDateTime | null;
   next_deadline_at: IsoDateTime | null;
   deadline_generation: number;
+  archived_at: IsoDateTime | null;
   created_at: IsoDateTime;
   updated_at: IsoDateTime;
 }
@@ -178,6 +218,7 @@ export interface ExportCheckIn {
   location_accuracy_meters: string | null;
   deadline_generation: number;
   response_deadline_at: IsoDateTime | null;
+  submitted_from_queue: boolean;
 }
 
 export interface ExportGuardianMembership {

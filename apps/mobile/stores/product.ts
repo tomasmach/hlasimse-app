@@ -72,10 +72,46 @@ function periodQuery(filter: ProductPeriodFilter): Record<string, string | undef
   return { profile: filter.profile, from: filter.from, to: filter.to };
 }
 
+const TIMELINE_PAGE_SIZE = 50;
+
+function timelinePagePath(profileId: string, cursorUrl?: string): string {
+  const pathname = `/api/v1/profiles/${encodeURIComponent(profileId)}/timeline/`;
+  if (!cursorUrl) return `${pathname}?page_size=${TIMELINE_PAGE_SIZE}`;
+  const apiMarker = cursorUrl.indexOf("/api/");
+  const pathWithQuery = apiMarker >= 0 ? cursorUrl.slice(apiMarker) : cursorUrl;
+  const withoutFragment = pathWithQuery.split("#", 1)[0];
+  const queryMarker = withoutFragment.indexOf("?");
+  const cursorPath = queryMarker >= 0 ? withoutFragment.slice(0, queryMarker) : withoutFragment;
+  const query = queryMarker >= 0 ? withoutFragment.slice(queryMarker + 1) : "";
+  const hasCursor = query.split("&").some((part) => part.split("=", 1)[0] === "cursor");
+  if (cursorPath !== pathname || !hasCursor) {
+    throw new Error("Server vrátil neplatný odkaz na další stránku časové osy.");
+  }
+  return `${cursorPath}?${query}`;
+}
+
+function appendTimelinePage(
+  current: ProfileTimelinePage,
+  nextPage: ProfileTimelinePage,
+): ProfileTimelinePage {
+  const seen = new Set<string>();
+  const results = [...current.results, ...nextPage.results].filter((event) => {
+    if (seen.has(event.id)) return false;
+    seen.add(event.id);
+    return true;
+  });
+  return {
+    previous: current.previous,
+    next: nextPage.next,
+    results,
+  };
+}
+
 interface ProductState {
   history: CheckInHistoryPage | null;
   statistics: CheckInStatistics | null;
   timeline: ProfileTimelinePage | null;
+  timelineProfileId: string | null;
   alerts: AlertIncident[];
   alertDetails: Record<string, AlertIncident>;
   pushDevices: PushDevice[];
@@ -84,6 +120,7 @@ interface ProductState {
   loadHistory: (filter?: CheckInHistoryFilter) => Promise<CheckInHistoryPage>;
   loadStatistics: (filter?: ProductPeriodFilter) => Promise<CheckInStatistics>;
   loadTimeline: (profileId: string) => Promise<ProfileTimelinePage>;
+  loadMoreTimeline: (profileId: string) => Promise<ProfileTimelinePage | null>;
   loadAlerts: () => Promise<AlertIncident[]>;
   loadAlert: (alertId: string) => Promise<AlertIncident>;
   acknowledgeAlert: (alertId: string) => Promise<AlertIncident>;
@@ -166,6 +203,7 @@ export const useProductStore = create<ProductState>((set, get) => {
     history: null,
     statistics: null,
     timeline: null,
+    timelineProfileId: null,
     alerts: [],
     alertDetails: {},
     pushDevices: [],
@@ -206,11 +244,36 @@ export const useProductStore = create<ProductState>((set, get) => {
 
     loadTimeline: async (profileId) => {
       const ticket = start("timeline");
+      if (get().timelineProfileId !== profileId) {
+        set({ timeline: null, timelineProfileId: profileId });
+      }
       try {
-        const result = await apiRequest<ProfileTimelinePage>(`/api/v1/profiles/${profileId}/timeline/?page_size=100`);
-        if (isCurrent(ticket)) set({ timeline: result });
+        const result = await apiRequest<ProfileTimelinePage>(timelinePagePath(profileId));
+        if (isCurrent(ticket) && get().timelineProfileId === profileId) {
+          set({ timeline: result });
+        }
         succeed(ticket);
         return result;
+      } catch (error) {
+        return fail(ticket, error);
+      }
+    },
+
+    loadMoreTimeline: async (profileId) => {
+      const current = get().timelineProfileId === profileId ? get().timeline : null;
+      if (!current?.next) return current;
+      const ticket = start("timeline");
+      try {
+        const nextPage = await apiRequest<ProfileTimelinePage>(
+          timelinePagePath(profileId, current.next),
+        );
+        const latest = get().timelineProfileId === profileId ? get().timeline : null;
+        const merged = latest ? appendTimelinePage(latest, nextPage) : nextPage;
+        if (isCurrent(ticket) && get().timelineProfileId === profileId) {
+          set({ timeline: merged });
+        }
+        succeed(ticket);
+        return merged;
       } catch (error) {
         return fail(ticket, error);
       }
@@ -389,6 +452,7 @@ export const useProductStore = create<ProductState>((set, get) => {
         history: null,
         statistics: null,
         timeline: null,
+        timelineProfileId: null,
         alerts: [],
         alertDetails: {},
         pushDevices: [],

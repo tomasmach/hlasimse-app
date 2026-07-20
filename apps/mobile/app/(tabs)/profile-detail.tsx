@@ -3,7 +3,7 @@ import { Alert, KeyboardAvoidingView, Platform, ScrollView, Text, TextInput, Vie
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { ActionButton, BackHeader, Notice } from "@/components/product/ProductUI";
-import { useCheckInStore } from "@/stores/checkin";
+import { ProfileArchiveBlockedError, useCheckInStore } from "@/stores/checkin";
 import { COLORS } from "@/constants/design";
 
 export default function ProfileDetailScreen() {
@@ -12,6 +12,10 @@ export default function ProfileDetailScreen() {
   const [minutes, setMinutes] = useState(profile ? String(profile.interval_seconds / 60) : "1440");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [blockingIncident, setBlockingIncident] = useState<{
+    id: string;
+    detail: string;
+  } | null>(null);
 
   useEffect(() => {
     if (profile) { setName(profile.name); setMinutes(String(profile.interval_seconds / 60)); }
@@ -34,7 +38,23 @@ export default function ProfileDetailScreen() {
   const archive = () => Alert.alert(
     "Archivovat profil?",
     "Server nejdřív ověří prošlý termín. Při aktivním incidentu archivaci odmítne. Po potvrzení zruší termín, odvolá strážce a pozvánky, ale zachová bezpečnostní auditní historii.",
-    [{ text: "Zrušit", style: "cancel" }, { text: "Archivovat", style: "destructive", onPress: async () => { setBusy(true); setError(""); try { await deleteProfile(profile.id); router.back(); } catch (reason) { setError(reason instanceof Error ? reason.message : "Server profil nearchivoval."); setBusy(false); } } }],
+    [{ text: "Zrušit", style: "cancel" }, { text: "Archivovat", style: "destructive", onPress: async () => {
+      setBusy(true);
+      setError("");
+      setBlockingIncident(null);
+      try {
+        await deleteProfile(profile.id);
+        router.back();
+      } catch (reason) {
+        if (reason instanceof ProfileArchiveBlockedError) {
+          setBlockingIncident({ id: reason.incidentId, detail: reason.message });
+        } else {
+          setError(reason instanceof Error ? reason.message : "Server profil nearchivoval.");
+        }
+      } finally {
+        setBusy(false);
+      }
+    } }],
   );
 
   const blocked = isUsingCachedProfiles;
@@ -49,6 +69,21 @@ export default function ProfileDetailScreen() {
           {blocked ? <View className="mt-6"><Notice title="Uložený offline náhled nelze měnit" tone="warning" /></View> : null}
           {pendingCount + failedPendingCount > 0 ? <View className="mt-4"><Notice title="Máte nepotvrzené požadavky" tone="warning"><Text className="font-body text-[#7B4A08]">Změna intervalu neposune původní čekající požadavky. Až je server přijme, použije aktuální serverová pravidla.</Text></Notice></View> : null}
           {error ? <View className="mt-4"><Notice title={error} tone="danger" /></View> : null}
+          {blockingIncident ? (
+            <View className="mt-4">
+              <Notice title="Archivaci blokuje aktivní incident" tone="danger">
+                <Text className="font-body text-[#9E2E2A] leading-5">{blockingIncident.detail} Incident nelze obejít archivací ani změnou místního času.</Text>
+                <View className="mt-4">
+                  <ActionButton
+                    testID="profile-archive-open-incident"
+                    label="Otevřít aktivní incident"
+                    variant="dark"
+                    onPress={() => router.push({ pathname: "/(tabs)/incident/[id]", params: { id: blockingIncident.id } })}
+                  />
+                </View>
+              </Notice>
+            </View>
+          ) : null}
 
           <View className="mt-8">
             <Text className="font-body-semibold text-sm text-charcoal mb-2">Název</Text>

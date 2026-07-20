@@ -1,16 +1,20 @@
 import * as SecureStore from "expo-secure-store";
 import { NetworkError } from "@/lib/api";
 import { useAuthStore } from "@/stores/auth";
-import type { CheckInProfile } from "@/types/database";
+import type { CheckInProfile, CheckInReceipt } from "@/types/database";
 
 jest.mock("@/lib/api", () => {
   class TestNetworkError extends Error {}
   return {
     NetworkError: TestNetworkError,
     ApiError: class TestApiError extends Error {
-      constructor(code: number, _body?: unknown, message = "Rejected") {
+      readonly status: number;
+      readonly body: unknown;
+
+      constructor(code: number, body?: unknown, message = "Rejected") {
         super(message);
-        Object.defineProperty(this, "status", { value: code });
+        this.status = code;
+        this.body = body;
       }
     },
     isNetworkError: (error: unknown) => error instanceof TestNetworkError,
@@ -20,7 +24,7 @@ jest.mock("@/lib/api", () => {
 jest.mock("@/lib/reminderNotifications", () => ({ reconcileReminders: jest.fn() }));
 
 import { apiRequest } from "@/lib/api";
-import { useCheckInStore } from "@/stores/checkin";
+import { ProfileArchiveBlockedError, useCheckInStore } from "@/stores/checkin";
 
 const mockApiRequest = apiRequest as jest.Mock;
 const confirmedProfile: CheckInProfile = {
@@ -45,7 +49,7 @@ beforeEach(() => {
   jest.clearAllMocks();
   (SecureStore as unknown as { __reset(): void }).__reset();
   useAuthStore.setState({ user: { id: "user-1", email: "a@example.test", first_name: "A", last_name: "", date_joined: "", email_verified_at: "2026-07-19T00:00:00Z" } });
-  useCheckInStore.setState({ profile: confirmedProfile, profiles: [confirmedProfile], isLoading: false, hasFetched: true, lastFetchSucceeded: true, isUsingCachedProfiles: false, profilesCachedAt: null, error: null, pendingCount: 0, failedPendingCount: 0, pendingItems: [], lastCheckInWasOffline: false });
+  useCheckInStore.setState({ profile: confirmedProfile, profiles: [confirmedProfile], isLoading: false, hasFetched: true, lastFetchSucceeded: true, isUsingCachedProfiles: false, profilesCachedAt: null, guardianOnlyMode: false, error: null, pendingCount: 0, failedPendingCount: 0, pendingItems: [], lastCheckInWasOffline: false });
 });
 
 describe("offline check-in safety", () => {
@@ -90,12 +94,42 @@ describe("offline check-in safety", () => {
     expect(useCheckInStore.getState().pendingCount).toBe(0);
   });
 
+  it("omits queue provenance from a live check-in and preserves the false receipt field", async () => {
+    const receipt: CheckInReceipt = {
+      id: "receipt-live",
+      idempotency_key: "live-key",
+      accepted_at: "2026-07-19T10:00:00Z",
+      deadline_generation: 2,
+      next_deadline_at: "2026-07-20T10:00:00Z",
+      submitted_from_queue: false,
+    };
+    mockApiRequest
+      .mockResolvedValueOnce(receipt)
+      .mockResolvedValueOnce([confirmedProfile]);
+
+    await expect(useCheckInStore.getState().checkIn()).resolves.toEqual({
+      success: true,
+      offline: false,
+    });
+
+    const body = mockApiRequest.mock.calls[0][1].body;
+    expect(body).not.toHaveProperty("submitted_from_queue");
+  });
+
   it("reuses the queued UUID as the Idempotency-Key during synchronization", async () => {
     mockApiRequest.mockRejectedValueOnce(new NetworkError());
     await useCheckInStore.getState().checkIn();
     const initialHeaders = mockApiRequest.mock.calls[0][1].headers;
     mockApiRequest.mockReset();
-    mockApiRequest.mockResolvedValueOnce({ id: "receipt" }).mockResolvedValueOnce([]);
+    const receipt: CheckInReceipt = {
+      id: "receipt-queued",
+      idempotency_key: initialHeaders["Idempotency-Key"],
+      accepted_at: "2026-07-19T10:00:00Z",
+      deadline_generation: 2,
+      next_deadline_at: "2026-07-20T10:00:00Z",
+      submitted_from_queue: true,
+    };
+    mockApiRequest.mockResolvedValueOnce(receipt).mockResolvedValueOnce([]);
     await useCheckInStore.getState().syncPendingCheckIns();
     expect(mockApiRequest.mock.calls[0][1].headers["Idempotency-Key"]).toBe(initialHeaders["Idempotency-Key"]);
     expect(mockApiRequest.mock.calls[0][1].body.submitted_from_queue).toBe(true);
@@ -113,5 +147,48 @@ describe("offline check-in safety", () => {
     expect(state.pendingCount).toBe(0);
     expect(state.failedPendingCount).toBe(1);
     expect(state.pendingItems[0].error).toBe("Deadline už vypršel");
+  });
+
+  it("keeps the profile active and exposes the exact incident when archive returns 409", async () => {
+    const { ApiError } = jest.requireMock("@/lib/api");
+    mockApiRequest.mockRejectedValueOnce(
+      new ApiError(
+        409,
+        {
+          code: "profile_has_open_incident",
+          detail: "Profil nelze archivovat během aktivního incidentu.",
+          incident_id: "incident-open-1",
+        },
+        "Profil nelze archivovat během aktivního incidentu.",
+      ),
+    );
+
+    await expect(useCheckInStore.getState().deleteProfile(confirmedProfile.id)).rejects.toEqual(
+      expect.objectContaining({
+        name: "ProfileArchiveBlockedError",
+        code: "profile_has_open_incident",
+        incidentId: "incident-open-1",
+      }),
+    );
+    expect(useCheckInStore.getState().profiles).toEqual([confirmedProfile]);
+    expect(useCheckInStore.getState().profile).toEqual(confirmedProfile);
+    expect(ProfileArchiveBlockedError).toBeDefined();
+  });
+
+  it("removes an archived profile only after the server confirms deletion", async () => {
+    let confirmArchive: (() => void) | undefined;
+    mockApiRequest.mockReturnValueOnce(
+      new Promise<void>((resolve) => {
+        confirmArchive = resolve;
+      }),
+    );
+
+    const archive = useCheckInStore.getState().deleteProfile(confirmedProfile.id);
+    expect(useCheckInStore.getState().profiles).toEqual([confirmedProfile]);
+    confirmArchive?.();
+    await archive;
+
+    expect(useCheckInStore.getState().profiles).toEqual([]);
+    expect(useCheckInStore.getState().profile).toBeNull();
   });
 });

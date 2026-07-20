@@ -9,6 +9,18 @@ import { CheckInProfile, CheckInReceipt, normalizeProfile } from "@/types/databa
 
 type ServerProfile = Omit<CheckInProfile, "interval_hours" | "next_deadline" | "last_check_in_at" | "is_active">;
 
+export class ProfileArchiveBlockedError extends Error {
+  readonly code = "profile_has_open_incident" as const;
+
+  constructor(
+    public readonly incidentId: string,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ProfileArchiveBlockedError";
+  }
+}
+
 interface CheckInState {
   profile: CheckInProfile | null;
   profiles: CheckInProfile[];
@@ -150,7 +162,25 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
   },
 
   deleteProfile: async (profileId) => {
-    await apiRequest<void>(`/api/v1/profiles/${profileId}/`, { method: "DELETE" });
+    try {
+      await apiRequest<void>(`/api/v1/profiles/${profileId}/`, { method: "DELETE" });
+    } catch (error) {
+      const body = error instanceof ApiError ? error.body : null;
+      if (
+        error instanceof ApiError &&
+        error.status === 409 &&
+        body?.code === "profile_has_open_incident" &&
+        typeof body.incident_id === "string"
+      ) {
+        throw new ProfileArchiveBlockedError(
+          body.incident_id,
+          typeof body.detail === "string"
+            ? body.detail
+            : "Profil nelze archivovat během aktivního incidentu.",
+        );
+      }
+      throw error;
+    }
     const userId = useAuthStore.getState().user?.id;
     const profiles = get().profiles.filter((item) => item.id !== profileId);
     const selected = get().profile?.id === profileId ? profiles[0] || null : get().profile;
