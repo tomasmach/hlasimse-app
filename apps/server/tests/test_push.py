@@ -18,6 +18,7 @@ from core.models import (
     AuditEvent,
     CheckIn,
     DeliveryAttempt,
+    GuardianMembership,
     OutboxEvent,
     PushDevice,
     WorkerHeartbeat,
@@ -36,6 +37,7 @@ pytestmark = pytest.mark.django_db
 
 
 def _create_incident_event(profile, recipient, *, event_type="alert.opened", incident=None):
+    GuardianMembership.objects.get_or_create(profile=profile, guardian=recipient)
     incident = incident or AlertIncident.objects.create(
         profile=profile,
         deadline_generation=profile.deadline_generation,
@@ -126,7 +128,20 @@ def test_alert_push_payload_has_versioned_incident_route(profile, other_user):
     assert "alert_id" not in payload
 
 
-def test_alert_uses_recipient_snapshot_after_live_membership_changes(profile, other_user):
+def test_android_alert_push_uses_alerts_notification_channel(profile, other_user):
+    device = _device(other_user)
+    incident = AlertIncident.objects.create(
+        profile=profile,
+        deadline_generation=profile.deadline_generation,
+        deadline_at=timezone.now() - timedelta(minutes=1),
+    )
+
+    message = build_alert_message(incident=incident, device=device)
+
+    assert message["channelId"] == "alerts"
+
+
+def test_alert_delivers_to_recipient_with_active_guardian_membership(profile, other_user):
     _, event = _create_incident_event(profile, other_user)
     device = _device(other_user)
 
@@ -136,6 +151,55 @@ def test_alert_uses_recipient_snapshot_after_live_membership_changes(profile, ot
     assert attempt.device_id_snapshot == device.id
     assert attempt.destination_token_hash
     assert attempt.status == DeliveryAttempt.Status.TICKET_RECEIVED
+
+
+def test_pending_alert_is_not_sent_after_guardian_membership_is_revoked(profile, other_user):
+    _, event = _create_incident_event(profile, other_user)
+    _device(other_user)
+    GuardianMembership.objects.filter(profile=profile, guardian=other_user).update(
+        status=GuardianMembership.Status.REVOKED
+    )
+
+    def must_not_send(_request):
+        pytest.fail("A removed guardian must not receive a pending incident")
+
+    assert process_one_outbox_event(client=_client(must_not_send))
+
+    event.refresh_from_db()
+    assert event.status == OutboxEvent.Status.PROCESSED
+    assert event.last_error == "No recipient remains an active guardian"
+    assert not DeliveryAttempt.objects.filter(outbox_event=event).exists()
+
+
+def test_alert_retry_is_not_sent_after_guardian_membership_is_revoked(profile, other_user):
+    _, event = _create_incident_event(profile, other_user)
+    _device(other_user)
+    assert process_one_outbox_event(
+        client=_tickets({"status": "error", "details": {"error": "MessageRateExceeded"}})
+    )
+    first_attempt = DeliveryAttempt.objects.get(outbox_event=event)
+    first_attempt.next_retry_at = timezone.now() - timedelta(seconds=1)
+    first_attempt.save(update_fields=["next_retry_at"])
+    event.available_at = timezone.now() - timedelta(seconds=1)
+    event.save(update_fields=["available_at"])
+    GuardianMembership.objects.filter(profile=profile, guardian=other_user).update(
+        status=GuardianMembership.Status.REVOKED
+    )
+
+    def must_not_retry(_request):
+        pytest.fail("A removed guardian must not receive an incident retry")
+
+    assert process_one_outbox_event(client=_client(must_not_retry))
+
+    event.refresh_from_db()
+    first_attempt.refresh_from_db()
+    assert event.status == OutboxEvent.Status.PROCESSED
+    assert event.last_error == "No recipient remains an active guardian"
+    assert first_attempt.status == DeliveryAttempt.Status.PERMANENT_FAILURE
+    assert first_attempt.response_data == {
+        "error": "Recipient no longer has an active guardian membership"
+    }
+    assert DeliveryAttempt.objects.filter(outbox_event=event).count() == 1
 
 
 def test_send_timeout_is_retryable_and_claim_is_not_duplicated(profile, other_user):

@@ -21,6 +21,7 @@ from .models import (
     DeliveryAttempt,
     EmailVerificationChallenge,
     GuardianInvitation,
+    GuardianMembership,
     OutboxEvent,
     PushDevice,
     WorkerHeartbeat,
@@ -68,7 +69,7 @@ def build_alert_message(
         title = "Zmeškané přihlášení"
         body = f"{incident.profile.name} se nepřihlásil/a včas."
         data_type = "alert_incident"
-    return {
+    message = {
         "to": device.expo_push_token,
         "title": title,
         "body": body,
@@ -83,6 +84,9 @@ def build_alert_message(
             "route": f"/incident/{incident.id}",
         },
     }
+    if device.platform == PushDevice.Platform.ANDROID:
+        message["channelId"] = "alerts"
+    return message
 
 
 def _retry_after_seconds(response: httpx.Response | None) -> float | None:
@@ -213,6 +217,43 @@ def _recipient_ids(event: OutboxEvent, incident: AlertIncident) -> list[uuid.UUI
     # Compatibility for events created before recipient IDs were copied into the payload.
     return list(
         incident.recipients.order_by("created_at").values_list("user_id_snapshot", flat=True)
+    )
+
+
+def _active_guardian_recipient_ids(
+    event: OutboxEvent, incident: AlertIncident
+) -> tuple[list[uuid.UUID], list[uuid.UUID]]:
+    snapshot_ids = _recipient_ids(event, incident)
+    active_ids = set(
+        GuardianMembership.objects.filter(
+            profile_id=incident.profile_id,
+            guardian_id__in=snapshot_ids,
+            status=GuardianMembership.Status.ACTIVE,
+        ).values_list("guardian_id", flat=True)
+    )
+    active_snapshot_ids = [
+        recipient_id for recipient_id in snapshot_ids if recipient_id in active_ids
+    ]
+    return snapshot_ids, active_snapshot_ids
+
+
+def _invalidate_ineligible_attempts(
+    *, event: OutboxEvent, active_recipient_ids: list[uuid.UUID]
+) -> int:
+    attempts = DeliveryAttempt.objects.filter(
+        outbox_event=event,
+        status__in=[
+            DeliveryAttempt.Status.QUEUED,
+            DeliveryAttempt.Status.RETRYABLE_FAILURE,
+        ],
+    )
+    if active_recipient_ids:
+        attempts = attempts.exclude(device__user_id__in=active_recipient_ids)
+    return attempts.update(
+        status=DeliveryAttempt.Status.PERMANENT_FAILURE,
+        response_data={"error": "Recipient no longer has an active guardian membership"},
+        next_retry_at=None,
+        updated_at=timezone.now(),
     )
 
 
@@ -458,9 +499,13 @@ def process_one_outbox_event(*, client: httpx.Client | None = None) -> bool:
     if incident is None:
         _mark_event_failed(event, "Alert incident does not exist")
         return True
-    recipient_ids = _recipient_ids(event, incident)
-    if not recipient_ids:
+    snapshot_ids, recipient_ids = _active_guardian_recipient_ids(event, incident)
+    if not snapshot_ids:
         _mark_event_failed(event, "Recipient snapshot is empty")
+        return True
+    _invalidate_ineligible_attempts(event=event, active_recipient_ids=recipient_ids)
+    if not recipient_ids:
+        _mark_event_processed(event, note="No recipient remains an active guardian")
         return True
     queued, active_device_count = _prepare_delivery_attempts(
         event=event,
