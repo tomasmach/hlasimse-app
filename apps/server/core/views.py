@@ -23,7 +23,6 @@ from rest_framework.response import Response
 from rest_framework.throttling import SimpleRateThrottle
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import TokenError
-from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from .account_data import (
@@ -48,6 +47,7 @@ from .models import (
     GuardianMembership,
     PushDevice,
 )
+from .password_reset import revoke_outstanding_refresh_tokens
 from .serializers import (
     AccountDeleteSerializer,
     AlertIncidentSerializer,
@@ -234,8 +234,7 @@ class PasswordResetConfirmView(APIView):
         user.set_password(serializer.validated_data["new_password"])
         with transaction.atomic():
             user.save(update_fields=["password"])
-            for outstanding_token in OutstandingToken.objects.filter(user=user):
-                BlacklistedToken.objects.get_or_create(token=outstanding_token)
+            revoke_outstanding_refresh_tokens(user=user)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
 

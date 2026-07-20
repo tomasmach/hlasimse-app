@@ -65,6 +65,7 @@ from .models import (
     GuardianMembership,
     PushDevice,
 )
+from .password_reset import revoke_outstanding_refresh_tokens
 from .services import (
     accessible_incidents,
     create_invitation,
@@ -150,6 +151,12 @@ class SecurePasswordResetDoneView(PasswordResetDoneView):
 class SecurePasswordResetConfirmView(PasswordResetConfirmView):
     template_name = "core/auth/password_reset_confirm.html"
     success_url = reverse_lazy("accounts:password_reset_complete")
+
+    def form_valid(self, form):
+        with transaction.atomic():
+            response = super().form_valid(form)
+            revoke_outstanding_refresh_tokens(user=form.user)
+        return response
 
 
 class SecurePasswordResetCompleteView(PasswordResetCompleteView):

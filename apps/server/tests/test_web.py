@@ -9,6 +9,9 @@ from django.core import mail
 from django.test import Client, override_settings
 from django.urls import reverse
 from django.utils import timezone
+from rest_framework_simplejwt.exceptions import TokenError
+from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, OutstandingToken
+from rest_framework_simplejwt.tokens import RefreshToken
 
 from core.models import (
     AlertAcknowledgement,
@@ -94,6 +97,32 @@ def test_password_reset_uses_non_enumerating_flow_and_sends_namespaced_link(clie
     assert known.url == unknown.url == reverse("accounts:password_reset_done")
     assert len(mail.outbox) == 1
     assert "/ucet/obnova-hesla/" in mail.outbox[0].body
+
+
+def test_emailed_web_password_reset_revokes_all_refresh_tokens(client, user):
+    issued_refreshes = [str(RefreshToken.for_user(user)) for _ in range(2)]
+    reset_password = "Reset-web-password-456"
+
+    requested = client.post(reverse("accounts:password_reset"), {"email": user.email})
+    reset_url = next(word for word in mail.outbox[0].body.split() if word.startswith("http"))
+    reset_path = reset_url.removeprefix("http://testserver")
+    token_redirect = client.get(reset_path)
+    confirmed = client.post(
+        token_redirect.url,
+        {"new_password1": reset_password, "new_password2": reset_password},
+    )
+
+    assert requested.status_code == 302
+    assert token_redirect.status_code == 302
+    assert confirmed.status_code == 302
+    assert confirmed.url == reverse("accounts:password_reset_complete")
+    assert OutstandingToken.objects.filter(user=user).count() == 2
+    assert BlacklistedToken.objects.filter(token__user=user).count() == 2
+    for refresh in issued_refreshes:
+        with pytest.raises(TokenError, match="blacklisted"):
+            RefreshToken(refresh)
+    user.refresh_from_db()
+    assert user.check_password(reset_password)
 
 
 def test_profile_create_edit_and_pause_keep_scheduled_resume_semantics(client, user):
