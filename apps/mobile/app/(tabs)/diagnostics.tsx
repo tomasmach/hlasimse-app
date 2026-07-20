@@ -55,11 +55,6 @@ export default function DiagnosticsScreen() {
     finally { setBusy(false); }
   };
 
-  const requestLocation = async () => {
-    const result = await Location.requestForegroundPermissionsAsync();
-    setLocationPermission(result.status as Permission);
-  };
-
   const push = product.pushDiagnostics;
   return (
     <SafeAreaView className="flex-1 bg-cream">
@@ -77,8 +72,8 @@ export default function DiagnosticsScreen() {
         </View>
 
         <View className="py-8 border-b border-sand">
-          <View className="flex-row gap-4"><MapPin size={26} color={COLORS.charcoal.default} /><View className="flex-1"><Text className="font-display text-[25px] text-charcoal">Poloha v popředí</Text><View className="mt-3"><StatusLabel label={permissionLabel(locationPermission)} tone={locationPermission === "granted" ? "success" : "info"} /></View><Text className="font-body text-sm leading-5 text-muted mt-3">Poloha je vždy volitelná a získá se pouze při check-inu, pokud ji zapnete. Odmítnutí check-in neblokuje.</Text></View></View>
-          {locationPermission === "undetermined" ? <View className="mt-5"><ActionButton testID="location-permission-request" label="Požádat o polohu v popředí" variant="quiet" onPress={() => void requestLocation()} /></View> : null}
+          <View className="flex-row gap-4"><MapPin size={26} color={COLORS.charcoal.default} /><View className="flex-1"><Text className="font-display text-[25px] text-charcoal">Poloha v popředí</Text><View className="mt-3"><StatusLabel label={permissionLabel(locationPermission)} tone={locationPermission === "granted" ? "success" : "info"} /></View><Text className="font-body text-sm leading-5 text-muted mt-3">Poloha je vždy volitelná a získá se pouze při check-inu, pokud ji zapnete. Odmítnutí check-in neblokuje.</Text><Text className="font-body-semibold text-sm leading-5 text-charcoal mt-3">Diagnostika oprávnění pouze čte. První systémový dotaz se zobrazí až po zapnutí polohy u konkrétního check-inu.</Text></View></View>
+          {locationPermission === "denied" ? <Pressable testID="location-permission-settings" onPress={() => void Linking.openSettings()} className="min-h-[44px] justify-center mt-4" accessibilityRole="button" accessibilityLabel="Otevřít nastavení oprávnění k poloze"><Text className="font-body-semibold text-brand-500">Otevřít nastavení oprávnění</Text></Pressable> : null}
         </View>
 
         <View className="py-8 border-b border-sand">

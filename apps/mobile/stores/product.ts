@@ -124,6 +124,7 @@ interface ProductState {
   loadAlerts: () => Promise<AlertIncident[]>;
   loadAlert: (alertId: string) => Promise<AlertIncident>;
   acknowledgeAlert: (alertId: string) => Promise<AlertIncident>;
+  removeCheckInLocation: (checkInId: string) => Promise<void>;
   exportAccountData: () => Promise<AccountExport>;
   loadPushDevices: () => Promise<PushDeviceDiagnostics>;
   deactivatePushDevice: (deviceId: string) => Promise<void>;
@@ -142,6 +143,7 @@ export const useProductStore = create<ProductState>((set, get) => {
   let accountEpoch = 0;
   let alertMutationRevision = 0;
   let pushMutationRevision = 0;
+  let locationMutationRevision = 0;
   const requestVersions = Object.fromEntries(resourceNames.map((name) => [name, 0])) as Record<
     ProductResource,
     number
@@ -212,6 +214,7 @@ export const useProductStore = create<ProductState>((set, get) => {
 
     loadHistory: async (filter = {}) => {
       const ticket = start("history");
+      const mutationRevision = locationMutationRevision;
       try {
         const result = await apiRequest<CheckInHistoryPage>(
           `/api/v1/check-ins/${queryString({
@@ -220,7 +223,9 @@ export const useProductStore = create<ProductState>((set, get) => {
             page_size: filter.pageSize,
           })}`,
         );
-        if (isCurrent(ticket)) set({ history: result });
+        if (isCurrent(ticket) && mutationRevision === locationMutationRevision) {
+          set({ history: result });
+        }
         succeed(ticket);
         return result;
       } catch (error) {
@@ -244,12 +249,17 @@ export const useProductStore = create<ProductState>((set, get) => {
 
     loadTimeline: async (profileId) => {
       const ticket = start("timeline");
+      const mutationRevision = locationMutationRevision;
       if (get().timelineProfileId !== profileId) {
         set({ timeline: null, timelineProfileId: profileId });
       }
       try {
         const result = await apiRequest<ProfileTimelinePage>(timelinePagePath(profileId));
-        if (isCurrent(ticket) && get().timelineProfileId === profileId) {
+        if (
+          isCurrent(ticket) &&
+          mutationRevision === locationMutationRevision &&
+          get().timelineProfileId === profileId
+        ) {
           set({ timeline: result });
         }
         succeed(ticket);
@@ -263,13 +273,18 @@ export const useProductStore = create<ProductState>((set, get) => {
       const current = get().timelineProfileId === profileId ? get().timeline : null;
       if (!current?.next) return current;
       const ticket = start("timeline");
+      const mutationRevision = locationMutationRevision;
       try {
         const nextPage = await apiRequest<ProfileTimelinePage>(
           timelinePagePath(profileId, current.next),
         );
         const latest = get().timelineProfileId === profileId ? get().timeline : null;
         const merged = latest ? appendTimelinePage(latest, nextPage) : nextPage;
-        if (isCurrent(ticket) && get().timelineProfileId === profileId) {
+        if (
+          isCurrent(ticket) &&
+          mutationRevision === locationMutationRevision &&
+          get().timelineProfileId === profileId
+        ) {
           set({ timeline: merged });
         }
         succeed(ticket);
@@ -350,6 +365,37 @@ export const useProductStore = create<ProductState>((set, get) => {
       } catch (error) {
         return fail(ticket, error);
       }
+    },
+
+    removeCheckInLocation: async (checkInId) => {
+      const mutationEpoch = accountEpoch;
+      await apiRequest<void>(
+        `/api/v1/check-ins/${encodeURIComponent(checkInId)}/location/`,
+        { method: "DELETE" },
+      );
+      if (mutationEpoch !== accountEpoch) return;
+      locationMutationRevision += 1;
+      set((state) => ({
+        history: state.history
+          ? {
+              ...state.history,
+              results: state.history.results.map((item) =>
+                item.id === checkInId ? { ...item, has_location: false } : item,
+              ),
+            }
+          : null,
+        timeline: state.timeline
+          ? {
+              ...state.timeline,
+              results: state.timeline.results.map((event) =>
+                event.event_type === "checkin.confirmed" &&
+                event.details.check_in_id === checkInId
+                  ? { ...event, details: { ...event.details, has_location: false } }
+                  : event,
+              ),
+            }
+          : null,
+      }));
     },
 
     exportAccountData: async () => {
@@ -448,6 +494,7 @@ export const useProductStore = create<ProductState>((set, get) => {
       accountEpoch += 1;
       alertMutationRevision += 1;
       pushMutationRevision += 1;
+      locationMutationRevision += 1;
       set({
         history: null,
         statistics: null,

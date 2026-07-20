@@ -147,7 +147,10 @@ def test_accepting_sixth_guardian_is_rejected_under_profile_limit(profile):
     for user, token in zip(users[:5], tokens[:5], strict=True):
         accept_invitation(raw_token=token, user=user)
 
-    with pytest.raises(ValidationError, match="nejvýše 5"):
+    with pytest.raises(ValidationError) as exc_info:
         accept_invitation(raw_token=tokens[5], user=users[5])
 
+    assert exc_info.value.message_dict == {
+        "guardians": ["Vše je zdarma. Limit je 5/5 aktivních strážců na profil."]
+    }
     assert profile.guardians.filter(status=GuardianMembership.Status.ACTIVE).count() == 5

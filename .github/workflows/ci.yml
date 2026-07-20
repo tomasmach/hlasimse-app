@@ -41,6 +41,9 @@ jobs:
       - name: Check public product contract
         run: npm run check:public-contract
 
+      - name: Test public product contract gate
+        run: npm run test:public-contract
+
       - name: Validate Expo project
         working-directory: apps/mobile
         run: npx expo-doctor
@@ -107,6 +110,13 @@ jobs:
 
       - name: Run lint and formatting checks
         run: uv run ruff check . && uv run ruff format --check .
+
+      - name: Check generated OpenAPI contract
+        run: |
+          uv run python manage.py spectacular --format openapi-json --validate --fail-on-warn \
+            --file "$RUNNER_TEMP/hlasimse-openapi.json"
+          diff --unified openapi.json "$RUNNER_TEMP/hlasimse-openapi.json"
+          uv run pytest -q tests/test_openapi_contract.py
 
       - name: Validate migrations and deployment configuration
         run: >-

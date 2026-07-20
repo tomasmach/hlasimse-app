@@ -7,6 +7,7 @@
   ],
   "scripts": {
     "check:public-contract": "node scripts/check-public-contract.mjs",
+    "test:public-contract": "node --test scripts/check-public-contract.test.mjs",
     "mobile:start": "npm run start --workspace @hlasimse/mobile",
     "mobile:ios": "npm run ios --workspace @hlasimse/mobile",
     "mobile:android": "npm run android --workspace @hlasimse/mobile",

@@ -15,6 +15,8 @@ from django.urls import reverse
 from django.utils import timezone
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_decode, urlsafe_base64_encode
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import OpenApiParameter, extend_schema
 from rest_framework import generics, mixins, permissions, serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied, ValidationError
@@ -46,6 +48,15 @@ from .models import (
     GuardianMembership,
     PushDevice,
 )
+from .openapi import (
+    AcceptedResponseSerializer,
+    CheckInStatisticsSchemaSerializer,
+    DetailResponseSerializer,
+    LogoutRequestSerializer,
+    ProfileArchiveConflictSchemaSerializer,
+    ProfileTimelinePageSchemaSerializer,
+    VerificationResultSerializer,
+)
 from .password_reset import revoke_outstanding_refresh_tokens
 from .serializers import (
     AccountDeleteSerializer,
@@ -76,6 +87,7 @@ from .services import (
     can_acknowledge_incident,
     create_invitation,
     deactivate_push_device,
+    delete_check_in_location,
     perform_check_in,
     respond_to_invitation,
     revoke_guardian_membership,
@@ -98,6 +110,10 @@ class RegisterView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
     throttle_classes = (RegistrationThrottle,)
 
+    @extend_schema(
+        request=RegisterSerializer,
+        responses={202: AcceptedResponseSerializer},
+    )
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -118,6 +134,10 @@ class EmailVerificationResendView(APIView):
     permission_classes = (permissions.AllowAny,)
     authentication_classes = ()
 
+    @extend_schema(
+        request=EmailVerificationRequestSerializer,
+        responses={202: AcceptedResponseSerializer},
+    )
     def post(self, request):
         serializer = EmailVerificationRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -132,6 +152,10 @@ class EmailVerificationConfirmView(APIView):
     permission_classes = (permissions.AllowAny,)
     authentication_classes = ()
 
+    @extend_schema(
+        request=EmailVerificationConfirmSerializer,
+        responses={200: VerificationResultSerializer, 400: VerificationResultSerializer},
+    )
     def post(self, request):
         serializer = EmailVerificationConfirmSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -171,6 +195,10 @@ class PasswordResetRequestView(APIView):
     authentication_classes = ()
     throttle_classes = (PasswordResetRequestThrottle,)
 
+    @extend_schema(
+        request=PasswordResetRequestSerializer,
+        responses={202: DetailResponseSerializer},
+    )
     def post(self, request):
         serializer = PasswordResetRequestSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -215,6 +243,7 @@ class PasswordResetConfirmView(APIView):
     authentication_classes = ()
     throttle_classes = (PasswordResetConfirmThrottle,)
 
+    @extend_schema(request=PasswordResetConfirmSerializer, responses={204: None})
     def post(self, request):
         uid = request.data.get("uid", "")
         user = None
@@ -240,6 +269,10 @@ class PasswordResetConfirmView(APIView):
 
 
 class AccountExportView(APIView):
+    @extend_schema(
+        responses={200: OpenApiTypes.OBJECT},
+        description="Export all data belonging to the authenticated account.",
+    )
     def get(self, request):
         response = Response(build_account_export(request.user))
         response["Content-Disposition"] = 'attachment; filename="hlasim-se-export.json"'
@@ -249,6 +282,7 @@ class AccountExportView(APIView):
 
 
 class AccountDeleteView(APIView):
+    @extend_schema(request=AccountDeleteSerializer, responses={204: None, 409: OpenApiTypes.OBJECT})
     def delete(self, request):
         serializer = AccountDeleteSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
@@ -268,6 +302,7 @@ class AccountDeleteView(APIView):
 
 
 class LogoutView(APIView):
+    @extend_schema(request=LogoutRequestSerializer, responses={204: None})
     def post(self, request):
         refresh = request.data.get("refresh")
         if not refresh:
@@ -284,6 +319,7 @@ class LogoutView(APIView):
 
 class ProfileViewSet(viewsets.ModelViewSet):
     serializer_class = ProfileSerializer
+    queryset = CheckInProfile.objects.none()
 
     def get_queryset(self):
         return CheckInProfile.objects.filter(
@@ -291,6 +327,7 @@ class ProfileViewSet(viewsets.ModelViewSet):
             archived_at__isnull=True,
         )
 
+    @extend_schema(responses={204: None, 409: ProfileArchiveConflictSchemaSerializer})
     def destroy(self, request, *args, **kwargs):
         result = archive_profile(profile=self.get_object(), actor=request.user)
         if result.blocking_incident is not None:
@@ -307,6 +344,22 @@ class ProfileViewSet(viewsets.ModelViewSet):
             )
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @extend_schema(
+        request=CheckInInputSerializer,
+        parameters=[
+            OpenApiParameter(
+                "Idempotency-Key",
+                OpenApiTypes.STR,
+                OpenApiParameter.HEADER,
+                required=True,
+            ),
+        ],
+        responses={200: CheckInReceiptSerializer, 201: CheckInReceiptSerializer},
+        description=(
+            "Create or replay an idempotent check-in. The response is authoritative only after "
+            "the server accepts it. The Idempotency-Key header is required."
+        ),
+    )
     @action(detail=True, methods=["post"], url_path="check-in")
     def check_in(self, request, pk=None):
         profile = self.get_object()
@@ -330,6 +383,7 @@ class ProfileViewSet(viewsets.ModelViewSet):
             status=status.HTTP_201_CREATED if result.created else status.HTTP_200_OK,
         )
 
+    @extend_schema(responses={200: GuardianSerializer(many=True)})
     @action(detail=True, methods=["get"])
     def guardians(self, request, pk=None):
         memberships = (
@@ -339,14 +393,29 @@ class ProfileViewSet(viewsets.ModelViewSet):
         )
         return Response(GuardianSerializer(memberships, many=True).data)
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("guardian_id", OpenApiTypes.UUID, OpenApiParameter.PATH),
+        ],
+        responses={204: None},
+    )
     @action(detail=True, methods=["delete"], url_path=r"guardians/(?P<guardian_id>[^/.]+)")
-    def revoke_guardian(self, request, pk=None, guardian_id=None):
+    def revoke_guardian(self, request, pk=None, guardian_id: uuid.UUID | None = None):
         membership = get_object_or_404(
             self.get_object().guardians, pk=guardian_id, status=GuardianMembership.Status.ACTIVE
         )
         revoke_guardian_membership(membership=membership, actor=request.user)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
+    @extend_schema(
+        methods=["GET"],
+        responses={200: InvitationSerializer(many=True)},
+    )
+    @extend_schema(
+        methods=["POST"],
+        request=InvitationCreateSerializer,
+        responses={201: InvitationSerializer},
+    )
     @action(detail=True, methods=["get", "post"])
     def invitations(self, request, pk=None):
         profile = self.get_object()
@@ -370,6 +439,13 @@ class ProfileViewSet(viewsets.ModelViewSet):
             data["acceptance_token"] = token
         return Response(data, status=status.HTTP_201_CREATED)
 
+    @extend_schema(
+        responses={200: ProfileTimelinePageSchemaSerializer},
+        description=(
+            "Owner-only safety timeline. Check-in events expose has_location presence but never "
+            "latitude, longitude, or accuracy values."
+        ),
+    )
     @action(detail=True, methods=["get"])
     def timeline(self, request, pk=None):
         # Archived profiles intentionally disappear from normal profile routes, but
@@ -442,6 +518,7 @@ def _serialize_timeline_page(events):
                 "deadline_generation": check_in.deadline_generation,
                 "next_deadline_at": check_in.response_deadline_at,
                 "submitted_from_queue": check_in.submitted_from_queue,
+                "has_location": (check_in.latitude is not None and check_in.longitude is not None),
                 "resolved_incident_count": check_in.resolved_incident_count,
             }
         elif event.event_type == "incident.opened":
@@ -534,6 +611,26 @@ class CheckInHistoryView(generics.ListAPIView):
     serializer_class = CheckInHistorySerializer
     pagination_class = CheckInHistoryPagination
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("profile", OpenApiTypes.UUID, OpenApiParameter.QUERY),
+            OpenApiParameter("from", OpenApiTypes.DATETIME, OpenApiParameter.QUERY),
+            OpenApiParameter("to", OpenApiTypes.DATETIME, OpenApiParameter.QUERY),
+        ],
+        description=(
+            "Owner-only server-confirmed check-in history. has_location is a boolean presence "
+            "marker; coordinates and accuracy are intentionally excluded."
+        ),
+    )
+    def get(self, request, *args, **kwargs):
+        return super().get(request, *args, **kwargs)
+
+    def finalize_response(self, request, response, *args, **kwargs):
+        response = super().finalize_response(request, response, *args, **kwargs)
+        response["Cache-Control"] = "no-store, private"
+        response["Pragma"] = "no-cache"
+        return response
+
     def get_queryset(self):
         filters, _dates = _history_filters(self.request)
         return (
@@ -544,7 +641,38 @@ class CheckInHistoryView(generics.ListAPIView):
         )
 
 
+class CheckInLocationDeleteView(APIView):
+    def finalize_response(self, request, response, *args, **kwargs):
+        response = super().finalize_response(request, response, *args, **kwargs)
+        response["Cache-Control"] = "no-store, private"
+        response["Pragma"] = "no-cache"
+        return response
+
+    @extend_schema(
+        responses={204: None},
+        description=(
+            "Permanently remove location fields from an owner check-in while preserving the "
+            "check-in and safety history."
+        ),
+    )
+    def delete(self, request, check_in_id):
+        try:
+            delete_check_in_location(check_in_id=check_in_id, owner=request.user)
+        except CheckIn.DoesNotExist as exc:
+            raise Http404 from exc
+
+        return Response(status=status.HTTP_204_NO_CONTENT)
+
+
 class CheckInStatisticsView(APIView):
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("profile", OpenApiTypes.UUID, OpenApiParameter.QUERY),
+            OpenApiParameter("from", OpenApiTypes.DATETIME, OpenApiParameter.QUERY),
+            OpenApiParameter("to", OpenApiTypes.DATETIME, OpenApiParameter.QUERY),
+        ],
+        responses={200: CheckInStatisticsSchemaSerializer},
+    )
     def get(self, request):
         filters, dates = _history_filters(request)
         check_ins = CheckIn.objects.filter(**filters).annotate(
@@ -578,6 +706,7 @@ class CheckInStatisticsView(APIView):
 
 
 class InvitationAcceptView(APIView):
+    @extend_schema(request=InvitationAcceptSerializer, responses={200: GuardianSerializer})
     def post(self, request):
         serializer = InvitationAcceptSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -607,6 +736,7 @@ class ReceivedInvitationListView(generics.ListAPIView):
 
 
 class ReceivedInvitationDecisionView(APIView):
+    @extend_schema(request=InvitationDecisionSerializer, responses={200: OpenApiTypes.OBJECT})
     def post(self, request, invitation_id):
         serializer = InvitationDecisionSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
@@ -627,6 +757,7 @@ class ReceivedInvitationDecisionView(APIView):
 
 
 class GuardianSelfRevokeView(APIView):
+    @extend_schema(request=None, responses={204: None})
     def post(self, request, membership_id):
         membership = get_object_or_404(
             GuardianMembership,
@@ -660,6 +791,7 @@ class PushDeviceViewSet(
     viewsets.GenericViewSet,
 ):
     serializer_class = PushDeviceSerializer
+    queryset = PushDevice.objects.none()
 
     def get_queryset(self):
         return PushDevice.objects.filter(user=self.request.user)
@@ -674,6 +806,7 @@ class AlertIncidentViewSet(
     viewsets.GenericViewSet,
 ):
     serializer_class = AlertIncidentSerializer
+    queryset = AlertIncident.objects.none()
 
     def finalize_response(self, request, response, *args, **kwargs):
         response = super().finalize_response(request, response, *args, **kwargs)
@@ -684,6 +817,14 @@ class AlertIncidentViewSet(
     def get_queryset(self):
         return accessible_incidents(self.request.user).select_related("profile")
 
+    @extend_schema(
+        request=None,
+        responses={200: AlertIncidentSerializer, 409: DetailResponseSerializer},
+        description=(
+            "Record that an active guardian has taken responsibility for an open incident. "
+            "This does not prove notification delivery or resolution."
+        ),
+    )
     @action(detail=True, methods=["post"])
     def acknowledge(self, request, pk=None):
         incident = self.get_object()

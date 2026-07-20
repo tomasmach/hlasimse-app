@@ -52,3 +52,25 @@ def test_json_request_log_uses_route_pattern_and_never_raw_token_url():
     assert secret not in payload
     assert "private@example.test" not in payload
     assert "Referer" not in payload
+
+
+def test_location_request_body_never_enters_structured_request_logs(caplog):
+    latitude = "50.075500"
+    longitude = "14.437800"
+    request = RequestFactory().post(
+        "/api/v1/profiles/00000000-0000-0000-0000-000000000001/check-in/",
+        data=json.dumps({"latitude": latitude, "longitude": longitude}),
+        content_type="application/json",
+    )
+    request.resolver_match = SimpleNamespace(route="api/v1/profiles/<uuid:pk>/check-in/")
+
+    with caplog.at_level(logging.INFO, logger="core.request"):
+        response = CorrelationIdMiddleware(lambda _request: HttpResponse(status=201))(request)
+
+    assert response.status_code == 201
+    formatted = "\n".join(JsonFormatter().format(record) for record in caplog.records)
+    assert "api/v1/profiles/<uuid:pk>/check-in/" in formatted
+    assert latitude not in formatted
+    assert longitude not in formatted
+    assert "latitude" not in formatted
+    assert "longitude" not in formatted

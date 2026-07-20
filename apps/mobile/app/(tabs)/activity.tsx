@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState, type ComponentType } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -14,6 +15,7 @@ import {
   ArrowRight,
   CheckCircle,
   ClockCounterClockwise,
+  MapPin,
   Pause,
   Play,
   ShieldWarning,
@@ -159,6 +161,8 @@ export default function ActivityScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [periodDays, setPeriodDays] = useState<30 | 90 | 0>(30);
   const [showDefinitions, setShowDefinitions] = useState(false);
+  const [removingLocationId, setRemovingLocationId] = useState<string | null>(null);
+  const [locationMutationError, setLocationMutationError] = useState<string | null>(null);
 
   const filter = useMemo(
     () => ({
@@ -188,6 +192,34 @@ export default function ActivityScreen() {
     setRefreshing(true);
     await load();
     setRefreshing(false);
+  };
+
+  const confirmLocationRemoval = (checkInId: string) => {
+    Alert.alert(
+      "Odstranit polohu z check-inu?",
+      "Server odstraní uloženou polohu, ale zachová check-in, termín i bezpečnostní historii. Souřadnice se na této obrazovce nezobrazují.",
+      [
+        { text: "Zrušit", style: "cancel" },
+        {
+          text: "Odstranit polohu",
+          style: "destructive",
+          onPress: () => {
+            setLocationMutationError(null);
+            setRemovingLocationId(checkInId);
+            void product
+              .removeCheckInLocation(checkInId)
+              .catch((mutationError: unknown) => {
+                setLocationMutationError(
+                  mutationError instanceof Error
+                    ? mutationError.message
+                    : "Polohu se nepodařilo odstranit.",
+                );
+              })
+              .finally(() => setRemovingLocationId(null));
+          },
+        },
+      ],
+    );
   };
   const profileAlerts = visibleAccessibleIncidents(product.alerts);
   const timeline = product.timelineProfileId === profile?.id ? product.timeline : null;
@@ -379,9 +411,19 @@ export default function ActivityScreen() {
             Úplná časová osa profilu
           </Text>
           <Text className="font-body text-sm leading-5 text-muted mb-6">
-            Check-iny, pauzy, obnovení, incidenty a archivace v jednom serverovém pořadí. Poloha
-            zde nikdy není.
+            Check-iny, pauzy, obnovení, incidenty a archivace v jednom serverovém pořadí.
+            Souřadnice se zde nikdy nezobrazují.
           </Text>
+
+          {locationMutationError ? (
+            <View className="mb-5">
+              <Notice title="Polohu se nepodařilo odstranit" tone="danger">
+                <Text className="font-body text-[#9E2E2A] leading-5">
+                  {locationMutationError} Serverová data zůstala beze změny.
+                </Text>
+              </Notice>
+            </View>
+          ) : null}
 
           {!profile ? (
             <Notice title="Časová osa patří vlastníkovi profilu" tone="info">
@@ -424,6 +466,39 @@ export default function ActivityScreen() {
                       <Text className="font-body text-sm leading-5 text-muted mt-2">
                         {presentation.detail}
                       </Text>
+                      {event.event_type === "checkin.confirmed" &&
+                      event.details.has_location ? (
+                        <View className="mt-4 pt-3 border-t border-sand flex-row items-start gap-3">
+                          <MapPin size={20} color={COLORS.muted} />
+                          <View className="flex-1">
+                            <Text className="font-body-semibold text-sm text-charcoal">
+                              Poloha je k tomuto check-inu připojena
+                            </Text>
+                            <Text className="font-body text-xs leading-5 text-muted mt-1">
+                              Zobrazuje se jen informace o přítomnosti, ne souřadnice.
+                            </Text>
+                            <Pressable
+                              testID={`checkin-location-delete-${event.details.check_in_id}`}
+                              onPress={() => confirmLocationRemoval(event.details.check_in_id)}
+                              disabled={removingLocationId !== null}
+                              className="min-h-[44px] self-start justify-center mt-1"
+                              accessibilityRole="button"
+                              accessibilityLabel="Odstranit polohu z tohoto check-inu"
+                              accessibilityHint="Po potvrzení odstraní server pouze uloženou polohu. Check-in zůstane zachovaný."
+                              accessibilityState={{
+                                disabled: removingLocationId !== null,
+                                busy: removingLocationId === event.details.check_in_id,
+                              }}
+                            >
+                              <Text className="font-body-semibold text-sm text-error">
+                                {removingLocationId === event.details.check_in_id
+                                  ? "Čekáme na server…"
+                                  : "Odstranit polohu"}
+                              </Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      ) : null}
                     </View>
                     {presentation.incidentId ? (
                       <ArrowRight size={20} color={COLORS.muted} />

@@ -13,6 +13,8 @@ from rest_framework.test import APIClient
 from core.models import (
     AlertIncident,
     AlertRecipient,
+    AuditEvent,
+    CheckIn,
     DeliveryAttempt,
     GuardianInvitation,
     GuardianMembership,
@@ -87,6 +89,103 @@ def test_account_export_is_scoped_complete_and_excludes_secrets(api_client, user
     assert "token_digest" not in serialized
     assert "secret-provider-token" not in serialized
     assert "destination_token_hash" not in serialized
+
+
+def test_check_in_location_contract_and_owner_only_idempotent_deletion(
+    api_client, user, other_user, profile
+):
+    check_in = perform_check_in(
+        profile=profile,
+        idempotency_key="location-delete",
+        latitude="50.075500",
+        longitude="14.437800",
+        location_accuracy_meters="8.50",
+    ).check_in
+    GuardianMembership.objects.create(profile=profile, guardian=other_user)
+    foreign_owner = User.objects.create_user(
+        email="foreign-owner@example.cz",
+        password="Safely-testing-123",
+    )
+    create_profile(owner=foreign_owner, name="Cizí profil", interval_seconds=86_400)
+    delete_url = f"/api/v1/check-ins/{check_in.id}/location/"
+
+    history = authenticate(api_client, user).get(f"/api/v1/check-ins/?profile={profile.id}")
+    timeline = authenticate(api_client, user).get(
+        f"/api/v1/profiles/{profile.id}/timeline/?page_size=100"
+    )
+    history_item = next(
+        item for item in history.json()["results"] if item["id"] == str(check_in.id)
+    )
+    timeline_item = next(
+        item
+        for item in timeline.json()["results"]
+        if item["event_type"] == "checkin.confirmed"
+        and item["details"]["check_in_id"] == str(check_in.id)
+    )
+
+    assert history.status_code == timeline.status_code == 200
+    assert history["Cache-Control"] == timeline["Cache-Control"] == "no-store, private"
+    assert history["Pragma"] == timeline["Pragma"] == "no-cache"
+    assert history_item["has_location"] is True
+    assert timeline_item["details"]["has_location"] is True
+    assert "latitude" not in history.content.decode()
+    assert "longitude" not in history.content.decode()
+    assert "latitude" not in timeline.content.decode()
+    assert "longitude" not in timeline.content.decode()
+
+    guardian_denied = authenticate(api_client, other_user).delete(delete_url)
+    foreign_owner_denied = authenticate(api_client, foreign_owner).delete(delete_url)
+
+    assert guardian_denied.status_code == 404
+    assert foreign_owner_denied.status_code == 404
+    assert guardian_denied["Cache-Control"] == "no-store, private"
+    assert foreign_owner_denied["Cache-Control"] == "no-store, private"
+    assert guardian_denied["Pragma"] == "no-cache"
+    assert foreign_owner_denied["Pragma"] == "no-cache"
+    check_in.refresh_from_db()
+    assert check_in.latitude is not None
+    assert (
+        AuditEvent.objects.filter(
+            event_type="checkin.location_deleted",
+            aggregate_type="check_in",
+            aggregate_id=check_in.id,
+        ).count()
+        == 0
+    )
+
+    owner = authenticate(api_client, user)
+    deleted = owner.delete(delete_url)
+    repeated = owner.delete(delete_url)
+
+    assert deleted.status_code == repeated.status_code == 204
+    assert deleted["Cache-Control"] == repeated["Cache-Control"] == "no-store, private"
+    assert deleted["Pragma"] == repeated["Pragma"] == "no-cache"
+    check_in.refresh_from_db()
+    assert check_in.latitude is None
+    assert check_in.longitude is None
+    assert check_in.location_accuracy_meters is None
+    deletion_events = AuditEvent.objects.filter(
+        event_type="checkin.location_deleted",
+        aggregate_type="check_in",
+        aggregate_id=check_in.id,
+    )
+    assert deletion_events.count() == 1
+    assert deletion_events.get().actor == user
+
+    history_after_delete = owner.get(f"/api/v1/check-ins/?profile={profile.id}")
+    timeline_after_delete = owner.get(f"/api/v1/profiles/{profile.id}/timeline/?page_size=100")
+    history_item = next(
+        item for item in history_after_delete.json()["results"] if item["id"] == str(check_in.id)
+    )
+    timeline_item = next(
+        item
+        for item in timeline_after_delete.json()["results"]
+        if item["event_type"] == "checkin.confirmed"
+        and item["details"]["check_in_id"] == str(check_in.id)
+    )
+    assert history_item["has_location"] is False
+    assert timeline_item["details"]["has_location"] is False
+    assert CheckIn.objects.filter(pk=check_in.id).exists()
 
 
 def test_account_delete_requires_confirmation_and_current_password(api_client, user):

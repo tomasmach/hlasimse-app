@@ -7,6 +7,7 @@ from .views import (
     AccountExportView,
     AlertIncidentViewSet,
     CheckInHistoryView,
+    CheckInLocationDeleteView,
     CheckInStatisticsView,
     EmailVerificationConfirmView,
     EmailVerificationResendView,
@@ -54,6 +55,11 @@ urlpatterns = [
     path("account/export/", AccountExportView.as_view(), name="account-export"),
     path("account/", AccountDeleteView.as_view(), name="account-delete"),
     path("check-ins/", CheckInHistoryView.as_view(), name="check-in-history"),
+    path(
+        "check-ins/<uuid:check_in_id>/location/",
+        CheckInLocationDeleteView.as_view(),
+        name="check-in-location-delete",
+    ),
     path("statistics/", CheckInStatisticsView.as_view(), name="check-in-statistics"),
     path("guardian-invitations/accept/", InvitationAcceptView.as_view(), name="invite-accept"),
     path(

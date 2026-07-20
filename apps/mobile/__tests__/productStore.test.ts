@@ -55,6 +55,7 @@ it("loads paginated server-confirmed history and exact statistics filters", asyn
         server_confirmed: true,
         resolved_incident_count: 0,
         submitted_from_queue: false,
+        has_location: true,
       },
     ],
   };
@@ -134,6 +135,7 @@ it("appends cursor pages in server order without duplicating events", async () =
           deadline_generation: 5,
           next_deadline_at: "2026-07-20T11:00:00Z",
           submitted_from_queue: false,
+          has_location: true,
           resolved_incident_count: 0,
         },
       },
@@ -154,6 +156,7 @@ it("appends cursor pages in server order without duplicating events", async () =
           deadline_generation: 4,
           next_deadline_at: "2026-07-19T11:00:00Z",
           submitted_from_queue: true,
+          has_location: false,
           resolved_incident_count: 1,
         },
       },
@@ -174,6 +177,75 @@ it("appends cursor pages in server order without duplicating events", async () =
     details: { submitted_from_queue: true },
   });
   expect(merged?.next).toBeNull();
+});
+
+it("removes check-in location from cached owner history only after server confirmation", async () => {
+  const checkIn = {
+    id: "check-in-1",
+    profile_id: "profile-1",
+    profile_name: "Denní kontrola",
+    accepted_at: "2026-07-19T09:00:00Z",
+    client_recorded_at: null,
+    deadline_generation: 2,
+    response_deadline_at: "2026-07-20T09:00:00Z",
+    server_confirmed: true as const,
+    resolved_incident_count: 0,
+    submitted_from_queue: false,
+    has_location: true,
+  };
+  const timeline: ProfileTimelinePage = {
+    next: null,
+    previous: null,
+    results: [
+      {
+        id: "event-1",
+        event_type: "checkin.confirmed",
+        occurred_at: checkIn.accepted_at,
+        profile_id: checkIn.profile_id,
+        details: {
+          check_in_id: checkIn.id,
+          deadline_generation: 2,
+          next_deadline_at: checkIn.response_deadline_at,
+          submitted_from_queue: false,
+          has_location: true,
+          resolved_incident_count: 0,
+        },
+      },
+    ],
+  };
+  useProductStore.setState({
+    history: { count: 1, next: null, previous: null, results: [checkIn] },
+    timeline,
+    timelineProfileId: "profile-1",
+  });
+
+  let confirmDeletion: (() => void) | undefined;
+  request.mockReturnValueOnce(
+    new Promise<void>((resolve) => {
+      confirmDeletion = resolve;
+    }),
+  );
+  const deletion = useProductStore.getState().removeCheckInLocation(checkIn.id);
+
+  expect(useProductStore.getState().history?.results[0].has_location).toBe(true);
+  const originalEvent = useProductStore.getState().timeline?.results[0];
+  expect(originalEvent?.event_type).toBe("checkin.confirmed");
+  if (originalEvent?.event_type !== "checkin.confirmed") {
+    throw new Error("Expected a confirmed check-in event.");
+  }
+  expect(originalEvent.details.has_location).toBe(true);
+
+  confirmDeletion?.();
+  await deletion;
+
+  expect(request).toHaveBeenLastCalledWith("/api/v1/check-ins/check-in-1/location/", {
+    method: "DELETE",
+  });
+  expect(useProductStore.getState().history?.results[0].has_location).toBe(false);
+  const updatedEvent = useProductStore.getState().timeline?.results[0];
+  expect(updatedEvent?.event_type === "checkin.confirmed" && updatedEvent.details.has_location).toBe(
+    false,
+  );
 });
 
 it("rejects a cursor URL for another profile without issuing a request", async () => {

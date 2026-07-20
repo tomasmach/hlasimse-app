@@ -69,10 +69,13 @@ from .models import (
 )
 from .password_reset import revoke_outstanding_refresh_tokens
 from .services import (
+    MAX_GUARDIANS_PER_PROFILE,
+    MAX_PROFILES_PER_USER,
     accessible_incidents,
     can_acknowledge_incident,
     create_invitation,
     create_profile,
+    delete_check_in_location,
     perform_check_in,
     respond_to_invitation,
     revoke_guardian_membership,
@@ -324,6 +327,7 @@ class DashboardView(LoginRequiredMixin, TemplateView):
                 "active_alert": active_alert,
                 "watched_memberships": watched_memberships,
                 "notification_health": _notification_health(profiles),
+                "profile_limit_reached": len(profiles) >= MAX_PROFILES_PER_USER,
             }
         )
         return context
@@ -343,6 +347,14 @@ def _add_validation_error(form, error):
 @login_required(login_url="accounts:login")
 def profile_create_view(request):
     form = CheckInProfileForm(request.POST if request.method == "POST" else None)
+    limit_reached = (
+        request.method == "GET"
+        and CheckInProfile.objects.filter(
+            owner=request.user,
+            archived_at__isnull=True,
+        ).count()
+        >= MAX_PROFILES_PER_USER
+    )
     if request.method == "POST" and form.is_valid():
         try:
             profile = create_profile(owner=request.user, **form.cleaned_data)
@@ -354,7 +366,7 @@ def profile_create_view(request):
     return render(
         request,
         "core/dashboard/profile_form.html",
-        {"form": form, "profile": None},
+        {"form": form, "profile": None, "limit_reached": limit_reached},
     )
 
 
@@ -659,36 +671,19 @@ def history_view(request):
 @require_POST
 @login_required(login_url="accounts:login")
 def checkin_location_delete_view(request, pk):
-    with transaction.atomic():
-        checkin = get_object_or_404(
-            CheckIn.objects.select_for_update().select_related("profile"),
-            pk=pk,
-            profile__owner=request.user,
+    try:
+        result = delete_check_in_location(check_in_id=pk, owner=request.user)
+    except CheckIn.DoesNotExist as exc:
+        raise Http404 from exc
+
+    checkin = result.check_in
+    if result.deleted:
+        messages.success(
+            request,
+            "Poloha byla trvale odstraněna. Historický záznam ohlášení zůstal zachován.",
         )
-        if checkin.latitude is None:
-            messages.info(request, "U tohoto ohlášení už poloha uložená není.")
-        else:
-            checkin.latitude = None
-            checkin.longitude = None
-            checkin.location_accuracy_meters = None
-            checkin.save(
-                update_fields=[
-                    "latitude",
-                    "longitude",
-                    "location_accuracy_meters",
-                    "updated_at",
-                ]
-            )
-            record_audit_event(
-                event_type="checkin.location_deleted",
-                aggregate_type="check_in",
-                aggregate_id=checkin.pk,
-                actor=request.user,
-            )
-            messages.success(
-                request,
-                "Poloha byla trvale odstraněna. Historický záznam ohlášení zůstal zachován.",
-            )
+    else:
+        messages.info(request, "U tohoto ohlášení už poloha uložená není.")
     return redirect(f"{reverse('checkins:history')}?profile={checkin.profile_id}")
 
 
@@ -711,6 +706,19 @@ def guardians_view(request):
         expires_at__gt=timezone.now(),
         profile__archived_at__isnull=True,
     ).select_related("profile", "invited_by")
+    owned_profile_guardian_counts = list(
+        CheckInProfile.objects.filter(
+            owner=request.user,
+            archived_at__isnull=True,
+        )
+        .annotate(
+            active_guardian_count=Count(
+                "guardians",
+                filter=Q(guardians__status=GuardianMembership.Status.ACTIVE),
+            )
+        )
+        .values_list("active_guardian_count", flat=True)
+    )
     watched_memberships = list(
         GuardianMembership.objects.filter(
             guardian=request.user,
@@ -746,6 +754,8 @@ def guardians_view(request):
             "invites": invites,
             "incoming_invites": incoming_invites,
             "watched_memberships": watched_memberships,
+            "guardian_limit_reached": bool(owned_profile_guardian_counts)
+            and all(count >= MAX_GUARDIANS_PER_PROFILE for count in owned_profile_guardian_counts),
         },
     )
 
@@ -755,6 +765,14 @@ def guardian_invite_view(request):
     form = GuardianInvitationForm(
         request.POST if request.method == "POST" else None,
         owner=request.user,
+    )
+    guardian_limit_reached = (
+        request.method == "GET"
+        and CheckInProfile.objects.filter(
+            owner=request.user,
+            archived_at__isnull=True,
+        ).exists()
+        and not form.fields["profile"].queryset.exists()
     )
     if request.method == "POST" and form.is_valid():
         try:
@@ -771,7 +789,7 @@ def guardian_invite_view(request):
     return render(
         request,
         "core/dashboard/guardian_invite.html",
-        {"form": form},
+        {"form": form, "guardian_limit_reached": guardian_limit_reached},
     )
 
 

@@ -7,7 +7,7 @@ secret-management provider.
 
 ## Runtime contract
 
-One immutable image runs nine process roles:
+One immutable image runs ten process roles:
 
 | Role | Command | Required instances |
 | --- | --- | --- |
@@ -17,6 +17,7 @@ One immutable image runs nine process roles:
 | Email outbox | `python manage.py process_outbox --watch --queue email --poll-interval 2` | At least 1 |
 | Push receipts | `python manage.py fetch_push_receipts --watch` | At least 1 |
 | Safety reconciliation | `python manage.py reconcile_safety_state --repair --fail-on-gaps --watch` | At least 1; only deterministic repairs |
+| Safety metrics | `python manage.py emit_safety_metrics --watch --poll-interval 30` | Exactly 1 per database; stdout JSON only, with no public endpoint |
 | Session cleanup | `python manage.py purge_expired_sessions --watch --poll-interval 86400` | Exactly 1, or an equivalent external daily scheduler |
 | Delivery monitor | `python manage.py check_delivery_health` every 30 seconds | At least 1 plus external paging |
 | Migration job | `python manage.py migrate --noinput && python manage.py createcachetable` | Exactly 1 per release |
@@ -81,6 +82,11 @@ Compose file, CI logs, shell history, or repository.
 - `DJANGO_ALLOWED_HOSTS`: exact public hostnames.
 - `DATABASE_URL`: PostgreSQL connection with `sslmode=require`, `verify-ca`, or preferably
   `verify-full`; startup rejects weaker modes.
+- `DATABASE_CONNECT_TIMEOUT_SECONDS`, `DATABASE_STATEMENT_TIMEOUT_MS`,
+  `DATABASE_LOCK_TIMEOUT_MS`, and `DATABASE_IDLE_TRANSACTION_TIMEOUT_MS`: bounded PostgreSQL
+  connection, statement, lock, and abandoned-transaction budgets. Defaults are 5 s, 30 s, 5 s,
+  and 15 s. Override the statement budget per process role only after measuring that role; never
+  remove the limits. Lock timeout must not exceed statement timeout.
 - `APP_BASE_URL`: canonical HTTPS web origin.
 - `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS` or
   `EMAIL_USE_SSL`, `DEFAULT_FROM_EMAIL`, `SERVER_EMAIL`.
@@ -111,7 +117,7 @@ chmod 600 apps/server/.env.compose.local
 docker compose --env-file apps/server/.env.compose.local -f compose.production.yml config --quiet
 docker compose --env-file apps/server/.env.compose.local -f compose.production.yml build
 docker compose --env-file apps/server/.env.compose.local -f compose.production.yml --profile ops run --rm migrate
-docker compose --env-file apps/server/.env.compose.local -f compose.production.yml up -d postgres mailpit outbox-alerts outbox-email receipts reconciliation session-cleanup sweep delivery-monitor web
+docker compose --env-file apps/server/.env.compose.local -f compose.production.yml up -d postgres mailpit outbox-alerts outbox-email receipts reconciliation safety-metrics session-cleanup sweep delivery-monitor web
 ```
 
 The web endpoint is bound only to `127.0.0.1:8000`; Mailpit's local inspection UI is at
@@ -124,6 +130,7 @@ Validate the running topology after at least 90 seconds so every worker has emit
 curl --fail --silent http://127.0.0.1:8000/health/live/
 curl --fail --silent http://127.0.0.1:8000/health/ready/
 docker compose --env-file apps/server/.env.compose.local -f compose.production.yml --profile ops run --rm delivery-health
+docker compose --env-file apps/server/.env.compose.local -f compose.production.yml run --rm safety-metrics python manage.py emit_safety_metrics
 docker compose --env-file apps/server/.env.compose.local -f compose.production.yml ps
 ```
 
@@ -136,6 +143,39 @@ deliveries. The Compose delivery monitor exits non-zero and is restarted when th
 the error and restart count remain visible. Compose cannot page an operator: production must alert
 on the probe, worker container health, unexpected exits, and monitor restarts. Do not restart-loop
 workers to hide the underlying failure.
+
+## Safety observability
+
+`emit_safety_metrics` performs read-only aggregate queries and writes one compact JSON object per
+run, or one object per polling interval with `--watch`. The dedicated Compose role has no
+healthcheck and exposes no port: collect its stdout with the platform's normal log pipeline. The
+snapshot contains only counts, ages, and clocks. It never contains an account, profile, incident,
+device, event or request identifier, e-mail address, location, token, or raw error message.
+
+Map the snapshot fields to provider-neutral time series and alerts:
+
+| JSON field | Operational meaning |
+| --- | --- |
+| `clock.app_minus_database_seconds` | Signed application-versus-database clock drift; alert on sustained absolute drift outside the deployment's time-sync budget |
+| `deadlines.eligible_count` / `deadlines.oldest_due_age_seconds` | Due deadline generations still waiting for incident materialization and the age of the oldest; a growing age means the sweeper is not catching up |
+| `deadlines.current_generation_incident_gap_count` | Explicit count of the same due generations without their incident; any sustained non-zero value is safety-critical |
+| `incidents.open_count` | Current open incident load; use together with deadline and delivery backlog rather than as an error by itself |
+| `alert_outbox.pending_count` / `alert_outbox.oldest_pending_age_seconds` | Durable alert-delivery backlog and oldest event age |
+| `delivery.dead_letter_count` | Delivery attempts in a terminal dead-letter state; any increase requires investigation |
+| `workers.oldest_heartbeat_age_seconds` / `workers.missing_count` / `workers.stale_count` / `workers.failing_count` | Required worker coverage and freshness; page on any missing, stale, or explicitly failing worker |
+
+Django's separate access JSON is the source for API error and latency telemetry. Select records
+where `logger="core.request"` and the route pattern belongs to `api/v1/`; calculate server error
+rate from `status_code >= 500` divided by all selected requests in the same rolling window, and
+calculate latency percentiles from `duration_ms`, grouped by `method` and the bounded `route`
+pattern. Do not group by request ID or reconstruct raw URLs. The safety snapshot deliberately does
+not duplicate access traffic metrics.
+
+Backup freshness, last successful restore verification, database saturation, and confirmation that
+a page reached the on-call operator are **external monitoring inputs**. They are not emitted by
+`emit_safety_metrics` and must come from the database/backup provider, infrastructure telemetry,
+and paging provider. A running metrics role or successful log ingestion is not evidence that a
+backup is recent or that an operator was paged.
 
 Stop the rehearsal without deleting its durable database:
 

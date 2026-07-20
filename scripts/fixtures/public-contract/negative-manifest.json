@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "text_extensions": [".md"],
+  "excluded_segments": [],
+  "artifacts": [
+    { "id": "negative-copy", "path": "negative.md" }
+  ]
+}

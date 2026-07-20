@@ -3,8 +3,10 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.db.models import Count, Q
 
 from .models import MAX_INTERVAL_SECONDS, MIN_INTERVAL_SECONDS, CheckInProfile
+from .services import MAX_GUARDIANS_PER_PROFILE
 
 
 class LoginForm(AuthenticationForm):
@@ -167,10 +169,18 @@ class GuardianInvitationForm(forms.Form):
 
     def __init__(self, *args, owner, **kwargs):
         super().__init__(*args, **kwargs)
-        self.fields["profile"].queryset = CheckInProfile.objects.filter(
+        queryset = CheckInProfile.objects.filter(
             owner=owner,
             archived_at__isnull=True,
-        ).order_by("created_at")
+        )
+        if not self.is_bound:
+            queryset = queryset.annotate(
+                active_guardian_count=Count(
+                    "guardians",
+                    filter=Q(guardians__status="active"),
+                )
+            ).filter(active_guardian_count__lt=MAX_GUARDIANS_PER_PROFILE)
+        self.fields["profile"].queryset = queryset.order_by("created_at")
 
 
 class AccountSettingsForm(forms.ModelForm):

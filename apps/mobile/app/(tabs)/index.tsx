@@ -15,6 +15,32 @@ import { Toast } from "@/components/ui";
 import { ActionButton, Notice, StatusLabel } from "@/components/product/ProductUI";
 import { COLORS } from "@/constants/design";
 import { getCheckInFeedback } from "@/lib/checkInFeedback";
+import {
+  pauseRequestForPreset,
+  type PauseDurationPreset,
+} from "@/lib/pauseScheduling";
+
+const pauseDurationOptions: Array<{
+  value: PauseDurationPreset;
+  label: string;
+  detail: string;
+}> = [
+  {
+    value: "indefinite",
+    label: "Bez plánovaného konce",
+    detail: "Profil obnovíte ručně. Aplikace pauzu připomene místní notifikací, pokud ji zařízení dovolí.",
+  },
+  {
+    value: "24h",
+    label: "Naplánovat obnovení za 24 hodin",
+    detail: "Server uloží čas obnovení za 24 hodin od potvrzení pauzy.",
+  },
+  {
+    value: "7d",
+    label: "Naplánovat obnovení za 7 dní",
+    detail: "Server uloží čas obnovení za 7 dní od potvrzení pauzy.",
+  },
+];
 
 const formatDateTime = (value: string | null) => value
   ? new Intl.DateTimeFormat("cs-CZ", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
@@ -59,6 +85,8 @@ export default function CheckInScreen() {
   const [isCheckingIn, setIsCheckingIn] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isChangingPause, setIsChangingPause] = useState(false);
+  const [showPauseOptions, setShowPauseOptions] = useState(false);
+  const [pauseDuration, setPauseDuration] = useState<PauseDurationPreset>("indefinite");
   const [showSuccess, setShowSuccess] = useState(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: "success" | "info" | "warning" | "error" }>({ visible: false, message: "", type: "info" });
 
@@ -86,6 +114,8 @@ export default function CheckInScreen() {
 
   useEffect(() => {
     setIncludeLocation(false);
+    setShowPauseOptions(false);
+    setPauseDuration("indefinite");
   }, [store.profile?.id]);
 
   const handleCheckIn = async () => {
@@ -114,23 +144,50 @@ export default function CheckInScreen() {
     setIsCheckingIn(false);
   };
 
+  const confirmPause = async () => {
+    if (!store.profile || store.profile.is_paused || store.isUsingCachedProfiles) return;
+    setIsChangingPause(true);
+    try {
+      const pauseRequest = pauseRequestForPreset(pauseDuration);
+      await store.updateProfile({ is_paused: true, ...pauseRequest });
+      setShowPauseOptions(false);
+      setToast({
+        visible: true,
+        type: "success",
+        message: "pause_duration_seconds" in pauseRequest
+          ? "Server potvrdil pauzu s plánovaným obnovením."
+          : "Server potvrdil pauzu bez plánovaného konce.",
+      });
+    } catch (error) {
+      setToast({
+        visible: true,
+        type: "error",
+        message: error instanceof Error ? error.message : "Pauzu se nepodařilo potvrdit.",
+      });
+    } finally {
+      setIsChangingPause(false);
+    }
+  };
+
   const togglePause = () => {
     if (!store.profile || store.isUsingCachedProfiles) return;
     const pausing = !store.profile.is_paused;
+    if (pausing) {
+      setShowPauseOptions(true);
+      return;
+    }
     Alert.alert(
-      pausing ? "Pozastavit profil?" : "Obnovit profil?",
-      pausing
-        ? "Pauza se projeví až po potvrzení serverem. Neuzavře už aktivní incident."
-        : "Server nastaví nový termín od okamžiku obnovení. Za dobu pauzy nevznikne zpětný incident.",
+      "Obnovit profil?",
+      "Server nastaví nový termín od okamžiku obnovení. Za dobu pauzy nevznikne zpětný incident.",
       [
         { text: "Zrušit", style: "cancel" },
         {
-          text: pausing ? "Potvrdit pauzu" : "Obnovit",
+          text: "Obnovit",
           onPress: async () => {
             setIsChangingPause(true);
             try {
-              await store.updateProfile({ is_paused: pausing, paused_until: null });
-              setToast({ visible: true, type: "success", message: pausing ? "Pauza potvrzena serverem." : "Profil obnoven. Nový termín potvrdil server." });
+              await store.updateProfile({ is_paused: false, paused_until: null });
+              setToast({ visible: true, type: "success", message: "Profil obnoven. Nový termín potvrdil server." });
             } catch (error) {
               setToast({ visible: true, type: "error", message: error instanceof Error ? error.message : "Změnu se nepodařilo potvrdit." });
             } finally {
@@ -225,7 +282,7 @@ export default function CheckInScreen() {
           <Text className="font-body-medium text-sm text-muted mb-3">Původní serverový termín</Text>
           <Countdown deadline={profile.next_deadline_at} paused={profile.is_paused} enabled={profile.enabled} />
           <Text className="font-body text-[15px] text-muted mt-3">{formatDateTime(profile.next_deadline_at)}</Text>
-          {profile.is_paused ? <Text className="font-body text-[15px] leading-6 text-muted mt-2">{profile.paused_until ? `Automatické obnovení: ${formatDateTime(profile.paused_until)}` : "Pauza nemá nastavený konec. Nezapomeňte profil obnovit."}</Text> : null}
+          {profile.is_paused ? <Text className="font-body text-[15px] leading-6 text-muted mt-2">{profile.paused_until ? `Naplánované obnovení: ${formatDateTime(profile.paused_until)}` : "Pauza nemá nastavený konec. Nezapomeňte profil obnovit."}</Text> : null}
         </Animated.View>
 
         <View className="py-5 border-y border-sand">
@@ -277,6 +334,67 @@ export default function CheckInScreen() {
             />
           </View>
         </View>
+
+        {!profile.is_paused && showPauseOptions ? (
+          <Animated.View
+            entering={reduceMotion ? undefined : FadeInDown.duration(220)}
+            className="py-7 border-b border-sand"
+          >
+            <Text className="font-display text-[26px] leading-8 text-charcoal">
+              Jak dlouho má pauza trvat?
+            </Text>
+            <Text className="font-body text-sm leading-5 text-muted mt-2 mb-4">
+              Pauza začne až po potvrzení serverem a neuzavře už aktivní incident. Naplánované
+              obnovení zpracuje server; místní notifikace může být systémem odložena.
+            </Text>
+            <View accessibilityRole="radiogroup">
+              {pauseDurationOptions.map((option) => {
+                const selected = pauseDuration === option.value;
+                return (
+                  <Pressable
+                    key={option.value}
+                    testID={`pause-duration-${option.value}`}
+                    onPress={() => setPauseDuration(option.value)}
+                    className="min-h-[68px] py-3 border-t border-sand flex-row items-start gap-3"
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: selected }}
+                    accessibilityLabel={option.label}
+                    accessibilityHint={option.detail}
+                  >
+                    <View
+                      className={`w-6 h-6 rounded-full border items-center justify-center mt-0.5 ${selected ? "bg-charcoal border-charcoal" : "border-muted"}`}
+                    >
+                      {selected ? <Check size={14} weight="bold" color="#FFFFFF" /> : null}
+                    </View>
+                    <View className="flex-1">
+                      <Text className="font-body-semibold text-base text-charcoal">
+                        {option.label}
+                      </Text>
+                      <Text className="font-body text-sm leading-5 text-muted mt-1">
+                        {option.detail}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <View className="gap-3 mt-4">
+              <ActionButton
+                testID="pause-confirm"
+                label="Potvrdit pauzu serverem"
+                loading={isChangingPause}
+                onPress={() => void confirmPause()}
+              />
+              <ActionButton
+                testID="pause-options-cancel"
+                label="Zrušit"
+                variant="quiet"
+                disabled={isChangingPause}
+                onPress={() => setShowPauseOptions(false)}
+              />
+            </View>
+          </Animated.View>
+        ) : null}
 
         <View className="flex-row gap-3 py-6">
           <View className="flex-1"><ActionButton testID={profile.is_paused ? "profile-resume" : "profile-pause"} label={profile.is_paused ? "Obnovit profil" : "Pozastavit profil"} variant="quiet" loading={isChangingPause} disabled={store.isUsingCachedProfiles || !profile.enabled} onPress={togglePause} icon={profile.is_paused ? <Play size={19} color={COLORS.charcoal.default} /> : <Pause size={19} color={COLORS.charcoal.default} />} /></View>

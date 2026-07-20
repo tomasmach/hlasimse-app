@@ -8,6 +8,10 @@ x-app-environment: &app-environment
   DJANGO_STATIC_MANIFEST: "true"
   DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
   DATABASE_ALLOW_INSECURE_LOCAL_COMPOSE: "true"
+  DATABASE_CONNECT_TIMEOUT_SECONDS: ${DATABASE_CONNECT_TIMEOUT_SECONDS:-5}
+  DATABASE_STATEMENT_TIMEOUT_MS: ${DATABASE_STATEMENT_TIMEOUT_MS:-30000}
+  DATABASE_LOCK_TIMEOUT_MS: ${DATABASE_LOCK_TIMEOUT_MS:-5000}
+  DATABASE_IDLE_TRANSACTION_TIMEOUT_MS: ${DATABASE_IDLE_TRANSACTION_TIMEOUT_MS:-15000}
   APP_BASE_URL: ${APP_BASE_URL:?APP_BASE_URL is required}
   EXPO_ACCESS_TOKEN: ${EXPO_ACCESS_TOKEN:?EXPO_ACCESS_TOKEN is required}
   MOBILE_MIN_IOS_VERSION: ${MOBILE_MIN_IOS_VERSION:?MOBILE_MIN_IOS_VERSION is required}
@@ -205,6 +209,22 @@ services:
         "60",
       ]
     healthcheck: *worker-healthcheck
+
+  safety-metrics:
+    <<: *app
+    command:
+      [
+        "python",
+        "manage.py",
+        "emit_safety_metrics",
+        "--watch",
+        "--poll-interval",
+        "30",
+        "--heartbeat-max-age-seconds",
+        "90",
+      ]
+    healthcheck:
+      disable: true
 
   session-cleanup:
     <<: *app

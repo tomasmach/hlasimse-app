@@ -139,3 +139,19 @@ Každý řádek je release gate. Testovací důkazy obsahují build, commit, pro
 | AT-23 | GDPR operace jsou úplné. | Testovací subjekt provede export a odstranění; ověřit rozsah exportu, zneplatnění sessions, odebrání přístupů, retenční tombstone a naplánované odstranění ze záloh. |
 | AT-24 | Veřejné texty jsou konzistentní. | Schválený content sweep webu, mobilu, App Store, Google Play, privacy policy, podmínek a launch materiálů nenajde Supabase, Premium, RevenueCat, garantované/okamžité doručení ani „offline check-in je hotový“. |
 
+### Strojový manifest AT-24
+
+Autoritativní seznam verzovaných runtime, store a veřejných README artefaktů je
+`scripts/public-contract-manifest.json`. Gate rozbaluje adresáře výhradně nad výstupem
+`git ls-files`, takže nezařazené lokální soubory nemohou nepozorovaně změnit rozsah release kontroly
+a každý explicitně uvedený soubor nebo adresář musí odpovídat alespoň jednomu trackovanému souboru.
+
+Nový veřejný runtime adresář, store podklad nebo veřejný README musí být do manifestu přidán ve
+stejném commitu. Interní migrační, architektonické a testovací podklady do manifestu nepatří; mohou
+historické technologie popisovat, ale nesmí být zdrojem veřejného textu. Změnu pravidel ověřují
+pozitivní a negativní fixtures příkazem `npm run test:public-contract`; skutečný manifest kontroluje
+`npm run check:public-contract`.
+
+Kořenové právní, release a launch dokumenty jsou vedené jako volitelné trackované artefakty. Dokud
+nejsou verzované, gate je nevydává za schválené; jakmile se objeví v `git ls-files`, automaticky je
+zahrne do stejného obsahového scanu.

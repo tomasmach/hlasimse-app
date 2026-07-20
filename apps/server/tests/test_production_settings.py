@@ -142,6 +142,51 @@ def test_production_requires_encrypted_postgresql_and_preserves_stronger_mode():
     assert result.returncode == 0, result.stderr
 
 
+def test_postgresql_connections_enforce_bounded_operation_timeouts():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from config.settings import DATABASES; "
+                "options = DATABASES['default']['OPTIONS']; "
+                "assert options['connect_timeout'] == 5; "
+                "assert '-c statement_timeout=30000' in options['options']; "
+                "assert '-c lock_timeout=5000' in options['options']; "
+                "assert '-c idle_in_transaction_session_timeout=15000' in options['options']"
+            ),
+        ],
+        capture_output=True,
+        check=False,
+        env=production_environment(),
+        text=True,
+    )
+
+    assert result.returncode == 0, result.stderr
+
+
+def test_production_rejects_unsafe_database_timeout_configuration():
+    for overrides in (
+        {"DATABASE_CONNECT_TIMEOUT_SECONDS": "0"},
+        {"DATABASE_STATEMENT_TIMEOUT_MS": "none"},
+        {"DATABASE_STATEMENT_TIMEOUT_MS": "500"},
+        {"DATABASE_LOCK_TIMEOUT_MS": "31000"},
+        {
+            "DATABASE_STATEMENT_TIMEOUT_MS": "1000",
+            "DATABASE_LOCK_TIMEOUT_MS": "2000",
+        },
+        {"DATABASE_IDLE_TRANSACTION_TIMEOUT_MS": "121000"},
+    ):
+        result = subprocess.run(
+            [sys.executable, "-c", "import config.settings"],
+            capture_output=True,
+            check=False,
+            env={**production_environment(), **overrides},
+            text=True,
+        )
+        assert result.returncode != 0, overrides
+
+
 def test_production_rejects_insecure_remote_database_and_smtp():
     cases = (
         {"DATABASE_URL": "postgresql://user:password@database.example.cz/hlasimse?sslmode=disable"},

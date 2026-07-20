@@ -203,13 +203,13 @@ def test_timeline_has_exact_safe_event_contract_and_archived_owner_access(
         profile=profile,
         values={"is_paused": False, "paused_until": None},
     )
-    perform_check_in(
+    check_in_with_location = perform_check_in(
         profile=profile,
         idempotency_key="timeline-location",
         submitted_from_queue=True,
         latitude="50.075500",
         longitude="14.437800",
-    )
+    ).check_in
     profile.refresh_from_db()
     profile.next_deadline_at = timezone.now() - timedelta(minutes=1)
     profile.save(update_fields=["next_deadline_at", "updated_at"])
@@ -248,6 +248,7 @@ def test_timeline_has_exact_safe_event_contract_and_archived_owner_access(
             "deadline_generation",
             "next_deadline_at",
             "submitted_from_queue",
+            "has_location",
             "resolved_incident_count",
         },
         "incident.opened": {"incident_id", "deadline_at", "deadline_generation"},
@@ -260,6 +261,16 @@ def test_timeline_has_exact_safe_event_contract_and_archived_owner_access(
     }
     for event in events:
         assert set(event["details"]) == detail_keys[event["event_type"]]
+    check_in_events = [item for item in events if item["event_type"] == "checkin.confirmed"]
+    assert (
+        next(
+            item
+            for item in check_in_events
+            if item["details"]["check_in_id"] == str(check_in_with_location.id)
+        )["details"]["has_location"]
+        is True
+    )
+    assert any(item["details"]["has_location"] is False for item in check_in_events)
 
     assert (
         authenticate(api_client, other_user)

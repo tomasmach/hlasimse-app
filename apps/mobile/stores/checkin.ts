@@ -8,6 +8,9 @@ import { useAuthStore } from "@/stores/auth";
 import { CheckInProfile, CheckInReceipt, normalizeProfile } from "@/types/database";
 
 type ServerProfile = Omit<CheckInProfile, "interval_hours" | "next_deadline" | "last_check_in_at" | "is_active">;
+type ProfileUpdateValues = Partial<
+  Pick<CheckInProfile, "name" | "interval_seconds" | "enabled" | "is_paused" | "paused_until">
+> & { pause_duration_seconds?: 86_400 | 604_800 };
 
 export class ProfileArchiveBlockedError extends Error {
   readonly code = "profile_has_open_incident" as const;
@@ -40,7 +43,7 @@ interface CheckInState {
   chooseGuardianOnlyMode: (userId: string, value: boolean) => Promise<void>;
   createProfile: (userId: string, name: string, intervalSeconds?: number) => Promise<CheckInProfile | null>;
   deleteProfile: (profileId: string) => Promise<void>;
-  updateProfile: (values: Partial<Pick<CheckInProfile, "name" | "interval_seconds" | "enabled" | "is_paused" | "paused_until">>) => Promise<CheckInProfile>;
+  updateProfile: (values: ProfileUpdateValues) => Promise<CheckInProfile>;
   checkIn: (coords?: { lat: number; lng: number; accuracy?: number | null } | null) => Promise<{ success: boolean; offline: boolean }>;
   syncPendingCheckIns: () => Promise<{ synced: number; failed: number }>;
   refreshPendingCount: () => Promise<void>;

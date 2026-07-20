@@ -52,10 +52,40 @@ it("treats location as a one-attempt choice and shows the last confirmed check-i
   expect(source).toContain("formatLastCheckIn(profile.last_checked_in_at)");
 });
 
+it("keeps diagnostics read-only until location is chosen for a check-in", () => {
+  const diagnostics = readFileSync(
+    resolve(mobileRoot, "app/(tabs)/diagnostics.tsx"),
+    "utf8",
+  );
+  const locationHook = readFileSync(resolve(mobileRoot, "hooks/useLocation.ts"), "utf8");
+
+  expect(diagnostics).not.toContain("requestForegroundPermissionsAsync");
+  expect(diagnostics).not.toContain('testID="location-permission-request"');
+  expect(diagnostics).toContain("Diagnostika oprávnění pouze čte");
+  expect(diagnostics).toContain("až po zapnutí polohy u konkrétního check-inu");
+  expect(locationHook).toContain("requestForegroundPermissionsAsync");
+});
+
 it("reloads safety history whenever its tab regains focus", () => {
   const source = readFileSync(resolve(mobileRoot, "app/(tabs)/activity.tsx"), "utf8");
   expect(source).toContain("useFocusEffect(");
   expect(source).toContain("void load();");
+});
+
+it("offers owner-only location deletion without rendering coordinates", () => {
+  const source = readFileSync(resolve(mobileRoot, "app/(tabs)/activity.tsx"), "utf8");
+  expect(source).toContain("event.details.has_location");
+  expect(source).toContain("checkin-location-delete-");
+  expect(source).toContain("Souřadnice se zde nikdy nezobrazují");
+  expect(source).toContain("Serverová data zůstala beze změny");
+});
+
+it("offers indefinite and scheduled pause choices before contacting the server", () => {
+  const source = readFileSync(resolve(mobileRoot, "app/(tabs)/index.tsx"), "utf8");
+  expect(source).toContain('testID={`pause-duration-${option.value}`}');
+  expect(source).toContain('testID="pause-confirm"');
+  expect(source).toContain("pauseRequestForPreset(pauseDuration)");
+  expect(source).toContain("Pauza začne až po potvrzení serverem");
 });
 
 it("returns settings-only account screens to settings instead of tab history", () => {

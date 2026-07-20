@@ -25,6 +25,8 @@ from .models import (
 MAX_PROFILES_PER_USER = 5
 MAX_GUARDIANS_PER_PROFILE = 5
 MAX_PENDING_INVITATIONS_PER_PROFILE = 10
+PROFILE_LIMIT_ERROR = "Vše je zdarma. Limit je 5/5 aktivních profilů na účet."
+GUARDIAN_LIMIT_ERROR = "Vše je zdarma. Limit je 5/5 aktivních strážců na profil."
 
 
 @dataclass(frozen=True)
@@ -35,10 +37,51 @@ class CheckInResult:
 
 
 @dataclass(frozen=True)
+class CheckInLocationDeletionResult:
+    check_in: CheckIn
+    deleted: bool
+
+
+@dataclass(frozen=True)
 class ProfileArchiveResult:
     profile: CheckInProfile
     archived: bool
     blocking_incident: AlertIncident | None = None
+
+
+def delete_check_in_location(*, check_in_id, owner) -> CheckInLocationDeletionResult:
+    """Delete an owner's stored check-in coordinates without deleting its history."""
+    with transaction.atomic():
+        check_in = (
+            CheckIn.objects.select_for_update()
+            .select_related("profile")
+            .get(pk=check_in_id, profile__owner=owner)
+        )
+        if (
+            check_in.latitude is None
+            and check_in.longitude is None
+            and check_in.location_accuracy_meters is None
+        ):
+            return CheckInLocationDeletionResult(check_in=check_in, deleted=False)
+
+        check_in.latitude = None
+        check_in.longitude = None
+        check_in.location_accuracy_meters = None
+        check_in.save(
+            update_fields=[
+                "latitude",
+                "longitude",
+                "location_accuracy_meters",
+                "updated_at",
+            ]
+        )
+        record_audit_event(
+            event_type="checkin.location_deleted",
+            aggregate_type="check_in",
+            aggregate_id=check_in.pk,
+            actor=owner,
+        )
+        return CheckInLocationDeletionResult(check_in=check_in, deleted=True)
 
 
 def create_profile(
@@ -63,7 +106,7 @@ def create_profile(
             CheckInProfile.objects.filter(owner=owner, archived_at__isnull=True).count()
             >= MAX_PROFILES_PER_USER
         ):
-            raise ValidationError({"profiles": "Každý účet může mít nejvýše 5 profilů."})
+            raise ValidationError({"profiles": PROFILE_LIMIT_ERROR})
         profile = CheckInProfile(
             owner=owner,
             name=name,
@@ -468,6 +511,14 @@ def create_invitation(
         if locked_profile.archived_at is not None:
             raise ValidationError({"profile": "Archivovaný profil nepřijímá pozvánky."})
         now = timezone.now()
+        if (
+            GuardianMembership.objects.filter(
+                profile=locked_profile,
+                status=GuardianMembership.Status.ACTIVE,
+            ).count()
+            >= MAX_GUARDIANS_PER_PROFILE
+        ):
+            raise ValidationError({"guardians": GUARDIAN_LIMIT_ERROR})
         GuardianInvitation.objects.filter(
             profile=profile,
             status=GuardianInvitation.Status.PENDING,
@@ -566,7 +617,7 @@ def _accept_invitation_locked(
         ).count()
         >= MAX_GUARDIANS_PER_PROFILE
     ):
-        raise ValidationError({"guardians": "Profil může mít nejvýše 5 strážců."})
+        raise ValidationError({"guardians": GUARDIAN_LIMIT_ERROR})
     if membership is None:
         membership = GuardianMembership.objects.create(
             profile=invitation.profile,

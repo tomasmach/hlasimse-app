@@ -6,7 +6,6 @@ Monorepo pro bezplatnou check-in službu, která upozorní zvolené strážce, k
 
 - `apps/mobile` — Expo aplikace pro iOS a Android
 - `apps/server` — Django web, API a administrační rozhraní
-- `archive/supabase` — původní Supabase Edge Functions ponechané pouze pro migrační audit
 - `docs` — architektura, release kritéria a provozní runbooky
 
 ## Vývoj

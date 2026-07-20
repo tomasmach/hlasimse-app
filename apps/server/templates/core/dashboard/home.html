@@ -1,7 +1,7 @@
 {% extends "core/dashboard/dashboard_base.html" %}
 {% block title %}Přehled — Hlásím se{% endblock %}
 {% block dashboard_content %}
-<header class="dashboard-heading"><div><p class="eyebrow">Dobrý den{% if request.user.first_name %}, {{ request.user.first_name }}{% endif %}</p><h1>Váš klidný přehled.</h1><p>Stav profilů, nejbližší termíny a upozornění na jednom místě.</p></div><a class="button button--dark" href="{% url 'checkins:profile-create' %}">Přidat profil</a></header>
+<header class="dashboard-heading"><div><p class="eyebrow">Dobrý den{% if request.user.first_name %}, {{ request.user.first_name }}{% endif %}</p><h1>Váš klidný přehled.</h1><p>Stav profilů, nejbližší termíny a upozornění na jednom místě.</p></div>{% if profile_limit_reached %}<div class="capacity-note" data-testid="profile-limit-reached" role="status"><strong>Vše zdarma, limit 5/5.</strong><span>Další profil přidáte po archivaci některého aktivního profilu.</span></div>{% else %}<a class="button button--dark" href="{% url 'checkins:profile-create' %}">Přidat profil</a>{% endif %}</header>
 
 {% if active_alert %}
 <a class="alert-banner" href="{% url 'alerts:detail' active_alert.pk %}"><span class="alert-banner__pulse" aria-hidden="true"></span><div><strong>Aktivní upozornění vyžaduje pozornost</strong><p>{{ active_alert.profile.name }} zmeškal/a termín {{ active_alert.deadline_at|date:"j. n. Y v H:i" }}.</p></div><span>Zobrazit detail</span></a>

@@ -3,11 +3,12 @@ import uuid
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
 from threading import Barrier
+from unittest.mock import patch
 
 import httpx
 import pytest
 from django.core.management import call_command
-from django.db import close_old_connections, connection, connections
+from django.db import OperationalError, close_old_connections, connection, connections
 from django.utils import timezone
 
 from core.health import delivery_health
@@ -223,6 +224,67 @@ def test_send_timeout_is_retryable_and_claim_is_not_duplicated(profile, other_us
     event.save(update_fields=["available_at"])
     assert claim_outbox_event() is not None
     assert claim_outbox_event() is None
+
+
+def test_database_failure_after_provider_response_recovers_with_audited_retry(
+    profile,
+    other_user,
+):
+    _, event = _create_incident_event(profile, other_user)
+    _device(other_user)
+    provider_event_ids: list[str] = []
+
+    def accepted(request):
+        message = json.loads(request.content)[0]
+        provider_event_ids.append(message["data"]["event_id"])
+        return httpx.Response(
+            200,
+            json={"data": [{"status": "ok", "id": f"ticket-{len(provider_event_ids)}"}]},
+            request=request,
+        )
+
+    original_save = DeliveryAttempt.save
+
+    def fail_ticket_commit(instance, *args, **kwargs):
+        if "expo_ticket_id" in (kwargs.get("update_fields") or []):
+            raise OperationalError("injected database failure after provider response")
+        return original_save(instance, *args, **kwargs)
+
+    with (
+        patch.object(DeliveryAttempt, "save", fail_ticket_commit),
+        pytest.raises(OperationalError, match="injected database failure"),
+    ):
+        process_one_outbox_event(client=_client(accepted))
+
+    event.refresh_from_db()
+    first_attempt = DeliveryAttempt.objects.get(outbox_event=event)
+    assert event.status == OutboxEvent.Status.PROCESSING
+    assert first_attempt.status == DeliveryAttempt.Status.QUEUED
+    assert first_attempt.expo_ticket_id == ""
+
+    event.locked_at = timezone.now() - STALE_PROCESSING_AFTER - timedelta(seconds=1)
+    event.save(update_fields=["locked_at"])
+    assert process_one_outbox_event(client=_client(accepted))
+    event.refresh_from_db()
+    first_attempt.refresh_from_db()
+    assert event.status == OutboxEvent.Status.PENDING
+    assert first_attempt.status == DeliveryAttempt.Status.RETRYABLE_FAILURE
+    assert len(provider_event_ids) == 1
+
+    first_attempt.next_retry_at = timezone.now() - timedelta(seconds=1)
+    first_attempt.save(update_fields=["next_retry_at"])
+    event.available_at = timezone.now()
+    event.save(update_fields=["available_at"])
+    assert process_one_outbox_event(client=_client(accepted))
+
+    event.refresh_from_db()
+    attempts = list(DeliveryAttempt.objects.filter(outbox_event=event).order_by("attempt_number"))
+    assert event.status == OutboxEvent.Status.PROCESSED
+    assert [attempt.status for attempt in attempts] == [
+        DeliveryAttempt.Status.RETRYABLE_FAILURE,
+        DeliveryAttempt.Status.TICKET_RECEIVED,
+    ]
+    assert provider_event_ids == [str(event.id), str(event.id)]
 
 
 def test_http_retry_after_is_respected(profile, other_user):

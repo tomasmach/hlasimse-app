@@ -1,8 +1,12 @@
+from datetime import timedelta
+
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.db import IntegrityError, transaction
 from django.utils import timezone
+from drf_spectacular.types import OpenApiTypes
+from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .audit import record_audit_event
@@ -15,6 +19,7 @@ from .models import (
     GuardianMembership,
     PushDevice,
 )
+from .openapi import DeliveryStatusSchemaSerializer, LastKnownLocationSchemaSerializer
 from .services import can_acknowledge_incident, create_profile, update_profile
 
 
@@ -109,6 +114,12 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
 
 
 class ProfileSerializer(serializers.ModelSerializer):
+    pause_duration_seconds = serializers.ChoiceField(
+        choices=(86_400, 604_800),
+        required=False,
+        write_only=True,
+    )
+
     class Meta:
         model = CheckInProfile
         fields = (
@@ -118,6 +129,7 @@ class ProfileSerializer(serializers.ModelSerializer):
             "enabled",
             "is_paused",
             "paused_until",
+            "pause_duration_seconds",
             "last_checked_in_at",
             "next_deadline_at",
             "deadline_generation",
@@ -135,13 +147,42 @@ class ProfileSerializer(serializers.ModelSerializer):
             "updated_at",
         )
 
+    def validate(self, attrs):
+        attrs = super().validate(attrs)
+        duration = attrs.get("pause_duration_seconds")
+        if duration is None:
+            return attrs
+        if "paused_until" in attrs:
+            raise serializers.ValidationError(
+                {
+                    "pause_duration_seconds": (
+                        "Délku pauzy a přesný čas obnovení nelze poslat současně."
+                    )
+                }
+            )
+        paused = attrs.get("is_paused", self.instance.is_paused if self.instance else False)
+        if not paused:
+            raise serializers.ValidationError(
+                {"pause_duration_seconds": "Délku lze nastavit jen při aktivaci pauzy."}
+            )
+        return attrs
+
+    @staticmethod
+    def _resolve_pause_duration(validated_data):
+        duration = validated_data.pop("pause_duration_seconds", None)
+        if duration is not None:
+            validated_data["paused_until"] = timezone.now() + timedelta(seconds=duration)
+        return validated_data
+
     def create(self, validated_data):
+        validated_data = self._resolve_pause_duration(validated_data)
         try:
             return create_profile(owner=self.context["request"].user, **validated_data)
         except DjangoValidationError as exc:
             raise serializers.ValidationError(exc.message_dict) from exc
 
     def update(self, instance, validated_data):
+        validated_data = self._resolve_pause_duration(validated_data)
         try:
             return update_profile(profile=instance, values=validated_data)
         except DjangoValidationError as exc:
@@ -194,6 +235,7 @@ class CheckInReceiptSerializer(serializers.ModelSerializer):
 class CheckInHistorySerializer(serializers.ModelSerializer):
     profile_id = serializers.UUIDField(read_only=True)
     profile_name = serializers.CharField(source="profile.name", read_only=True)
+    has_location = serializers.SerializerMethodField()
     server_confirmed = serializers.SerializerMethodField()
     resolved_incident_count = serializers.IntegerField(read_only=True)
 
@@ -208,13 +250,19 @@ class CheckInHistorySerializer(serializers.ModelSerializer):
             "deadline_generation",
             "response_deadline_at",
             "submitted_from_queue",
+            "has_location",
             "server_confirmed",
             "resolved_incident_count",
         )
         read_only_fields = fields
 
+    @extend_schema_field(OpenApiTypes.BOOL)
     def get_server_confirmed(self, obj):
         return True
+
+    @extend_schema_field(OpenApiTypes.BOOL)
+    def get_has_location(self, obj):
+        return obj.latitude is not None and obj.longitude is not None
 
 
 class GuardianSerializer(serializers.ModelSerializer):
@@ -226,6 +274,7 @@ class GuardianSerializer(serializers.ModelSerializer):
         fields = ("id", "email", "display_name", "status", "created_at")
         read_only_fields = fields
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_display_name(self, obj):
         return f"{obj.guardian.first_name} {obj.guardian.last_name}".strip()
 
@@ -255,6 +304,7 @@ class ReceivedInvitationSerializer(serializers.ModelSerializer):
         )
         read_only_fields = fields
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_owner_display_name(self, obj):
         owner = obj.profile.owner
         return f"{owner.first_name} {owner.last_name}".strip() or "Uživatel"
@@ -294,12 +344,15 @@ class WatchedProfileSerializer(serializers.ModelSerializer):
         )
         read_only_fields = fields
 
+    @extend_schema_field(OpenApiTypes.STR)
     def get_owner_display_name(self, obj):
         return f"{obj.owner.first_name} {obj.owner.last_name}".strip() or "Uživatel"
 
+    @extend_schema_field(OpenApiTypes.INT)
     def get_open_alert_count(self, obj):
         return obj.incidents.filter(status=AlertIncident.Status.OPEN).count()
 
+    @extend_schema_field({"type": "string", "format": "uuid", "nullable": True})
     def get_membership_id(self, obj):
         request = self.context.get("request")
         if request is None or not request.user.is_authenticated:
@@ -455,10 +508,12 @@ class AlertIncidentSerializer(serializers.ModelSerializer):
         )
         read_only_fields = fields
 
+    @extend_schema_field(OpenApiTypes.BOOL)
     def get_can_acknowledge(self, obj):
         request = self.context.get("request")
         return bool(request is not None and can_acknowledge_incident(request.user, obj))
 
+    @extend_schema_field(LastKnownLocationSchemaSerializer(allow_null=True))
     def get_last_known_location(self, obj):
         request = self.context.get("request")
         if request is None or obj.status != AlertIncident.Status.OPEN:
@@ -497,6 +552,7 @@ class AlertIncidentSerializer(serializers.ModelSerializer):
             "is_live": False,
         }
 
+    @extend_schema_field(DeliveryStatusSchemaSerializer)
     def get_delivery_status(self, obj):
         request = self.context.get("request")
         attempts = obj.deliveries.all()

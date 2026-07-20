@@ -15,6 +15,8 @@ export interface CheckInHistoryItem {
   resolved_incident_count: number;
   /** Set by the server; never infer this from the device clock. */
   submitted_from_queue: boolean;
+  /** Presence only. Coordinates are deliberately not returned in history. */
+  has_location: boolean;
 }
 
 export type CheckInHistoryPage = Paginated<CheckInHistoryItem>;
@@ -95,6 +97,8 @@ export type ProfileTimelineEvent =
         deadline_generation: number;
         next_deadline_at: IsoDateTime | null;
         submitted_from_queue: boolean;
+        /** Presence only. Coordinates are deliberately not returned in the timeline. */
+        has_location: boolean;
         resolved_incident_count: number;
       }
     >

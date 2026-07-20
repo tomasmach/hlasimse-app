@@ -22,6 +22,17 @@ def env_bool(name: str, *, default: bool) -> bool:
     return normalized == "true"
 
 
+def env_int(name: str, *, default: int, minimum: int, maximum: int) -> int:
+    raw_value = os.getenv(name, str(default))
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ImproperlyConfigured(f"{name} must be an integer") from exc
+    if not minimum <= value <= maximum:
+        raise ImproperlyConfigured(f"{name} must be between {minimum} and {maximum}")
+    return value
+
+
 DEBUG = env_bool("DJANGO_DEBUG", default=True)
 
 
@@ -127,6 +138,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "drf_spectacular",
     "rest_framework_simplejwt.token_blacklist",
     "core",
 ]
@@ -174,6 +186,34 @@ DATABASES = {
         conn_health_checks=True,
     )
 }
+DATABASE_CONNECT_TIMEOUT_SECONDS = env_int(
+    "DATABASE_CONNECT_TIMEOUT_SECONDS", default=5, minimum=1, maximum=30
+)
+DATABASE_STATEMENT_TIMEOUT_MS = env_int(
+    "DATABASE_STATEMENT_TIMEOUT_MS", default=30_000, minimum=1_000, maximum=120_000
+)
+DATABASE_LOCK_TIMEOUT_MS = env_int(
+    "DATABASE_LOCK_TIMEOUT_MS", default=5_000, minimum=100, maximum=30_000
+)
+DATABASE_IDLE_TRANSACTION_TIMEOUT_MS = env_int(
+    "DATABASE_IDLE_TRANSACTION_TIMEOUT_MS", default=15_000, minimum=1_000, maximum=120_000
+)
+if DATABASE_LOCK_TIMEOUT_MS > DATABASE_STATEMENT_TIMEOUT_MS:
+    raise ImproperlyConfigured(
+        "DATABASE_LOCK_TIMEOUT_MS must not exceed DATABASE_STATEMENT_TIMEOUT_MS"
+    )
+if DATABASES["default"]["ENGINE"] == "django.db.backends.postgresql":
+    database_options = DATABASES["default"].setdefault("OPTIONS", {})
+    database_options["connect_timeout"] = DATABASE_CONNECT_TIMEOUT_SECONDS
+    existing_server_options = str(database_options.get("options", "")).strip()
+    enforced_server_options = (
+        f"-c statement_timeout={DATABASE_STATEMENT_TIMEOUT_MS} "
+        f"-c lock_timeout={DATABASE_LOCK_TIMEOUT_MS} "
+        f"-c idle_in_transaction_session_timeout={DATABASE_IDLE_TRANSACTION_TIMEOUT_MS}"
+    )
+    database_options["options"] = " ".join(
+        option for option in (existing_server_options, enforced_server_options) if option
+    )
 if not DEBUG and DATABASES["default"]["ENGINE"] != "django.db.backends.postgresql":
     raise ImproperlyConfigured("Production DATABASE_URL must use PostgreSQL")
 DATABASE_ALLOW_INSECURE_LOCAL_COMPOSE = env_bool(
@@ -270,6 +310,29 @@ REST_FRAMEWORK = {
     ),
     "DEFAULT_THROTTLE_RATES": {"anon": "20/min", "user": "240/min"},
     "EXCEPTION_HANDLER": "core.exceptions.api_exception_handler",
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Hlásím se API",
+    "DESCRIPTION": (
+        "Versioned mobile API. Server timestamps and incident state are authoritative; "
+        "push-provider acceptance is not proof of delivery to a device."
+    ),
+    "VERSION": "1.0.0",
+    "OAS_VERSION": "3.1.0",
+    "SERVE_INCLUDE_SCHEMA": False,
+    "COMPONENT_SPLIT_REQUEST": True,
+    "SORT_OPERATIONS": True,
+    "ENUM_NAME_OVERRIDES": {
+        "EmailVerificationStatus": (
+            "verified",
+            "already_verified",
+            "invalid",
+            "expired",
+        ),
+        "GuardianInvitationStatus": "core.models.GuardianInvitation.Status",
+    },
 }
 
 SIMPLE_JWT = {

@@ -170,6 +170,32 @@ def test_profile_create_edit_and_pause_keep_scheduled_resume_semantics(client, u
     assert profile.next_deadline_at is not None
 
 
+def test_profile_limit_hides_create_ui_and_rejects_direct_sixth_post(client, user, profile):
+    for number in range(2, 6):
+        create_profile(owner=user, name=f"Profil {number}", interval_seconds=86_400)
+    client.force_login(user)
+    create_url = reverse("checkins:profile-create")
+
+    dashboard = client.get(reverse("core:dashboard"))
+    create_page = client.get(create_url)
+    rejected = client.post(
+        create_url,
+        {"name": "Šestý profil", "interval_seconds": 86_400},
+    )
+
+    assert dashboard.status_code == create_page.status_code == rejected.status_code == 200
+    assert 'data-testid="profile-limit-reached"' in dashboard.content.decode()
+    assert "Vše zdarma, limit 5/5." in dashboard.content.decode()
+    assert f'href="{create_url}"' not in dashboard.content.decode()
+    assert 'data-testid="profile-limit-reached"' in create_page.content.decode()
+    assert 'name="name"' not in create_page.content.decode()
+    assert ">Vytvořit profil</button>" not in create_page.content.decode()
+    assert rejected.context["form"].non_field_errors() == [
+        "Vše je zdarma. Limit je 5/5 aktivních profilů na účet."
+    ]
+    assert CheckInProfile.objects.filter(owner=user, archived_at__isnull=True).count() == 5
+
+
 def test_web_posts_require_csrf_and_checkin_is_idempotent(user, profile):
     client = Client(enforce_csrf_checks=True)
     client.force_login(user)
@@ -220,6 +246,72 @@ def test_invitation_response_requires_matching_email(client, user, other_user, p
 
     assert denied.status_code == 404
     assert not GuardianMembership.objects.filter(profile=profile, guardian=stranger).exists()
+
+
+def test_guardian_limit_hides_invite_ui_and_rejects_direct_sixth_post(client, user, profile):
+    for number in range(1, 6):
+        guardian = User.objects.create_user(
+            email=f"guardian-{number}@example.cz",
+            password="A-strong-password-123",
+        )
+        GuardianMembership.objects.create(
+            profile=profile,
+            guardian=guardian,
+            status=GuardianMembership.Status.ACTIVE,
+        )
+    client.force_login(user)
+    invite_url = reverse("guardians:invite")
+
+    guardians_page = client.get(reverse("guardians:list"))
+    invite_page = client.get(invite_url)
+    rejected = client.post(
+        invite_url,
+        {"profile": profile.pk, "email": "sixth-guardian@example.cz"},
+    )
+
+    assert guardians_page.status_code == invite_page.status_code == rejected.status_code == 200
+    assert 'data-testid="guardian-limit-reached"' in guardians_page.content.decode()
+    assert "Vše zdarma, limit 5/5." in guardians_page.content.decode()
+    assert f'href="{invite_url}"' not in guardians_page.content.decode()
+    assert 'data-testid="guardian-limit-reached"' in invite_page.content.decode()
+    assert 'name="profile"' not in invite_page.content.decode()
+    assert 'name="email"' not in invite_page.content.decode()
+    assert ">Odeslat pozvánku</button>" not in invite_page.content.decode()
+    assert rejected.context["form"].non_field_errors() == [
+        "Vše je zdarma. Limit je 5/5 aktivních strážců na profil."
+    ]
+    assert not GuardianInvitation.objects.filter(email="sixth-guardian@example.cz").exists()
+
+
+def test_guardian_invite_remains_available_when_another_profile_has_capacity(client, user, profile):
+    for number in range(1, 6):
+        guardian = User.objects.create_user(
+            email=f"full-profile-guardian-{number}@example.cz",
+            password="A-strong-password-123",
+        )
+        GuardianMembership.objects.create(
+            profile=profile,
+            guardian=guardian,
+            status=GuardianMembership.Status.ACTIVE,
+        )
+    available_profile = create_profile(
+        owner=user,
+        name="Profil s místem",
+        interval_seconds=86_400,
+    )
+    client.force_login(user)
+    invite_url = reverse("guardians:invite")
+
+    guardians_page = client.get(reverse("guardians:list"))
+    invite_page = client.get(invite_url)
+    offered_profile_ids = set(
+        invite_page.context["form"].fields["profile"].queryset.values_list("pk", flat=True)
+    )
+
+    assert guardians_page.status_code == invite_page.status_code == 200
+    assert 'data-testid="guardian-limit-reached"' not in guardians_page.content.decode()
+    assert f'href="{invite_url}"' in guardians_page.content.decode()
+    assert offered_profile_ids == {available_profile.pk}
 
 
 def test_alert_detail_and_ack_require_current_recipient(client, user, other_user, profile):

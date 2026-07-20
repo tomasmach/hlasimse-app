@@ -7,12 +7,24 @@ from django.db.migrations.executor import MigrationExecutor
 from django.http import JsonResponse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
+from drf_spectacular.utils import extend_schema
+from rest_framework.decorators import api_view, authentication_classes, permission_classes
+from rest_framework.permissions import AllowAny
+from rest_framework.response import Response
+
+from .openapi import MobileClientConfigSchemaSerializer
 
 
-@require_GET
+@extend_schema(
+    responses={200: MobileClientConfigSchemaSerializer},
+    description="Public minimum supported mobile versions and maintenance state.",
+)
+@api_view(["GET"])
+@authentication_classes([])
+@permission_classes([AllowAny])
 @never_cache
 def mobile_client_config(request):
-    return JsonResponse(
+    return Response(
         {
             "client": "hlasimse-mobile",
             "maintenance": settings.MOBILE_API_MAINTENANCE,
