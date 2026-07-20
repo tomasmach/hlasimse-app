@@ -69,7 +69,7 @@ tags:
             id: "statistics-section"
           timeout: 5000
 - scrollUntilVisible:
-    element: "Vyřešený incident"
+    element: "Vyřešený incident profilu E2E bezpečnostní profil"
     direction: DOWN
     centerElement: true
 - scrollUntilVisible:
