@@ -15,7 +15,7 @@ from .models import (
     GuardianMembership,
     PushDevice,
 )
-from .services import create_profile, update_profile
+from .services import can_acknowledge_incident, create_profile, update_profile
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -414,6 +414,7 @@ class AlertIncidentSerializer(serializers.ModelSerializer):
     acknowledgements = AcknowledgementSerializer(many=True, read_only=True)
     last_known_location = serializers.SerializerMethodField()
     delivery_status = serializers.SerializerMethodField()
+    can_acknowledge = serializers.SerializerMethodField()
 
     class Meta:
         model = AlertIncident
@@ -429,8 +430,13 @@ class AlertIncidentSerializer(serializers.ModelSerializer):
             "acknowledgements",
             "last_known_location",
             "delivery_status",
+            "can_acknowledge",
         )
         read_only_fields = fields
+
+    def get_can_acknowledge(self, obj):
+        request = self.context.get("request")
+        return bool(request is not None and can_acknowledge_incident(request.user, obj))
 
     def get_last_known_location(self, obj):
         request = self.context.get("request")

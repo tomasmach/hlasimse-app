@@ -140,6 +140,14 @@ def test_alert_detail_and_ack_only_allow_owner_or_active_guardian(
     assert "longitude" not in serialized
     assert "owner_email" not in serialized
     assert ack.json()["acknowledgements"][0]["user_id"] == str(guardian.id)
+    assert detail.json()["can_acknowledge"] is True
+
+    owner_client = authenticate(api_client, user)
+    owner_detail = owner_client.get(f"/api/v1/alerts/{incident.id}/")
+    owner_ack = owner_client.post(f"/api/v1/alerts/{incident.id}/acknowledge/")
+    assert owner_detail.json()["can_acknowledge"] is False
+    assert owner_ack.status_code == 403
+    assert not incident.acknowledgements.filter(user=user).exists()
 
 
 def test_invitation_can_only_be_accepted_by_matching_email(api_client, user, other_user, profile):

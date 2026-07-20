@@ -249,6 +249,14 @@ def test_alert_detail_and_ack_require_current_recipient(client, user, other_user
     membership.save(update_fields=["status", "updated_at"])
     assert client.get(reverse("alerts:detail", kwargs={"pk": incident.pk})).status_code == 404
 
+    client.force_login(user)
+    owner_detail = client.get(reverse("alerts:detail", kwargs={"pk": incident.pk}))
+    owner_ack = client.post(reverse("alerts:ack", kwargs={"pk": incident.pk}))
+    assert owner_detail.status_code == 200
+    assert "Zaznamenat převzetí" not in owner_detail.content.decode()
+    assert owner_ack.status_code == 403
+    assert not AlertAcknowledgement.objects.filter(incident=incident, user=user).exists()
+
 
 def test_history_filter_cannot_select_another_users_profile(client, user, other_user, profile):
     other_profile = create_profile(owner=other_user, name="Cizí", interval_seconds=86_400)

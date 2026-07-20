@@ -74,6 +74,7 @@ from .services import (
     accept_invitation,
     accessible_incidents,
     archive_profile,
+    can_acknowledge_incident,
     create_invitation,
     deactivate_push_device,
     perform_check_in,
@@ -682,6 +683,13 @@ class AlertIncidentViewSet(
     @action(detail=True, methods=["post"])
     def acknowledge(self, request, pk=None):
         incident = self.get_object()
+        if incident.status != AlertIncident.Status.OPEN:
+            return Response(
+                {"detail": "Uzavřený incident už nelze převzít."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        if not can_acknowledge_incident(request.user, incident):
+            raise PermissionDenied("Převzetí může zaznamenat pouze aktivní strážce incidentu.")
         with transaction.atomic():
             acknowledgement, _ = AlertAcknowledgement.objects.get_or_create(
                 incident=incident,

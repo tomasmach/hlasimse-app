@@ -68,6 +68,7 @@ from .models import (
 from .password_reset import revoke_outstanding_refresh_tokens
 from .services import (
     accessible_incidents,
+    can_acknowledge_incident,
     create_invitation,
     create_profile,
     perform_check_in,
@@ -854,6 +855,7 @@ def alert_detail_view(request, pk):
             "alert": alert,
             "acknowledgements": acknowledgements,
             "delivery_state": delivery_state,
+            "can_acknowledge": can_acknowledge_incident(request.user, alert),
         },
     )
     response["Cache-Control"] = "no-store, private"
@@ -868,6 +870,8 @@ def alert_ack_view(request, pk):
     if alert.status != AlertIncident.Status.OPEN:
         messages.info(request, "Upozornění už je uzavřené.")
         return redirect("alerts:detail", pk=alert.pk)
+    if not can_acknowledge_incident(request.user, alert):
+        raise PermissionDenied("Převzetí může zaznamenat pouze aktivní strážce incidentu.")
     AlertAcknowledgement.objects.get_or_create(
         incident=alert,
         user=request.user,

@@ -759,6 +759,19 @@ def can_access_incident(user, incident: AlertIncident) -> bool:
     )
 
 
+def can_acknowledge_incident(user, incident: AlertIncident) -> bool:
+    if incident.status != AlertIncident.Status.OPEN or incident.profile.owner_id == user.id:
+        return False
+    return (
+        incident.recipients.filter(user_id=user.id).exists()
+        and GuardianMembership.objects.filter(
+            profile=incident.profile,
+            guardian=user,
+            status=GuardianMembership.Status.ACTIVE,
+        ).exists()
+    )
+
+
 def accessible_incidents(user):
     return AlertIncident.objects.filter(
         Q(profile__owner=user)

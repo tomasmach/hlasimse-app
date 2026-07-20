@@ -62,8 +62,7 @@ export default function IncidentDetailScreen() {
         </View>
         <View className="py-8">
           <Text className="font-display text-[26px] text-charcoal mb-3">Potvrzení strážce</Text>
-          <Text className="font-body text-sm leading-5 text-muted mb-4">„Viděl/a jsem incident“ pouze uloží potvrzení na serveru. Incident tím nevyřešíte a nikoho dalšího automaticky nekontaktujete.</Text>
-          <ActionButton testID="incident-acknowledge" label={acknowledged ? "Potvrzení uloženo serverem" : "Viděl/a jsem incident"} variant={acknowledged ? "quiet" : "primary"} disabled={acknowledged || incident.status !== "open"} loading={busy} onPress={() => void acknowledge()} />
+          {incident.can_acknowledge ? <><Text className="font-body text-sm leading-5 text-muted mb-4">„Viděl/a jsem incident“ pouze uloží potvrzení na serveru. Incident tím nevyřešíte a nikoho dalšího automaticky nekontaktujete.</Text><ActionButton testID="incident-acknowledge" label={acknowledged ? "Potvrzení uloženo serverem" : "Viděl/a jsem incident"} variant={acknowledged ? "quiet" : "primary"} disabled={acknowledged} loading={busy} onPress={() => void acknowledge()} /></> : <Text className="font-body text-sm leading-5 text-muted">Potvrzení mohou ukládat pouze aktivní strážci otevřeného incidentu.</Text>}
         </View>
         <View className="bg-charcoal rounded-[26px] p-5">
           <View className="flex-row gap-3"><ShieldWarning size={24} color="#FF8A7A" /><Text className="font-body-semibold text-white flex-1">Aplikace nezajišťuje fyzickou pomoc</Text></View>

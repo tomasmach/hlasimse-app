@@ -29,6 +29,7 @@ const providerAcceptedAlert: AlertIncident = {
     state: "sent_to_provider",
     attempt_counts: { ticket_received: 1 },
   },
+  can_acknowledge: false,
 };
 
 beforeEach(() => {

@@ -174,6 +174,7 @@ export interface AlertIncident {
   acknowledgements: AlertAcknowledgement[];
   last_known_location: AlertLastKnownLocation | null;
   delivery_status: AlertDeliveryStatus;
+  can_acknowledge: boolean;
 }
 
 export interface PushDevice {
