@@ -89,6 +89,7 @@ tags:
     element:
       id: "incident-acknowledge"
     direction: DOWN
+    centerElement: true
 - tapOn:
     id: "incident-acknowledge"
 - extendedWaitUntil:
