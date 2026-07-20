@@ -7,14 +7,7 @@ import {
 } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Haptics from "expo-haptics";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-} from "react-native-reanimated";
-import { COLORS, GRADIENTS, SHADOWS, ANIMATION } from "@/constants/design";
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+import { COLORS, GRADIENTS, SHADOWS } from "@/constants/design";
 
 type GradientButtonProps = {
   onPress: () => void;
@@ -37,21 +30,6 @@ export function GradientButton({
   testID,
   accessibilityLabel,
 }: GradientButtonProps) {
-  const scale = useSharedValue(1);
-
-  // KEEP animated style (uses withSpring)
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePressIn = () => {
-    scale.value = withSpring(0.96, ANIMATION.spring.default);
-  };
-
-  const handlePressOut = () => {
-    scale.value = withSpring(1, ANIMATION.spring.default);
-  };
-
   const handlePress = () => {
     if (disabled || loading) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -77,17 +55,14 @@ export function GradientButton({
   );
 
   return (
-    <AnimatedPressable
+    <Pressable
       testID={testID}
       accessibilityRole="button"
       accessibilityLabel={accessibilityLabel || label}
       accessibilityState={{ disabled: disabled || loading, busy: loading }}
       onPress={handlePress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
       disabled={disabled || loading}
       style={[
-        animatedStyle,
         isPrimary ? SHADOWS.glow : SHADOWS.elevated,
         (disabled || loading) && styles.disabled,
       ]}
@@ -106,7 +81,7 @@ export function GradientButton({
           {buttonContent}
         </View>
       )}
-    </AnimatedPressable>
+    </Pressable>
   );
 }
 

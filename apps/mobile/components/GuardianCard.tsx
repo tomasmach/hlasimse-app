@@ -1,15 +1,12 @@
 import { View, Text, Pressable, Alert } from "react-native";
 import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
   FadeInDown,
 } from "react-native-reanimated";
 import * as Haptics from "expo-haptics";
 import { X } from "phosphor-react-native";
 import { GuardianWithUser } from "@/types/database";
 import { GradientAvatar, Card } from "@/components/ui";
-import { COLORS, ANIMATION, SHADOWS } from "@/constants/design";
+import { COLORS, SHADOWS } from "@/constants/design";
 
 interface GuardianCardProps {
   guardian: GuardianWithUser;
@@ -24,8 +21,6 @@ export function GuardianCard({
   isRemoving,
   index = 0,
 }: GuardianCardProps) {
-  const scale = useSharedValue(1);
-
   const handleRemove = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     Alert.alert(
@@ -45,23 +40,10 @@ export function GuardianCard({
     );
   };
 
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePressIn = () => {
-    scale.value = withSpring(0.98, ANIMATION.spring.default);
-  };
-
-  const handlePressOut = () => {
-    scale.value = withSpring(1, ANIMATION.spring.default);
-  };
-
   return (
     <Animated.View
       entering={FadeInDown.delay(index * 50).springify()}
       className="mb-3"
-      style={animatedStyle}
     >
       <Card style={SHADOWS.elevated}>
         <View className="flex-row items-center">
@@ -80,8 +62,6 @@ export function GuardianCard({
           </View>
           <Pressable
             onPress={handleRemove}
-            onPressIn={handlePressIn}
-            onPressOut={handlePressOut}
             disabled={isRemoving}
             className="p-2 ml-2"
             hitSlop={12}

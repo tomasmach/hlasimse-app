@@ -1,17 +1,9 @@
 import { View, Pressable, Text, StyleSheet, Platform } from "react-native";
 import { BlurView } from "expo-blur";
 import * as Haptics from "expo-haptics";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  useReducedMotion,
-} from "react-native-reanimated";
 import { House, UsersThree, ClockCounterClockwise, GearSix, IconProps } from "phosphor-react-native";
 import type { BottomTabBarProps } from "expo-router/js-tabs";
-import { COLORS, ANIMATION, SHADOWS } from "@/constants/design";
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
+import { COLORS, SHADOWS } from "@/constants/design";
 
 type TabConfig = {
   name: string;
@@ -33,22 +25,7 @@ type TabButtonProps = {
 };
 
 function TabButton({ tab, isActive, onPress }: TabButtonProps) {
-  const scale = useSharedValue(1);
-  const reduceMotion = useReducedMotion();
   const Icon = tab.icon;
-
-  // KEEP animated style - uses withSpring
-  const animatedStyle = useAnimatedStyle(() => ({
-    transform: [{ scale: scale.value }],
-  }));
-
-  const handlePressIn = () => {
-    if (!reduceMotion) scale.value = withSpring(0.94, ANIMATION.spring.gentle);
-  };
-
-  const handlePressOut = () => {
-    if (!reduceMotion) scale.value = withSpring(1, ANIMATION.spring.gentle);
-  };
 
   const handlePress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -56,13 +33,10 @@ function TabButton({ tab, isActive, onPress }: TabButtonProps) {
   };
 
   return (
-    <AnimatedPressable
+    <Pressable
       onPress={handlePress}
-      onPressIn={handlePressIn}
-      onPressOut={handlePressOut}
       hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
       className="items-center justify-center flex-1"
-      style={animatedStyle}
       accessibilityRole="tab"
       accessibilityLabel={tab.label}
       accessibilityState={{ selected: isActive }}
@@ -78,7 +52,7 @@ function TabButton({ tab, isActive, onPress }: TabButtonProps) {
       <Text className={`text-[11px] font-lora-medium mt-1 ${isActive ? 'text-coral font-lora-semibold' : 'text-muted'}`}>
         {tab.label}
       </Text>
-    </AnimatedPressable>
+    </Pressable>
   );
 }
 

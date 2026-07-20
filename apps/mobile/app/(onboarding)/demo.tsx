@@ -6,10 +6,7 @@ import * as Haptics from "expo-haptics";
 import Animated, {
   FadeInDown,
   ReduceMotion,
-  useAnimatedStyle,
   useReducedMotion,
-  useSharedValue,
-  withSpring,
 } from "react-native-reanimated";
 import { Check } from "phosphor-react-native";
 import { AuthButton } from "@/components/auth";
@@ -19,17 +16,14 @@ import { useOnboardingPersona } from "@/components/onboarding/useOnboardingPerso
 import { NOTIFICATION_MESSAGE } from "@/constants/onboarding";
 import { COLORS } from "@/constants/design";
 
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 type DemoPhase = "initial" | "loading" | "result";
 
 export default function DemoScreen() {
   const { selectedPersona, loading: personaLoading } = useOnboardingPersona();
   const reduceMotion = useReducedMotion();
-  const scale = useSharedValue(1);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [phase, setPhase] = useState<DemoPhase>("initial");
   const [notificationVisible, setNotificationVisible] = useState(false);
-  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
   useEffect(
     () => () => {
@@ -85,17 +79,8 @@ export default function DemoScreen() {
         }
       >
         <View className="flex-1 items-center justify-center py-5">
-          <AnimatedPressable
-            style={style}
+          <Pressable
             onPress={runDemo}
-            onPressIn={() => {
-              if (!reduceMotion && phase === "initial") {
-                scale.value = withSpring(0.97, { damping: 20, stiffness: 220 });
-              }
-            }}
-            onPressOut={() => {
-              scale.value = reduceMotion ? 1 : withSpring(1, { damping: 20, stiffness: 220 });
-            }}
             disabled={phase !== "initial"}
             className="h-[184px] w-[184px] items-center justify-center rounded-full bg-charcoal"
             accessibilityRole="button"
@@ -120,7 +105,7 @@ export default function DemoScreen() {
                 <Text className="mt-2 font-body text-sm text-white/70">ukázka nanečisto</Text>
               </>
             )}
-          </AnimatedPressable>
+          </Pressable>
 
           <Animated.View
             entering={FadeInDown.delay(120).duration(360).reduceMotion(ReduceMotion.System)}
