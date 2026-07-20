@@ -4,12 +4,12 @@ tags:
   - android
   - upgrade
 ---
-- launchApp
+- stopApp
 - openLink: ${DEV_CLIENT_URL}
 - extendedWaitUntil:
     visible:
       id: "checkin-submit"
-    timeout: 30000
+    timeout: 60000
 - assertVisible:
     id: "profile-selected-name"
     text: "E2E update sentinel"

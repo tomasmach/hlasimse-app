@@ -233,6 +233,12 @@ ruby -ryaml -e '
   scan_commands = lambda do |value, flow_name|
     case value
     when Array
+      value.each_cons(2) do |current, following|
+        next unless current.is_a?(Hash) && following.is_a?(Hash)
+        if current.key?("launchApp") && following.key?("openLink")
+          violations << "#{flow_name}: launchApp immediately followed by openLink can lose the initial deep link"
+        end
+      end
       value.each { |item| scan_commands.call(item, flow_name) }
     when Hash
       value.each do |key, child|

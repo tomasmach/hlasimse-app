@@ -12,10 +12,18 @@ tags:
     centerElement: true
 - tapOn:
     id: "login-submit-button"
+- extendedWaitUntil:
+    visible: "Not Now"
+    timeout: 5000
+    optional: true
 - tapOn:
     text: "Not Now"
     optional: true
-- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "checkin-submit"
+    timeout: 30000
+- stopApp
 - openLink: ${DEV_CLIENT_URL}
 - extendedWaitUntil:
     visible:

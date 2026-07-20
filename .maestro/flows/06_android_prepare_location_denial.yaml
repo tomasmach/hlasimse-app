@@ -4,7 +4,7 @@ tags:
   - android
   - location
 ---
-- launchApp
+- stopApp
 - openLink: ${DEV_CLIENT_URL}
 - extendedWaitUntil:
     visible:
