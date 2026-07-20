@@ -22,9 +22,14 @@ E2E_EMULATOR_PID=""
 find_android_serial() {
   local serial
   local state
+  local detected_avd
   while read -r serial state; do
     [[ "$serial" == emulator-* && "$state" == "device" ]] || continue
-    if [[ "$(adb -s "$serial" shell getprop ro.kernel.qemu.avd_name 2>/dev/null | tr -d '\r')" == "${ANDROID_AVD_NAME}" ]]; then
+    detected_avd="$(adb -s "$serial" shell getprop ro.kernel.qemu.avd_name 2>/dev/null | tr -d '\r')"
+    if [[ -z "$detected_avd" ]]; then
+      detected_avd="$(adb -s "$serial" shell getprop ro.boot.qemu.avd_name 2>/dev/null | tr -d '\r')"
+    fi
+    if [[ "$detected_avd" == "${ANDROID_AVD_NAME}" ]]; then
       printf '%s' "$serial"
       return 0
     fi
