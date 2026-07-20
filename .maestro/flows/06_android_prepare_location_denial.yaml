@@ -4,8 +4,6 @@ tags:
   - android
   - location
 ---
-- stopApp
-- openLink: ${DEV_CLIENT_URL}
 - extendedWaitUntil:
     visible:
       id: "login-screen"

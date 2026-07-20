@@ -24,7 +24,7 @@ tags:
       id: "checkin-submit"
     timeout: 30000
 - stopApp
-- openLink: ${DEV_CLIENT_URL}
+- launchApp
 - extendedWaitUntil:
     visible:
       id: "checkin-submit"

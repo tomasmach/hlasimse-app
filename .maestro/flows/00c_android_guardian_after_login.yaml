@@ -22,7 +22,7 @@ tags: [android, guardian]
       id: "tab-activity"
     timeout: 30000
 - stopApp
-- openLink: ${DEV_CLIENT_URL}
+- launchApp
 - extendedWaitUntil:
     visible:
       id: "tab-activity"

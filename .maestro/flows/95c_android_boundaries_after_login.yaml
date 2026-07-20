@@ -21,7 +21,7 @@ tags: [android, free-boundaries]
     visible: "Vybraný profil E2E hranice 7 dní"
     timeout: 30000
 - stopApp
-- openLink: ${DEV_CLIENT_URL}
+- launchApp
 - extendedWaitUntil:
     visible: "Vybraný profil E2E hranice 7 dní"
     timeout: 30000
