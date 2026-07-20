@@ -31,10 +31,24 @@ it("keeps the incident acknowledgement above the floating tab bar", () => {
   expect(source).toContain('contentContainerClassName="px-5 pb-36"');
 });
 
-it("exposes the server-confirmed check-in overlay as one dismiss action", () => {
+it("keeps server-confirmed check-in feedback visible until an explicit action", () => {
   const source = readFileSync(resolve(mobileRoot, "components/SuccessOverlay.tsx"), "utf8");
+  expect(source).toContain("<Modal");
   expect(source).toContain('testID="checkin-success-overlay"');
-  expect(source).toContain('accessibilityLabel="Check-in potvrzen serverem. Klepnutím zavřete."');
+  expect(source).toContain("accessibilityViewIsModal");
+  expect(source).toContain("importantForAccessibility=\"yes\"");
+  expect(source).toContain("accessible\n");
+  expect(source).toContain('accessibilityRole="alert"');
+  expect(source).toContain('accessibilityLiveRegion="assertive"');
+  expect(source).toContain("Další termín za ${formatInterval(intervalHours)}");
+  expect(source).toContain('testID="checkin-success-continue"');
+  expect(source).toContain('accessibilityLabel="Pokračovat po potvrzeném check-inu"');
+  expect(source.match(/setTimeout\(/g)).toHaveLength(3);
+  expect(source).toContain("const circleTimer = setTimeout");
+  expect(source).toContain("const checkmarkTimer = setTimeout");
+  expect(source).toContain("const textTimer = setTimeout");
+  expect(source).not.toContain("autoDismissTimer");
+  expect(source).not.toContain("setTimeout(handleDismiss");
 });
 
 it("keeps check-in queueing available from the last confirmed offline profile", () => {

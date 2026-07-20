@@ -39,12 +39,15 @@ tags:
 - assertVisible: "Vybraný profil E2E bezpečnostní profil"
 - tapOn:
     id: "checkin-submit"
+    waitToSettleTimeoutMs: 500
 - extendedWaitUntil:
     visible:
       id: "checkin-success-overlay"
     timeout: 10000
+- assertVisible: "Check-in potvrzen serverem"
+- assertVisible: "Server přijal hlášení.*"
 - tapOn:
-    id: "checkin-success-overlay"
+    id: "checkin-success-continue"
 - extendedWaitUntil:
     visible: "Serverový termín aktivní"
     timeout: 10000

@@ -1,6 +1,5 @@
 import { useEffect, useRef, useCallback } from "react";
-import { View, Text, Pressable, Animated, StyleSheet } from "react-native";
-import { BlurView } from "expo-blur";
+import { View, Text, Pressable, Animated, StyleSheet, Modal } from "react-native";
 import * as Haptics from "expo-haptics";
 import { Check } from "phosphor-react-native";
 import { useReducedMotion } from "react-native-reanimated";
@@ -25,8 +24,11 @@ export function SuccessOverlay({
   const checkmarkScale = useRef(new Animated.Value(0));
   const textOpacity = useRef(new Animated.Value(0));
   const textTranslateY = useRef(new Animated.Value(20));
+  const dismissingRef = useRef(false);
 
   const handleDismiss = useCallback(() => {
+    if (dismissingRef.current) return;
+    dismissingRef.current = true;
     if (reduceMotion) {
       onDismiss();
       return;
@@ -52,13 +54,15 @@ export function SuccessOverlay({
         duration: ANIMATION.timing.normal,
         useNativeDriver: true,
       }),
-    ]).start(() => {
-      onDismiss();
+    ]).start(({ finished }) => {
+      if (finished) onDismiss();
+      else dismissingRef.current = false;
     });
   }, [onDismiss, reduceMotion]);
 
   useEffect(() => {
     if (visible) {
+      dismissingRef.current = false;
       // Reset values before animating in
       backdropOpacity.current.setValue(0);
       circleScale.current.setValue(0);
@@ -72,8 +76,7 @@ export function SuccessOverlay({
         checkmarkScale.current.setValue(1);
         textOpacity.current.setValue(1);
         textTranslateY.current.setValue(0);
-        const timer = setTimeout(handleDismiss, 3000);
-        return () => clearTimeout(timer);
+        return;
       }
 
       // Trigger haptic feedback
@@ -124,16 +127,10 @@ export function SuccessOverlay({
         ]).start();
       }, 500);
 
-      // Auto-dismiss after 3 seconds
-      const autoDismissTimer = setTimeout(() => {
-        handleDismiss();
-      }, 3000);
-
       return () => {
         clearTimeout(circleTimer);
         clearTimeout(checkmarkTimer);
         clearTimeout(textTimer);
-        clearTimeout(autoDismissTimer);
 
         // Stop all running animations to prevent memory leaks
         backdropOpacity.current.stopAnimation();
@@ -143,56 +140,73 @@ export function SuccessOverlay({
         textTranslateY.current.stopAnimation();
       };
     }
-  }, [visible, handleDismiss, reduceMotion]);
+  }, [visible, reduceMotion]);
 
   if (!visible) return null;
 
   return (
-    <Pressable
-      testID="checkin-success-overlay"
-      onPress={handleDismiss}
-      style={styles.container}
-      accessibilityRole="button"
-      accessibilityLabel="Check-in potvrzen serverem. Klepnutím zavřete."
+    <Modal
+      visible
+      transparent
+      animationType="none"
+      statusBarTranslucent
+      onRequestClose={handleDismiss}
     >
-      <Animated.View style={[styles.backdrop, { opacity: backdropOpacity.current }]}>
-        <BlurView intensity={40} tint="light" style={StyleSheet.absoluteFill} />
-        <View style={styles.creamOverlay} />
-      </Animated.View>
+      <View
+        testID="checkin-success-overlay"
+        style={styles.container}
+        accessibilityViewIsModal
+        importantForAccessibility="yes"
+      >
+        <Animated.View style={[styles.backdrop, { opacity: backdropOpacity.current }]} />
 
-      <View className="flex-1 items-center justify-center">
-        {/* Success Circle */}
-        <Animated.View
-          className="mb-6"
-          style={{ transform: [{ scale: circleScale.current }] }}
-        >
-          <View className="w-[120px] h-[120px] rounded-[60px] bg-success items-center justify-center">
-            {/* Checkmark with separate animation */}
-            <Animated.View
-              style={{ transform: [{ scale: checkmarkScale.current }] }}
-            >
-              <Check size={56} color={COLORS.white} weight="bold" />
-            </Animated.View>
-          </View>
-        </Animated.View>
+        <View className="flex-1 items-center justify-center px-6">
+          {/* Success Circle */}
+          <Animated.View
+            className="mb-6"
+            style={{ transform: [{ scale: circleScale.current }] }}
+          >
+            <View className="w-[120px] h-[120px] rounded-[60px] bg-success items-center justify-center">
+              {/* Checkmark with separate animation */}
+              <Animated.View
+                style={{ transform: [{ scale: checkmarkScale.current }] }}
+              >
+                <Check size={56} color={COLORS.white} weight="bold" />
+              </Animated.View>
+            </View>
+          </Animated.View>
 
-        {/* Text */}
-        <Animated.View
-          style={{
-            opacity: textOpacity.current,
-            transform: [{ translateY: textTranslateY.current }],
-          }}
-        >
-          <Text className="text-[28px] font-bold text-charcoal mb-2 text-center font-lora-bold">
-            Check-in potvrzen serverem
-          </Text>
-          <Text className="text-lg text-muted text-center leading-[26px] font-lora">
-            Server přijal hlášení. Další termín za{"\n"}
-            <Text className="font-semibold text-charcoal font-lora-semibold">{formatInterval(intervalHours)}</Text>
-          </Text>
-        </Animated.View>
+          {/* Text */}
+          <Animated.View
+            accessible
+            accessibilityRole="alert"
+            accessibilityLiveRegion="assertive"
+            accessibilityLabel={`Check-in potvrzen serverem. Server přijal hlášení. Další termín za ${formatInterval(intervalHours)}.`}
+            style={{
+              opacity: textOpacity.current,
+              transform: [{ translateY: textTranslateY.current }],
+            }}
+          >
+            <Text className="text-[28px] font-bold text-charcoal mb-2 text-center font-lora-bold">
+              Check-in potvrzen serverem
+            </Text>
+            <Text className="text-lg text-muted text-center leading-[26px] font-lora">
+              Server přijal hlášení. Další termín za{"\n"}
+              <Text className="font-semibold text-charcoal font-lora-semibold">{formatInterval(intervalHours)}</Text>
+            </Text>
+          </Animated.View>
+          <Pressable
+            testID="checkin-success-continue"
+            onPress={handleDismiss}
+            accessibilityRole="button"
+            accessibilityLabel="Pokračovat po potvrzeném check-inu"
+            className="min-h-[56px] min-w-[200px] mt-9 px-8 rounded-[20px] bg-charcoal items-center justify-center active:opacity-80"
+          >
+            <Text className="font-body-semibold text-lg text-white">Pokračovat</Text>
+          </Pressable>
+        </View>
       </View>
-    </Pressable>
+    </Modal>
   );
 }
 
@@ -208,10 +222,6 @@ const styles = StyleSheet.create({
   },
   backdrop: {
     ...StyleSheet.absoluteFill,
-  },
-  creamOverlay: {
-    ...StyleSheet.absoluteFill,
     backgroundColor: COLORS.cream.default,
-    opacity: 0.6,
   },
 });
