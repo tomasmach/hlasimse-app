@@ -30,7 +30,6 @@ tags:
     id: "profile-create-interval-input"
 - eraseText: 4
 - inputText: "120"
-- hideKeyboard
 - scrollUntilVisible:
     element:
       id: "profile-create-submit"
