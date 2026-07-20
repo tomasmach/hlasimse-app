@@ -47,7 +47,12 @@ E2E_EMULATOR_PROCESS_START=""
 E2E_DJANGO_ALLOWED_HOSTS="localhost,127.0.0.1,10.0.2.2"
 export E2E_DJANGO_ALLOWED_HOSTS
 
-E2E_APP_ID="$(e2e_app_id android)"
+E2E_BASE_APP_ID="$(e2e_app_id android)"
+E2E_APP_ID="${E2E_BASE_APP_ID}.e2e"
+if [[ ! "${E2E_BASE_APP_ID}" =~ ^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$ ]]; then
+  e2e_log "Invalid base Android application ID: ${E2E_BASE_APP_ID}."
+  exit 2
+fi
 export E2E_APP_ID
 E2E_RUN_MODE="full"
 e2e_initialize_run_metadata android "${E2E_APP_ID}"
@@ -453,6 +458,10 @@ create_owned_android_avd
   -avd "${ANDROID_AVD_NAME}" \
   -wipe-data \
   -no-snapshot \
+  -no-window \
+  -gpu swiftshader_indirect \
+  -no-audio \
+  -no-boot-anim \
   -memory "${E2E_ANDROID_MEMORY_MB}" \
   -cores "${E2E_ANDROID_CORES}" \
   >"${E2E_ARTIFACT_DIR}/android-emulator.log" 2>&1 &
@@ -551,6 +560,7 @@ e2e_record_property android_sdk_toolchain_origin "single-effective-sdk-root"
 e2e_record_property android_build_tools_revision "${ANDROID_BUILD_TOOLS_REVISION}"
 e2e_record_property android_adb_version "${ANDROID_ADB_VERSION}"
 e2e_record_property android_emulator_version "${ANDROID_EMULATOR_VERSION}"
+e2e_record_property emulator_display_mode "headless-software-gpu"
 e2e_log "Android AVD: ${ANDROID_AVD_NAME}; serial: ${ANDROID_SERIAL}; app ID: ${E2E_APP_ID}"
 e2e_log "Artifact directory: ${E2E_ARTIFACT_DIR}"
 e2e_prepare_backend
@@ -579,8 +589,11 @@ e2e_prepare_backend
   fi
   cd android
   NODE_PATH="${E2E_NODE_PATH}" NODE_ENV=production \
+    EXPO_PUBLIC_API_URL="https://release-manifest.invalid" EXPO_NO_TELEMETRY=1 \
+    ./gradlew :app:processReleaseManifest --no-daemon
+  NODE_PATH="${E2E_NODE_PATH}" NODE_ENV=production \
     EXPO_PUBLIC_API_URL="http://10.0.2.2:8000" EXPO_NO_TELEMETRY=1 \
-    ./gradlew :app:processReleaseManifest :app:assembleE2e --no-daemon --rerun-tasks
+    ./gradlew :app:assembleE2e --no-daemon
 ) 2>&1 | tee "${E2E_ARTIFACT_DIR}/android-build.log"
 e2e_record_property native_project_origin "expo-prebuild-cleared"
 e2e_record_property expo_prebuild_version "$(node -p 'require("expo/package.json").version')"
@@ -605,6 +618,10 @@ if grep -Fq 'android:usesCleartextTraffic="true"' "${ANDROID_RELEASE_MERGED_MANI
   e2e_log "Merged Android production manifest unexpectedly permits cleartext traffic."
   exit 2
 fi
+if ! grep -Fq "package=\"${E2E_BASE_APP_ID}\"" "${ANDROID_RELEASE_MERGED_MANIFEST}"; then
+  e2e_log "Merged Android production manifest does not retain the base application ID."
+  exit 2
+fi
 unzip -Z1 "${ANDROID_APK_PATH}" >"${E2E_ARTIFACT_DIR}/android-apk-entries.txt"
 if ! grep -Fxq 'assets/index.android.bundle' "${E2E_ARTIFACT_DIR}/android-apk-entries.txt"; then
   e2e_log "Android E2E APK has no embedded JavaScript bundle."
@@ -614,6 +631,10 @@ fi
   >"${E2E_ARTIFACT_DIR}/android-apk-manifest.txt"
 if ! grep -Eq 'usesCleartextTraffic[^=]*=true' "${E2E_ARTIFACT_DIR}/android-apk-manifest.txt"; then
   e2e_log "Packaged Android E2E APK does not permit its local backend."
+  exit 2
+fi
+if ! grep -Fq "package=\"${E2E_APP_ID}\"" "${E2E_ARTIFACT_DIR}/android-apk-manifest.txt"; then
+  e2e_log "Packaged Android E2E APK does not use its isolated .e2e application ID."
   exit 2
 fi
 if grep -Eq 'debuggable[^=]*=true' "${E2E_ARTIFACT_DIR}/android-apk-manifest.txt"; then
@@ -656,6 +677,7 @@ fi
 e2e_record_property apk_sha256 "${ANDROID_APK_SHA256}"
 e2e_record_property apk_signer_cert_sha256 "${ANDROID_SIGNER_CERT_SHA256_LOWER}"
 e2e_record_property android_package_uid "${ANDROID_INSTALLED_UID}"
+e2e_record_property production_app_id "${E2E_BASE_APP_ID}"
 e2e_record_property build_variant "e2e-release-derived"
 e2e_record_property js_bundle_mode "embedded"
 e2e_record_property signing_authority "debug-test-only"

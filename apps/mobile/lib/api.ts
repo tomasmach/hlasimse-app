@@ -1,22 +1,18 @@
+import * as Application from "expo-application";
+import { Platform } from "react-native";
+
 import { clearTokens, getTokens, saveTokens } from "@/lib/authStorage";
+import { resolveApiBaseUrl } from "@/lib/apiConfig";
 import { clientHeaders, gateFromError, type ClientGate } from "@/lib/clientRelease";
 import type { ApiErrorBody, AuthTokens } from "@/types/api";
 
-const configuredBaseUrl = process.env.EXPO_PUBLIC_API_URL?.trim().replace(/\/$/, "");
-const developmentDefault = "http://127.0.0.1:8000";
 const isDevelopment = typeof __DEV__ !== "undefined" ? __DEV__ : process.env.NODE_ENV !== "production";
 
-export const API_BASE_URL = configuredBaseUrl || (isDevelopment ? developmentDefault : "");
-
-if (!API_BASE_URL) {
-  throw new Error("EXPO_PUBLIC_API_URL is required outside development.");
-}
-if (!isDevelopment && !API_BASE_URL.startsWith("https://")) {
-  throw new Error("EXPO_PUBLIC_API_URL must use HTTPS in production.");
-}
-if (isDevelopment && !/^https:\/\//.test(API_BASE_URL) && !/^http:\/\/(127\.0\.0\.1|localhost|10\.0\.2\.2)(:\d+)?$/.test(API_BASE_URL)) {
-  throw new Error("Insecure API URLs are allowed only for local development hosts.");
-}
+export const API_BASE_URL = resolveApiBaseUrl({
+  configuredBaseUrl: process.env.EXPO_PUBLIC_API_URL,
+  isDevelopment,
+  isAndroidE2E: Platform.OS === "android" && Application.applicationId?.endsWith(".e2e") === true,
+});
 
 export class ApiError extends Error {
   constructor(

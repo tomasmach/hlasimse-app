@@ -11,6 +11,7 @@ const BUILD_TYPES_END = "    }\n    packagingOptions {";
 const E2E_BUILD_TYPE = `        // ${BUILD_TYPE_MARKER}: release-derived local simulator evidence only.
         e2e {
             initWith release
+            applicationIdSuffix ".e2e"
             matchingFallbacks = ['release']
             signingConfig signingConfigs.debug
             debuggable false

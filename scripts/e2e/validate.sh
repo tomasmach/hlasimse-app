@@ -210,8 +210,9 @@ ruby -e '
     android_platform_package android_platform_revision
     android_command_line_tools_revision
     android_sdk_toolchain_origin android_build_tools_revision android_adb_version
-    android_emulator_version
+    android_emulator_version emulator_display_mode
     android_build_fingerprint apk_sha256 apk_signer_cert_sha256 android_package_uid
+    production_app_id
     android_package_present_before_install android_first_install_time build_variant
     js_bundle_mode signing_authority production_cleartext_allowed initial_install_mode
     update_artifact_relation android_launcher_component native_project_origin
@@ -227,11 +228,14 @@ ruby -e '
     %q{--package "${system_image_package}"},
     %q{-wipe-data},
     %q{-no-snapshot},
+    %q{-no-window},
+    %q{-gpu swiftshader_indirect},
     %q{shell pm path "${E2E_APP_ID}"},
     %q{install "${ANDROID_APK_PATH}"},
     %q{npx expo prebuild --platform android --no-install},
     %q{.hlasimse-prebuild-stale-sentinel},
-    %q{:app:processReleaseManifest :app:assembleE2e},
+    %q{:app:processReleaseManifest --no-daemon},
+    %q{:app:assembleE2e --no-daemon},
     %q{assets/index.android.bundle},
   ]
   missing_android_lifecycle = required_android_lifecycle.reject { |fragment| android.include?(fragment) }
@@ -239,6 +243,7 @@ ruby -e '
 
   abort("Android release evidence still starts Metro") if android.include?("e2e_start_metro")
   abort("Android release evidence still launches Expo debug tooling") if android.include?("expo run:android") || android.include?("DEV_CLIENT_URL")
+  abort("Android release evidence uses a spoofable public E2E flag") if android.include?("EXPO_PUBLIC_E2E")
   abort("Android full run accepts a pre-existing serial") if android.include?(%q{ANDROID_SERIAL="${ANDROID_SERIAL:-}"})
   abort("Android cleanup is not sentinel-scoped") unless android.include?(".hlasimse-runner-owned-avd")
   abort("Android cleanup may target the persistent template") unless android.include?("Refusing AVD cleanup because the target overlaps")
@@ -250,6 +255,7 @@ ruby -e '
   plugin = File.read(ARGV.fetch(1))
   abort("Android E2E config plugin is not registered") unless app.include?(%q{"./plugins/with-android-e2e-build"})
   abort("Android E2E config plugin does not define a release-derived build") unless plugin.include?("initWith release")
+  abort("Android E2E config plugin does not isolate the application ID") unless plugin.include?(%q{applicationIdSuffix ".e2e"})
   abort("Android E2E config plugin permits debugging") unless plugin.include?("debuggable false")
   abort("Android cleartext override is not isolated to the e2e manifest") unless plugin.match?(/"src",\s*"e2e",\s*"AndroidManifest\.xml"/m)
   abort("Android E2E manifest does not opt in to local cleartext") unless plugin.include?(%q{android:usesCleartextTraffic="true"})
