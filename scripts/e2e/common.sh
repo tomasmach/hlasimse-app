@@ -142,31 +142,44 @@ e2e_run_flow() {
   local device_id="$1"
   local flow_name="$2"
   local flow_path="${E2E_ROOT_DIR}/.maestro/flows/${flow_name}.yaml"
-  local output_dir="${E2E_ARTIFACT_DIR}/maestro/${flow_name}"
-  mkdir -p "$output_dir"
-  e2e_log "Running ${flow_name} on ${device_id}"
-  set +e
-  "${E2E_MAESTRO_BIN}" test \
-    --udid "$device_id" \
-    --format JUNIT \
-    --output "${output_dir}/report.xml" \
-    --debug-output "${output_dir}/debug" \
-    --test-output-dir "${output_dir}/artifacts" \
-    -e "APP_ID=${E2E_APP_ID}" \
-    -e "OWNER_EMAIL=${E2E_OWNER_EMAIL}" \
-    -e "GUARDIAN_EMAIL=${E2E_GUARDIAN_EMAIL}" \
-    -e "E2E_CREDENTIAL=${E2E_RUN_CREDENTIAL}" \
-    "$flow_path" 2>&1 \
-    | E2E_REDACTION_VALUE="${E2E_RUN_CREDENTIAL}" node \
-      "${E2E_ROOT_DIR}/scripts/e2e/redact-output.mjs" --stream \
-    | tee "${output_dir}/maestro.log"
-  local maestro_status="${PIPESTATUS[0]}"
-  set -e
-  E2E_REDACTION_VALUE="${E2E_RUN_CREDENTIAL}" node \
-    "${E2E_ROOT_DIR}/scripts/e2e/redact-output.mjs" --directory "$output_dir"
-  if [[ "$maestro_status" -ne 0 ]]; then
+  local output_root="${E2E_ARTIFACT_DIR}/maestro/${flow_name}"
+  local attempt=1
+  while ((attempt <= 2)); do
+    local output_dir="$output_root"
+    if ((attempt > 1)); then
+      output_dir="${output_root}/attempt-${attempt}"
+    fi
+    mkdir -p "$output_dir"
+    e2e_log "Running ${flow_name} on ${device_id} (attempt ${attempt}/2)"
+    set +e
+    "${E2E_MAESTRO_BIN}" test \
+      --udid "$device_id" \
+      --format JUNIT \
+      --output "${output_dir}/report.xml" \
+      --debug-output "${output_dir}/debug" \
+      --test-output-dir "${output_dir}/artifacts" \
+      -e "APP_ID=${E2E_APP_ID}" \
+      -e "OWNER_EMAIL=${E2E_OWNER_EMAIL}" \
+      -e "GUARDIAN_EMAIL=${E2E_GUARDIAN_EMAIL}" \
+      -e "E2E_CREDENTIAL=${E2E_RUN_CREDENTIAL}" \
+      "$flow_path" 2>&1 \
+      | E2E_REDACTION_VALUE="${E2E_RUN_CREDENTIAL}" node \
+        "${E2E_ROOT_DIR}/scripts/e2e/redact-output.mjs" --stream \
+      | tee "${output_dir}/maestro.log"
+    local maestro_status="${PIPESTATUS[0]}"
+    set -e
+    E2E_REDACTION_VALUE="${E2E_RUN_CREDENTIAL}" node \
+      "${E2E_ROOT_DIR}/scripts/e2e/redact-output.mjs" --directory "$output_dir"
+    if [[ "$maestro_status" -eq 0 ]]; then
+      return 0
+    fi
+    if ((attempt == 1)) && grep -Rqs --fixed-strings "Failed to connect to /127.0.0.1:7001" "$output_dir"; then
+      e2e_log "Maestro lost its local XCUITest bridge; retrying this flow once with fresh artifacts."
+      attempt=$((attempt + 1))
+      continue
+    fi
     return "$maestro_status"
-  fi
+  done
 }
 
 e2e_run_journey() {
