@@ -15,11 +15,42 @@ E2E_OWNER_EMAIL="e2e.owner@hlasimse.invalid"
 E2E_GUARDIAN_EMAIL="e2e.guardian@hlasimse.invalid"
 E2E_DEV_CLIENT_URL="${E2E_DEV_CLIENT_URL:-}"
 E2E_DJANGO_ALLOWED_HOSTS="${E2E_DJANGO_ALLOWED_HOSTS:-localhost,127.0.0.1}"
+E2E_RUN_MODE="${E2E_RUN_MODE:-full}"
+E2E_PLATFORM=""
+E2E_SOURCE_ROOT_DIR="${E2E_SOURCE_ROOT_DIR:-${E2E_ROOT_DIR}}"
+E2E_SOURCE_CLEAN_START="unknown"
+E2E_GIT_COMMIT_START=""
+E2E_GIT_TREE_START=""
+E2E_RUN_PROPERTIES="${E2E_ARTIFACT_DIR}/run.properties"
+E2E_RUN_PROPERTIES_STAGING="${E2E_ARTIFACT_DIR}/run.properties.partial"
+E2E_METADATA_INITIALIZED="false"
 unset E2E_RUN_CREDENTIAL || true
 E2E_BACKEND_PID=""
 E2E_METRO_PID=""
 
+# Release evidence is valid only when every runtime/release input below comes
+# from the recorded Git tree. Deliberately exclude unrelated root documents so
+# a user's local legal/launch drafts cannot invalidate simulator evidence.
+E2E_SOURCE_PATHS=(
+  "apps/mobile"
+  "apps/server"
+  ".maestro"
+  "scripts/e2e"
+  "package.json"
+  "package-lock.json"
+  "compose.production.yml"
+  "README.md"
+  "docs/store"
+  "scripts/check-public-contract.mjs"
+  "scripts/check-public-contract.test.mjs"
+  "scripts/public-contract-manifest.json"
+  "scripts/fixtures/public-contract"
+  ".github/workflows/ci.yml"
+)
+
 mkdir -p "${E2E_ARTIFACT_DIR}/backend" "${E2E_ARTIFACT_DIR}/maestro"
+
+source "${E2E_ROOT_DIR}/scripts/e2e/postgres.sh"
 
 e2e_log() {
   printf '[e2e] %s\n' "$*"
@@ -28,6 +59,122 @@ e2e_log() {
 e2e_require() {
   if ! command -v "$1" >/dev/null 2>&1; then
     e2e_log "Missing required command: $1"
+    return 1
+  fi
+}
+
+e2e_record_property() {
+  local key="$1"
+  local value="$2"
+  if [[ ! "${key}" =~ ^[a-z0-9_]+$ ]]; then
+    e2e_log "Refusing invalid run metadata key: ${key}"
+    return 1
+  fi
+  if [[ "${key}" =~ (credential|password|secret|token) ]]; then
+    e2e_log "Refusing secret-bearing run metadata key: ${key}"
+    return 1
+  fi
+  if [[ "${value}" == *$'\n'* ]] || [[ "${value}" == *$'\r'* ]]; then
+    e2e_log "Refusing multiline run metadata value for ${key}."
+    return 1
+  fi
+  printf '%s=%s\n' "${key}" "${value}" >>"${E2E_RUN_PROPERTIES_STAGING}"
+}
+
+e2e_finalize_run_properties() {
+  local duplicate_keys
+  local sorted_properties
+  duplicate_keys="$(cut -d= -f1 "${E2E_RUN_PROPERTIES_STAGING}" | LC_ALL=C sort | uniq -d)"
+  if [[ -n "${duplicate_keys}" ]]; then
+    e2e_log "Refusing duplicate run metadata keys: ${duplicate_keys//$'\n'/, }."
+    return 1
+  fi
+  if [[ -n "${E2E_RUN_CREDENTIAL:-}" ]] \
+    && grep -Fq -- "${E2E_RUN_CREDENTIAL}" "${E2E_RUN_PROPERTIES_STAGING}"; then
+    e2e_log "Refusing to publish run metadata containing the generated credential."
+    return 1
+  fi
+  sorted_properties="$(mktemp "${E2E_ARTIFACT_DIR}/run.properties.sorted.XXXXXX")"
+  LC_ALL=C sort -t= -k1,1 "${E2E_RUN_PROPERTIES_STAGING}" >"${sorted_properties}"
+  mv -f -- "${sorted_properties}" "${E2E_RUN_PROPERTIES}"
+  rm -f -- "${E2E_RUN_PROPERTIES_STAGING}"
+}
+
+e2e_capture_source_status() {
+  local phase="$1"
+  git -C "${E2E_SOURCE_ROOT_DIR}" status --short --untracked-files=all -- \
+    "${E2E_SOURCE_PATHS[@]}" >"${E2E_ARTIFACT_DIR}/source-status-${phase}.txt"
+}
+
+e2e_source_is_clean() {
+  local phase="$1"
+  local untracked
+  if ! e2e_capture_source_status "${phase}"; then
+    return 1
+  fi
+  if ! git -C "${E2E_SOURCE_ROOT_DIR}" diff --quiet -- "${E2E_SOURCE_PATHS[@]}"; then
+    return 1
+  fi
+  if ! git -C "${E2E_SOURCE_ROOT_DIR}" diff --cached --quiet -- "${E2E_SOURCE_PATHS[@]}"; then
+    return 1
+  fi
+  if ! untracked="$(git -C "${E2E_SOURCE_ROOT_DIR}" ls-files --others --exclude-standard -- \
+    "${E2E_SOURCE_PATHS[@]}")"; then
+    return 1
+  fi
+  [[ -z "${untracked}" ]]
+}
+
+e2e_app_version() {
+  node -e '
+    const config = require(process.argv[1]);
+    if (!config.expo.version) process.exit(2);
+    process.stdout.write(String(config.expo.version));
+  ' "${E2E_ROOT_DIR}/apps/mobile/app.json"
+}
+
+e2e_app_build() {
+  local platform="$1"
+  node -e '
+    const config = require(process.argv[1]);
+    const platform = process.argv[2];
+    const value = platform === "ios" ? config.expo.ios.buildNumber : config.expo.android.versionCode;
+    if (value === undefined || value === null || value === "") process.exit(2);
+    process.stdout.write(String(value));
+  ' "${E2E_ROOT_DIR}/apps/mobile/app.json" "${platform}"
+}
+
+e2e_initialize_run_metadata() {
+  local platform="$1"
+  local app_id="$2"
+  local source_clean="false"
+  if [[ -e "${E2E_RUN_PROPERTIES}" ]] || [[ -e "${E2E_RUN_PROPERTIES_STAGING}" ]]; then
+    e2e_log "Artifact directory already contains run metadata; refusing to overwrite evidence."
+    return 1
+  fi
+  E2E_PLATFORM="${platform}"
+  E2E_GIT_COMMIT_START="$(git -C "${E2E_ROOT_DIR}" rev-parse HEAD)"
+  E2E_GIT_TREE_START="$(git -C "${E2E_ROOT_DIR}" rev-parse 'HEAD^{tree}')"
+  : >"${E2E_RUN_PROPERTIES_STAGING}"
+  E2E_METADATA_INITIALIZED="true"
+  e2e_record_property started_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  e2e_record_property git_commit "${E2E_GIT_COMMIT_START}"
+  e2e_record_property git_tree "${E2E_GIT_TREE_START}"
+  e2e_record_property run_mode "${E2E_RUN_MODE}"
+  e2e_record_property platform "${platform}"
+  e2e_record_property app_id "${app_id}"
+  e2e_record_property app_version "$(e2e_app_version)"
+  e2e_record_property app_build "$(e2e_app_build "${platform}")"
+  e2e_record_property maestro_version "${E2E_MAESTRO_VERSION}"
+  e2e_record_property db_vendor "postgresql"
+
+  if e2e_source_is_clean start; then
+    source_clean="true"
+  fi
+  E2E_SOURCE_CLEAN_START="${source_clean}"
+  e2e_record_property source_clean_start "${source_clean}"
+  if [[ "${source_clean}" != "true" ]]; then
+    e2e_log "Runtime/release inputs are dirty. Refusing to create evidence; inspect ${E2E_ARTIFACT_DIR}/source-status-start.txt."
     return 1
   fi
 }
@@ -56,7 +203,7 @@ e2e_require_maestro_version() {
 
 e2e_generate_credential() {
   if [[ -z "${E2E_RUN_CREDENTIAL:-}" ]]; then
-    E2E_RUN_CREDENTIAL="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(48).toString("base64url"))')"
+    E2E_RUN_CREDENTIAL="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(32).toString("hex"))')"
   fi
   if [[ ${#E2E_RUN_CREDENTIAL} -lt 32 ]]; then
     e2e_log "E2E_RUN_CREDENTIAL must contain at least 32 generated characters."
@@ -88,11 +235,13 @@ e2e_assert_backend_port_free() {
 
 e2e_prepare_backend() {
   e2e_assert_backend_port_free
+  e2e_start_postgres
   (
     cd "${E2E_ROOT_DIR}/apps/server"
     uv sync --frozen
     uv run python manage.py migrate --noinput
   )
+  e2e_assert_postgres_backend
   e2e_seed_dataset guardian-open seed.json
   e2e_start_backend
 }
@@ -179,48 +328,30 @@ e2e_run_flow() {
   local flow_name="$2"
   local flow_path="${E2E_ROOT_DIR}/.maestro/flows/${flow_name}.yaml"
   local output_root="${E2E_ARTIFACT_DIR}/maestro/${flow_name}"
-  local attempt=1
-  while ((attempt <= 2)); do
-    local output_dir="$output_root"
-    if ((attempt > 1)); then
-      output_dir="${output_root}/attempt-${attempt}"
-    fi
-    mkdir -p "$output_dir"
-    e2e_log "Running ${flow_name} on ${device_id} (attempt ${attempt}/2)"
-    set +e
-    "${E2E_MAESTRO_BIN}" test \
-      --udid "$device_id" \
-      --format JUNIT \
-      --output "${output_dir}/report.xml" \
-      --debug-output "${output_dir}/debug" \
-      --test-output-dir "${output_dir}/artifacts" \
-      -e "APP_ID=${E2E_APP_ID}" \
-      -e "OWNER_EMAIL=${E2E_OWNER_EMAIL}" \
-      -e "GUARDIAN_EMAIL=${E2E_GUARDIAN_EMAIL}" \
-      -e "E2E_CREDENTIAL=${E2E_RUN_CREDENTIAL}" \
-      -e "DEV_CLIENT_URL=${E2E_DEV_CLIENT_URL}" \
-      "$flow_path" 2>&1 \
-      | E2E_REDACTION_VALUE="${E2E_RUN_CREDENTIAL}" node \
-        "${E2E_ROOT_DIR}/scripts/e2e/redact-output.mjs" --stream \
-      | tee "${output_dir}/maestro.log"
-    local maestro_status="${PIPESTATUS[0]}"
-    set -e
-    E2E_REDACTION_VALUE="${E2E_RUN_CREDENTIAL}" node \
-      "${E2E_ROOT_DIR}/scripts/e2e/redact-output.mjs" --directory "$output_dir"
-    if [[ "$maestro_status" -eq 0 ]]; then
-      return 0
-    fi
-    if ((attempt == 1)) \
-      && [[ "$flow_name" == "00_guardian_clean_install" ]] \
-      && grep -qs --fixed-strings "<failure>Unknown error</failure>" "${output_dir}/report.xml" \
-      && { grep -Rqs --fixed-strings "Failed to connect to /127.0.0.1:7001" "$output_dir" \
-        || grep -Rqs --fixed-strings "DEADLINE_EXCEEDED: deadline exceeded" "$output_dir"; }; then
-      e2e_log "Maestro lost its local driver bridge; retrying this flow once with fresh artifacts."
-      attempt=$((attempt + 1))
-      continue
-    fi
-    return "$maestro_status"
-  done
+  local output_dir="$output_root"
+  mkdir -p "$output_dir"
+  e2e_log "Running ${flow_name} on ${device_id} (single attempt; mutating flows are never replayed)."
+  set +e
+  "${E2E_MAESTRO_BIN}" test \
+    --udid "$device_id" \
+    --format JUNIT \
+    --output "${output_dir}/report.xml" \
+    --debug-output "${output_dir}/debug" \
+    --test-output-dir "${output_dir}/artifacts" \
+    -e "APP_ID=${E2E_APP_ID}" \
+    -e "OWNER_EMAIL=${E2E_OWNER_EMAIL}" \
+    -e "GUARDIAN_EMAIL=${E2E_GUARDIAN_EMAIL}" \
+    -e "E2E_CREDENTIAL=${E2E_RUN_CREDENTIAL}" \
+    -e "DEV_CLIENT_URL=${E2E_DEV_CLIENT_URL}" \
+    "$flow_path" 2>&1 \
+    | E2E_REDACTION_VALUE="${E2E_RUN_CREDENTIAL}" node \
+      "${E2E_ROOT_DIR}/scripts/e2e/redact-output.mjs" --stream \
+    | tee "${output_dir}/maestro.log"
+  local maestro_status="${PIPESTATUS[0]}"
+  set -e
+  E2E_REDACTION_VALUE="${E2E_RUN_CREDENTIAL}" node \
+    "${E2E_ROOT_DIR}/scripts/e2e/redact-output.mjs" --directory "$output_dir"
+  return "$maestro_status"
 }
 
 e2e_run_journey() {
@@ -244,20 +375,59 @@ e2e_run_journey() {
 
 e2e_cleanup() {
   local exit_code=$?
+  local source_clean_end="false"
+  local git_commit_end
+  local git_tree_end
   if [[ $# -gt 0 ]]; then
     exit_code="$1"
   fi
   e2e_stop_backend || true
   e2e_stop_metro || true
-  {
-    printf 'finished_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    printf 'exit_code=%s\n' "$exit_code"
-    printf 'git_commit=%s\n' "$(git -C "${E2E_ROOT_DIR}" rev-parse HEAD)"
-    printf 'maestro_version=%s\n' "${E2E_MAESTRO_VERSION:-unknown}"
-  } >"${E2E_ARTIFACT_DIR}/run.properties"
+  e2e_stop_postgres || true
+  if [[ "${E2E_METADATA_INITIALIZED}" != "true" ]]; then
+    e2e_log "Run metadata was not initialized; no evidence file was published."
+    if [[ "${exit_code}" -eq 0 ]]; then
+      exit_code=1
+    fi
+    e2e_log "Artifacts: ${E2E_ARTIFACT_DIR}"
+    return "${exit_code}"
+  fi
+  if ! git_commit_end="$(git -C "${E2E_ROOT_DIR}" rev-parse HEAD)"; then
+    git_commit_end="unavailable"
+  fi
+  if ! git_tree_end="$(git -C "${E2E_ROOT_DIR}" rev-parse 'HEAD^{tree}')"; then
+    git_tree_end="unavailable"
+  fi
+  e2e_record_property git_commit_end "${git_commit_end}"
+  e2e_record_property git_tree_end "${git_tree_end}"
+  if e2e_source_is_clean end \
+    && [[ "${git_commit_end}" == "${E2E_GIT_COMMIT_START}" ]] \
+    && [[ "${git_tree_end}" == "${E2E_GIT_TREE_START}" ]]; then
+    source_clean_end="true"
+  fi
+  e2e_record_property source_clean_end "${source_clean_end}"
+  if [[ "${E2E_SOURCE_CLEAN_START}" != "true" ]] || [[ "${source_clean_end}" != "true" ]]; then
+    e2e_log "Source traceability failed (start=${E2E_SOURCE_CLEAN_START}, end=${source_clean_end})."
+    if [[ "${exit_code}" -eq 0 ]]; then
+      exit_code=1
+    fi
+  fi
+  e2e_record_property finished_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
   if [[ -n "${E2E_RUN_CREDENTIAL:-}" ]]; then
-    E2E_REDACTION_VALUE="${E2E_RUN_CREDENTIAL}" node \
-      "${E2E_ROOT_DIR}/scripts/e2e/redact-output.mjs" --directory "${E2E_ARTIFACT_DIR}" || true
+    if ! E2E_REDACTION_VALUE="${E2E_RUN_CREDENTIAL}" node \
+      "${E2E_ROOT_DIR}/scripts/e2e/redact-output.mjs" --directory "${E2E_ARTIFACT_DIR}"; then
+      e2e_log "Artifact redaction failed; the run cannot be accepted as evidence."
+      if [[ "${exit_code}" -eq 0 ]]; then
+        exit_code=1
+      fi
+    fi
+  fi
+  e2e_record_property exit_code "${exit_code}"
+  if ! e2e_finalize_run_properties; then
+    e2e_log "Atomic run metadata finalization failed."
+    if [[ "${exit_code}" -eq 0 ]]; then
+      exit_code=1
+    fi
   fi
   e2e_log "Artifacts: ${E2E_ARTIFACT_DIR}"
   return "$exit_code"

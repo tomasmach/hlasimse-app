@@ -1,0 +1,42 @@
+appId: ${APP_ID}
+name: Android owner denies optional location and still confirms check-in
+tags:
+  - android
+  - location
+  - safety
+---
+- extendedWaitUntil:
+    visible:
+      id: "checkin-submit"
+    timeout: 30000
+- scrollUntilVisible:
+    element:
+      id: "checkin-location-toggle"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "checkin-location-toggle"
+- scrollUntilVisible:
+    element:
+      id: "checkin-submit"
+    direction: UP
+    centerElement: true
+- tapOn:
+    id: "checkin-submit"
+- extendedWaitUntil:
+    visible: "Don.t allow"
+    timeout: 10000
+- tapOn: "Don.t allow"
+- scrollUntilVisible:
+    element: "Serverový termín aktivní"
+    direction: UP
+    centerElement: true
+- scrollUntilVisible:
+    element:
+      id: "checkin-location-toggle"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Stav oprávnění: zamítnuto"
+- assertVisible:
+    id: "checkin-location-toggle"
+    checked: false

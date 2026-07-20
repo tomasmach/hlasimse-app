@@ -1,0 +1,25 @@
+appId: ${APP_ID}
+name: Android creates and selects upgrade sentinel after name injection
+tags: [android, upgrade, local-state]
+---
+- assertVisible: "E2E update sentinel"
+- hideKeyboard
+- scrollUntilVisible:
+    element: "1 hodina"
+    direction: DOWN
+    centerElement: true
+- tapOn: "1 hodina"
+- scrollUntilVisible:
+    element:
+      id: "profile-create-submit"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "profile-create-submit"
+- extendedWaitUntil:
+    visible:
+      id: "profile-selected-name"
+    timeout: 15000
+- assertVisible:
+    id: "profile-selected-name"
+    text: "E2E update sentinel"

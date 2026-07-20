@@ -91,6 +91,31 @@ describe("offline check-in safety", () => {
     });
   });
 
+  it("restores a non-default selected profile from secure local state", async () => {
+    const secondProfile: CheckInProfile = {
+      ...confirmedProfile,
+      id: "22222222-2222-4222-8222-222222222222",
+      name: "E2E update sentinel",
+      created_at: "2026-01-02T00:00:00.000Z",
+    };
+    mockApiRequest.mockResolvedValueOnce([confirmedProfile, secondProfile]);
+    await useCheckInStore.getState().fetchProfile("user-1");
+    await useCheckInStore.getState().selectProfile(secondProfile.id);
+    await expect(
+      SecureStore.getItemAsync("hlasimse.selected-profile.user-1"),
+    ).resolves.toBe(secondProfile.id);
+
+    useCheckInStore.setState({ profile: null, profiles: [], hasFetched: false });
+    mockApiRequest.mockResolvedValueOnce([confirmedProfile, secondProfile]);
+    await useCheckInStore.getState().fetchProfile("user-1");
+
+    expect(useCheckInStore.getState().profiles.map((profile) => profile.id)).toEqual([
+      confirmedProfile.id,
+      secondProfile.id,
+    ]);
+    expect(useCheckInStore.getState().profile?.id).toBe(secondProfile.id);
+  });
+
   it("allows a guardian-only account to skip owned profile creation", async () => {
     await useCheckInStore.getState().chooseGuardianOnlyMode("user-1", true);
     mockApiRequest.mockResolvedValueOnce([]);

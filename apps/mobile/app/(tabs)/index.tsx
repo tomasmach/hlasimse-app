@@ -241,7 +241,7 @@ export default function CheckInScreen() {
         >
           <View className="flex-1">
             <Text className="font-body text-sm text-muted">Právě se hlásí</Text>
-            <Text className="font-display text-[28px] leading-8 text-charcoal mt-1">{profile.name}</Text>
+            <Text testID="profile-selected-name" className="font-display text-[28px] leading-8 text-charcoal mt-1">{profile.name}</Text>
           </View>
           <CaretDown size={24} color={COLORS.charcoal.default} />
         </Pressable>
@@ -287,7 +287,7 @@ export default function CheckInScreen() {
 
         <View className="py-5 border-y border-sand">
           <Text className="font-body-medium text-sm text-muted">Poslední serverem potvrzené ohlášení</Text>
-          <Text className="font-display text-[22px] leading-7 text-charcoal mt-2">{formatLastCheckIn(profile.last_checked_in_at)}</Text>
+          <Text testID="profile-last-confirmed-checkin" className="font-display text-[22px] leading-7 text-charcoal mt-2">{formatLastCheckIn(profile.last_checked_in_at)}</Text>
         </View>
 
         <OfflineBanner

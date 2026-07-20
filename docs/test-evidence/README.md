@@ -12,10 +12,12 @@ Prerequisites:
 
 - Node.js compatible with the mobile package, npm dependencies installed, and Expo CLI available
 - Python 3.14 and `uv`
+- Docker for the runner-owned, pinned PostgreSQL 18.4 E2E database
 - Maestro 2.6.1, the pinned and tested harness version (override `E2E_MAESTRO_BIN` when it is installed elsewhere)
 - Xcode/iOS Simulator for iOS, or Android SDK/ADB and the named AVD for Android
 - ports 8000 and 8081 free; the runner refuses to stop or reuse an unowned backend on 8000
 - a development build identity in `apps/mobile/app.json`
+- a clean committed runtime/harness source scope; the runner records and rechecks its Git tree
 
 Validate the harness without launching a device:
 
@@ -52,6 +54,8 @@ URL (`127.0.0.1` for iOS Simulator, `10.0.2.2` for Android Emulator).
 | Incident | seeded overdue deadline is visible; guardian acknowledgement is server-confirmed |
 | Guardian relation | guardian sees the watched profile; owner sees the active guardian |
 | Check-in | owner resolves the open incident only after the server confirms the check-in |
+| Location refusal | the real native permission prompt is denied; check-in still succeeds and the exact new PostgreSQL row has `NULL` latitude, longitude, and accuracy |
+| Same-bundle install | authenticated state and a non-default SecureStore profile selection survive an in-place install; the post-install server journey uses that profile |
 | Pause | pause and resume each require a native confirmation and a changed server state |
 | Profiles/free tier | owner creates a second 1-hour profile without payment or paywall; a separately seeded boundary fixture shows exactly 5 active profiles and no sixth-profile action |
 | Guardian/free tier | the selected boundary profile shows exactly 5/5 active guardians and a disabled invitation action |
@@ -61,6 +65,7 @@ URL (`127.0.0.1` for iOS Simulator, `10.0.2.2` for Android Emulator).
 | Recovery | API returns; queued request syncs and appears as later synchronization in history |
 | Export | server export opens the operating-system share sheet and reports completion |
 | Deletion | owner enters the fixture password, confirms destructive action, and returns to login |
+| Evidence provenance | the full run uses isolated PostgreSQL and records a clean commit/tree, device/runtime, toolchain, app build, and platform artifact identity |
 
 The delete flow targets only `e2e.owner@hlasimse.invalid`. After it completes, the runner seeds a
 separate boundary fixture containing exactly five active profiles and five active guardians on the

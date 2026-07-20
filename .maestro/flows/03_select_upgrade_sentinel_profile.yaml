@@ -1,0 +1,57 @@
+appId: ${APP_ID}
+name: Select a non-default profile as the local upgrade sentinel
+tags:
+  - simulator
+  - upgrade
+  - local-state
+---
+- scrollUntilVisible:
+    element:
+      id: "profile-switcher"
+    direction: UP
+    centerElement: true
+- tapOn:
+    id: "profile-switcher"
+- extendedWaitUntil:
+    visible:
+      id: "profile-create-open"
+    timeout: 10000
+- runFlow:
+    when:
+      visible: "E2E update sentinel"
+    commands:
+      - tapOn: "E2E update sentinel"
+- runFlow:
+    when:
+      visible:
+        id: "profile-create-open"
+    commands:
+      - tapOn:
+          id: "profile-create-open"
+      - extendedWaitUntil:
+          visible:
+            id: "profile-create-name-input"
+          timeout: 10000
+      - tapOn:
+          id: "profile-create-name-input"
+      - inputText: "E2E update sentinel"
+      - hideKeyboard
+      - scrollUntilVisible:
+          element: "1 hodina"
+          direction: DOWN
+          centerElement: true
+      - tapOn: "1 hodina"
+      - scrollUntilVisible:
+          element:
+            id: "profile-create-submit"
+          direction: DOWN
+          centerElement: true
+      - tapOn:
+          id: "profile-create-submit"
+- extendedWaitUntil:
+    visible:
+      id: "profile-selected-name"
+    timeout: 15000
+- assertVisible:
+    id: "profile-selected-name"
+    text: "E2E update sentinel"

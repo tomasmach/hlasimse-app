@@ -1,0 +1,14 @@
+appId: ${APP_ID}
+name: Android focuses owner email before location reset
+tags:
+  - android
+  - location
+---
+- launchApp
+- openLink: ${DEV_CLIENT_URL}
+- extendedWaitUntil:
+    visible:
+      id: "login-screen"
+    timeout: 30000
+- tapOn:
+    id: "login-email-input"

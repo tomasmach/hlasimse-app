@@ -11,6 +11,7 @@ const replacement = "[REDACTED-RUN-CREDENTIAL]";
 const textExtensions = new Set([
   ".json",
   ".log",
+  ".partial",
   ".properties",
   ".txt",
   ".xml",

@@ -1,0 +1,23 @@
+appId: ${APP_ID}
+name: Android creates second free safety profile after name injection
+tags: [android, profile]
+---
+- assertVisible: "E2E Druhy profil"
+- hideKeyboard
+- scrollUntilVisible:
+    element: "1 hodina"
+    direction: DOWN
+    centerElement: true
+- tapOn: "1 hodina"
+- scrollUntilVisible:
+    element:
+      id: "profile-create-submit"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "profile-create-submit"
+- extendedWaitUntil:
+    visible: "Vybraný profil E2E Druhy profil"
+    timeout: 15000
+- assertVisible:
+    id: "checkin-submit"

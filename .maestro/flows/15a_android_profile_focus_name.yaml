@@ -1,0 +1,24 @@
+appId: ${APP_ID}
+name: Android opens second profile and focuses name
+tags: [android, profile]
+---
+- launchApp
+- scrollUntilVisible:
+    element:
+      id: "profile-switcher"
+    direction: UP
+    centerElement: true
+- tapOn:
+    id: "profile-switcher"
+- extendedWaitUntil:
+    visible:
+      id: "profile-create-open"
+    timeout: 10000
+- tapOn:
+    id: "profile-create-open"
+- extendedWaitUntil:
+    visible:
+      id: "profile-create-name-input"
+    timeout: 10000
+- tapOn:
+    id: "profile-create-name-input"

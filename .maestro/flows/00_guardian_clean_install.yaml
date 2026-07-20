@@ -110,10 +110,15 @@ tags:
     text: "Not Now"
     optional: true
 - launchApp
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - openLink: ${DEV_CLIENT_URL}
 - extendedWaitUntil:
     visible:
       id: "tab-activity"
-    timeout: 20000
+    timeout: 30000
 - retry:
     maxRetries: 2
     commands:

@@ -4,45 +4,29 @@ tags:
   - simulator
   - owner
 ---
-- launchApp
-- tapOn:
-    id: "login-email-input"
-- runFlow:
-    when:
-      platform: Android
-    commands:
-      - setClipboard: ${OWNER_EMAIL}
-      - pasteText
 - runFlow:
     when:
       platform: iOS
     commands:
+      - launchApp
+      - tapOn:
+          id: "login-email-input"
       - inputText: ${OWNER_EMAIL}
-- tapOn:
-    id: "login-password-input"
-    retryTapIfNoChange: true
-- runFlow:
-    when:
-      platform: Android
-    commands:
-      - setClipboard: ${E2E_CREDENTIAL}
-      - pasteText
-      - hideKeyboard
-- runFlow:
-    when:
-      platform: iOS
-    commands:
+      - tapOn:
+          id: "login-password-input"
+          retryTapIfNoChange: true
       - inputText: ${E2E_CREDENTIAL}
-- scrollUntilVisible:
-    element:
-      id: "login-submit-button"
-    direction: DOWN
-    centerElement: true
-- tapOn:
-    id: "login-submit-button"
-- tapOn:
-    text: "Not Now"
-    optional: true
+      - hideKeyboard
+      - scrollUntilVisible:
+          element:
+            id: "login-submit-button"
+          direction: DOWN
+          centerElement: true
+      - tapOn:
+          id: "login-submit-button"
+      - tapOn:
+          text: "Not Now"
+          optional: true
 - launchApp
 - extendedWaitUntil:
     visible:
@@ -67,8 +51,23 @@ tags:
     centerElement: true
 - tapOn:
     id: "profile-pause"
-- assertVisible: "Pozastavit profil?"
-- tapOn: "Potvrdit pauzu"
+- extendedWaitUntil:
+    visible: "Jak dlouho má pauza trvat?"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "pause-duration-24h"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "pause-duration-24h"
+- scrollUntilVisible:
+    element:
+      id: "pause-confirm"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "pause-confirm"
 - extendedWaitUntil:
     visible:
       id: "profile-resume"
