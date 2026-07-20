@@ -6,6 +6,10 @@ tags:
   - location
 ---
 - launchApp
+- extendedWaitUntil:
+    visible: "Not Now"
+    timeout: 5000
+    optional: true
 - tapOn:
     text: "Not Now"
     optional: true
@@ -20,6 +24,10 @@ tags:
     id: "login-password-input"
     retryTapIfNoChange: true
 - inputText: ${E2E_CREDENTIAL}
+- extendedWaitUntil:
+    visible: "Not Now"
+    timeout: 5000
+    optional: true
 - tapOn:
     text: "Not Now"
     optional: true
@@ -30,6 +38,10 @@ tags:
     centerElement: true
 - tapOn:
     id: "login-submit-button"
+- extendedWaitUntil:
+    visible: "Not Now"
+    timeout: 5000
+    optional: true
 - tapOn:
     text: "Not Now"
     optional: true
