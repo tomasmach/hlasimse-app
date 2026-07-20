@@ -62,7 +62,10 @@ jobs:
         env:
           POSTGRES_DB: hlasimse_ci
           POSTGRES_USER: hlasimse
-          POSTGRES_PASSWORD: ci-only-password
+          # The GitHub-hosted service is isolated to this job and exposed only on
+          # loopback, so CI uses PostgreSQL's explicit trust mode instead of a
+          # hard-coded credential that could be mistaken for a reusable secret.
+          POSTGRES_HOST_AUTH_METHOD: trust
         ports:
           - 5432:5432
         options: >-
@@ -72,7 +75,7 @@ jobs:
           --health-retries 12
 
     env:
-      DATABASE_URL: postgresql://hlasimse:ci-only-password@127.0.0.1:5432/hlasimse_ci
+      DATABASE_URL: postgresql://hlasimse@127.0.0.1:5432/hlasimse_ci
       DJANGO_DEBUG: "true"
     defaults:
       run:
