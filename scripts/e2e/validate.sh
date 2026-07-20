@@ -455,6 +455,16 @@ ruby -e '
   end
 ' "${ROOT_DIR}"/.maestro/flows/*.yaml
 
+ruby -e '
+  focused_login = File.read(ARGV.fetch(0))
+  entry_state = focused_login.index(%q{id: "^(login-screen|onboarding-persona-screen)$"})
+  onboarding_condition = focused_login.index(%q{id: "onboarding-persona-screen"}, entry_state.to_i + 1)
+  existing_account = focused_login.index(%q{id: "onboarding-existing-account-button"})
+  required_login = focused_login.rindex(%q{id: "login-screen"})
+  abort("Focused iOS login does not wait for a deterministic fresh-install entry state") unless entry_state
+  abort("Focused iOS login does not escape fresh-install onboarding") unless onboarding_condition && existing_account && required_login && entry_state < onboarding_condition && onboarding_condition < existing_account && existing_account < required_login
+' "${ROOT_DIR}/.maestro/flows/45_ios_location_login.yaml"
+
 ruby -ryaml -e '
   root = ARGV.fetch(0)
   online_submit_count = 0
