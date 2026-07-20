@@ -25,7 +25,7 @@ e2e_require() {
 }
 
 e2e_generate_credential() {
-  if [[ -z "${E2E_RUN_CREDENTIAL}" ]]; then
+  if [[ -z "${E2E_RUN_CREDENTIAL:-}" ]]; then
     E2E_RUN_CREDENTIAL="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(48).toString("base64url"))')"
   fi
   if [[ ${#E2E_RUN_CREDENTIAL} -lt 32 ]]; then

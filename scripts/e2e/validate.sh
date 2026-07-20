@@ -9,6 +9,18 @@ bash -n "${ROOT_DIR}/scripts/e2e/run-ios.sh"
 bash -n "${ROOT_DIR}/scripts/e2e/run-android.sh"
 node --check "${ROOT_DIR}/scripts/e2e/redact-output.mjs"
 
+VALIDATION_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hlasimse-e2e-validate.XXXXXX")"
+cleanup_validation() {
+  rm -r -- "${VALIDATION_DIR}"
+}
+trap cleanup_validation EXIT
+E2E_ARTIFACT_DIR="${VALIDATION_DIR}" bash -c '
+  set -Eeuo pipefail
+  source "$1"
+  e2e_generate_credential
+  [[ ${#E2E_RUN_CREDENTIAL} -ge 32 ]]
+' _ "${ROOT_DIR}/scripts/e2e/common.sh"
+
 ruby -e '
   require "yaml"
   ARGV.each do |path|
