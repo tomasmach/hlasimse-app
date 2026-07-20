@@ -97,7 +97,8 @@ tags:
 - extendedWaitUntil:
     visible: "Potvrzení uloženo serverem"
     timeout: 15000
-- tapOn: "Zpět"
+- tapOn:
+    id: "back-button"
 - retry:
     maxRetries: 2
     commands:
