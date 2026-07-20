@@ -8,6 +8,8 @@ bash -n "${ROOT_DIR}/scripts/e2e/common.sh"
 bash -n "${ROOT_DIR}/scripts/e2e/run-ios.sh"
 bash -n "${ROOT_DIR}/scripts/e2e/run-android.sh"
 node --check "${ROOT_DIR}/scripts/e2e/redact-output.mjs"
+NODE_PATH="${ROOT_DIR}/apps/mobile/node_modules:${ROOT_DIR}/node_modules" \
+  node -e 'require.resolve("expo-router/_ctx-shared")'
 
 VALIDATION_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hlasimse-e2e-validate.XXXXXX")"
 cleanup_validation() {

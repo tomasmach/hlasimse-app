@@ -3,6 +3,10 @@
 set -Eeuo pipefail
 
 E2E_ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+E2E_NODE_PATH="${E2E_ROOT_DIR}/apps/mobile/node_modules:${E2E_ROOT_DIR}/node_modules"
+if [[ -n "${NODE_PATH:-}" ]]; then
+  E2E_NODE_PATH="${E2E_NODE_PATH}:${NODE_PATH}"
+fi
 E2E_MAESTRO_BIN="${E2E_MAESTRO_BIN:-/Users/tomasmach/.maestro/bin/maestro}"
 E2E_ARTIFACT_DIR="${E2E_ARTIFACT_DIR:-/tmp/hlasimse-e2e/$(date -u +%Y%m%dT%H%M%SZ)}"
 E2E_OWNER_EMAIL="e2e.owner@hlasimse.invalid"
@@ -107,7 +111,7 @@ e2e_start_metro() {
   fi
   (
     cd "${E2E_ROOT_DIR}/apps/mobile"
-    EXPO_PUBLIC_API_URL="${api_url}" EXPO_NO_TELEMETRY=1 CI=1 \
+    NODE_PATH="${E2E_NODE_PATH}" EXPO_PUBLIC_API_URL="${api_url}" EXPO_NO_TELEMETRY=1 CI=1 \
       exec npx expo start --dev-client --clear --port 8081
   ) >"${E2E_ARTIFACT_DIR}/metro.log" 2>&1 &
   E2E_METRO_PID=$!

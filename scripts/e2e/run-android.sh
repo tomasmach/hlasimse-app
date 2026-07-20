@@ -81,7 +81,7 @@ e2e_start_metro "http://10.0.2.2:8000"
 
 (
   cd "${E2E_ROOT_DIR}/apps/mobile"
-  EXPO_PUBLIC_API_URL="http://10.0.2.2:8000" EXPO_NO_TELEMETRY=1 \
+  NODE_PATH="${E2E_NODE_PATH}" EXPO_PUBLIC_API_URL="http://10.0.2.2:8000" EXPO_NO_TELEMETRY=1 \
     npx expo run:android --device "${ANDROID_SERIAL}" --no-bundler
 ) 2>&1 | tee "${E2E_ARTIFACT_DIR}/android-build.log"
 
