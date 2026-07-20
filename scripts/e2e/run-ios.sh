@@ -33,7 +33,7 @@ e2e_ios_delete_owned_simulator() {
 }
 
 e2e_ios_cleanup() {
-  local exit_code=$?
+  local exit_code="$1"
   local cleanup_status
   local simulator_cleanup_status=0
 
@@ -55,7 +55,7 @@ e2e_ios_cleanup() {
   exit "${cleanup_status}"
 }
 
-trap e2e_ios_cleanup EXIT
+trap 'e2e_ios_cleanup "$?"' EXIT
 
 e2e_require curl
 e2e_require lsof
@@ -334,3 +334,4 @@ if [[ "${IOS_UPGRADE_CHECKINS_AFTER}" -ne $((IOS_UPGRADE_CHECKINS_BEFORE + 1)) ]
 fi
 e2e_assert_latest_owner_checkin_uses_upgrade_sentinel
 e2e_seed_dataset cleanup-only ios-final-cleanup.json
+E2E_JOURNEY_COMPLETED="true"

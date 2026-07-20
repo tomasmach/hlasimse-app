@@ -90,7 +90,11 @@ find_android_apksigner() {
 }
 
 android_cleanup() {
-  local exit_code=$?
+  local exit_code="$1"
+  local cleanup_status
+
+  trap - EXIT
+  set +e
   if [[ -n "${ANDROID_SERIAL}" ]] && [[ "$(adb -s "${ANDROID_SERIAL}" get-state 2>/dev/null || true)" == "device" ]]; then
     adb -s "${ANDROID_SERIAL}" logcat -d >"${E2E_ARTIFACT_DIR}/android-logcat.log" 2>&1 || true
   fi
@@ -99,9 +103,10 @@ android_cleanup() {
     wait "${E2E_EMULATOR_PID}" 2>/dev/null || true
   fi
   e2e_cleanup "$exit_code"
-  return "$exit_code"
+  cleanup_status=$?
+  exit "$cleanup_status"
 }
-trap android_cleanup EXIT
+trap 'android_cleanup "$?"' EXIT
 
 if [[ -z "${ANDROID_SERIAL}" ]]; then
   ANDROID_SERIAL="$(find_android_serial || true)"
@@ -193,6 +198,9 @@ ANDROID_SIGNER_CERT_SHA256="$(
   awk -F': ' '/Signer #1 certificate SHA-256 digest:/ {print $2; exit}' \
     "${E2E_ARTIFACT_DIR}/android-apk-signature.txt"
 )"
+ANDROID_SIGNER_CERT_SHA256_LOWER="$(
+  printf '%s' "${ANDROID_SIGNER_CERT_SHA256}" | tr '[:upper:]' '[:lower:]'
+)"
 if [[ ! "${ANDROID_APK_SHA256}" =~ ^[0-9a-f]{64}$ ]] \
   || [[ ! "${ANDROID_SIGNER_CERT_SHA256}" =~ ^[0-9a-fA-F]{64}$ ]]; then
   e2e_log "Could not resolve fail-closed APK digest and signing-certificate metadata."
@@ -204,7 +212,7 @@ if [[ ! "${ANDROID_INSTALLED_UID}" =~ ^[0-9]+$ ]]; then
   exit 2
 fi
 e2e_record_property apk_sha256 "${ANDROID_APK_SHA256}"
-e2e_record_property apk_signer_cert_sha256 "${ANDROID_SIGNER_CERT_SHA256,,}"
+e2e_record_property apk_signer_cert_sha256 "${ANDROID_SIGNER_CERT_SHA256_LOWER}"
 e2e_record_property android_package_uid "${ANDROID_INSTALLED_UID}"
 
 e2e_run_flow "${ANDROID_SERIAL}" 00a_android_guardian_onboarding_focus_email
@@ -332,3 +340,4 @@ e2e_run_flow "${ANDROID_SERIAL}" 95b_android_boundaries_focus_password
 android_input_text "${E2E_RUN_CREDENTIAL}" "boundary owner credential"
 e2e_run_flow "${ANDROID_SERIAL}" 95c_android_boundaries_after_login
 e2e_seed_dataset cleanup-only cleanup.json
+E2E_JOURNEY_COMPLETED="true"

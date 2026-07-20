@@ -105,6 +105,29 @@ E2E_ARTIFACT_DIR="${VALIDATION_DIR}/cleanup-artifacts" \
     ! grep -Eq "^[^=]*(credential|password|secret|token)[^=]*=" "${E2E_RUN_PROPERTIES}"
   ' _ "${ROOT_DIR}/scripts/e2e/common.sh"
 
+COMPLETION_FIXTURE="${VALIDATION_DIR}/completion-fixture"
+mkdir -p "${COMPLETION_FIXTURE}/apps/mobile"
+printf 'tracked\n' >"${COMPLETION_FIXTURE}/apps/mobile/runtime.txt"
+git -C "${COMPLETION_FIXTURE}" init -q
+git -C "${COMPLETION_FIXTURE}" config user.email "e2e-validator@hlasimse.invalid"
+git -C "${COMPLETION_FIXTURE}" config user.name "Hlásím se E2E validator"
+git -C "${COMPLETION_FIXTURE}" add apps/mobile/runtime.txt
+git -C "${COMPLETION_FIXTURE}" commit -qm "test fixture"
+E2E_ARTIFACT_DIR="${VALIDATION_DIR}/completion-artifacts" \
+  E2E_SOURCE_ROOT_DIR="${COMPLETION_FIXTURE}" bash -c '
+    set -Eeuo pipefail
+    source "$1"
+    E2E_MAESTRO_VERSION="2.6.1"
+    e2e_initialize_run_metadata android "$(e2e_app_id android)"
+    set +e
+    e2e_cleanup 0
+    cleanup_status=$?
+    set -e
+    [[ "${cleanup_status}" -eq 1 ]]
+    [[ "$(grep -c "^journey_completed=false$" "${E2E_RUN_PROPERTIES}")" -eq 1 ]]
+    [[ "$(grep -c "^exit_code=1$" "${E2E_RUN_PROPERTIES}")" -eq 1 ]]
+  ' _ "${ROOT_DIR}/scripts/e2e/common.sh"
+
 ruby -e '
   common = File.read(ARGV.fetch(0))
   ios = File.read(ARGV.fetch(1))
@@ -112,7 +135,7 @@ ruby -e '
 
   required_common = %w[
     git_commit git_tree run_mode platform app_id source_clean_start source_clean_end
-    app_version app_build maestro_version db_vendor
+    app_version app_build maestro_version db_vendor journey_completed
   ]
   missing_common = required_common.reject { |key| common.include?("e2e_record_property #{key}") }
   abort("Missing required run metadata keys: #{missing_common.join(", ")}") unless missing_common.empty?
@@ -127,6 +150,8 @@ ruby -e '
 
   abort("Whole-flow retry loop remains enabled") if common.include?("attempt <= 2")
   abort("Whole-flow retry escape hatch remains enabled") if common.include?("E2E_DISABLE_FLOW_RETRY")
+  abort("iOS completion marker is missing") unless ios.include?(%q{E2E_JOURNEY_COMPLETED="true"})
+  abort("Android completion marker is missing") unless android.include?(%q{E2E_JOURNEY_COMPLETED="true"})
 
   required_ios = %w[
     device_id device_name device_origin device_owned device_type_identifier

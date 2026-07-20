@@ -24,6 +24,7 @@ E2E_GIT_TREE_START=""
 E2E_RUN_PROPERTIES="${E2E_ARTIFACT_DIR}/run.properties"
 E2E_RUN_PROPERTIES_STAGING="${E2E_ARTIFACT_DIR}/run.properties.partial"
 E2E_METADATA_INITIALIZED="false"
+E2E_JOURNEY_COMPLETED="false"
 unset E2E_RUN_CREDENTIAL || true
 E2E_BACKEND_PID=""
 E2E_METRO_PID=""
@@ -375,11 +376,20 @@ e2e_run_journey() {
 
 e2e_cleanup() {
   local exit_code=$?
+  local journey_completed="false"
   local source_clean_end="false"
   local git_commit_end
   local git_tree_end
   if [[ $# -gt 0 ]]; then
     exit_code="$1"
+  fi
+  if [[ "${E2E_JOURNEY_COMPLETED:-false}" == "true" ]]; then
+    journey_completed="true"
+  else
+    e2e_log "The release journey did not reach its explicit completion marker."
+    if [[ "${exit_code}" -eq 0 ]]; then
+      exit_code=1
+    fi
   fi
   e2e_stop_backend || true
   e2e_stop_metro || true
@@ -406,6 +416,7 @@ e2e_cleanup() {
     source_clean_end="true"
   fi
   e2e_record_property source_clean_end "${source_clean_end}"
+  e2e_record_property journey_completed "${journey_completed}"
   if [[ "${E2E_SOURCE_CLEAN_START}" != "true" ]] || [[ "${source_clean_end}" != "true" ]]; then
     e2e_log "Source traceability failed (start=${E2E_SOURCE_CLEAN_START}, end=${source_clean_end})."
     if [[ "${exit_code}" -eq 0 ]]; then
