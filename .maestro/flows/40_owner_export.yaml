@@ -1,0 +1,19 @@
+appId: ${APP_ID}
+name: Owner requests an account export and dismisses the system share sheet
+tags:
+  - simulator
+  - export
+---
+- tapOn:
+    id: "tab-settings"
+- tapOn:
+    id: "account-export-open"
+- assertVisible: "Vaše data bez černé skříňky"
+- tapOn:
+    id: "account-export-submit"
+- waitForAnimationToEnd:
+    timeout: 15000
+- pressKey: BACK
+- extendedWaitUntil:
+    visible: "Export server připravil a otevřel systémovou nabídku sdílení."
+    timeout: 10000

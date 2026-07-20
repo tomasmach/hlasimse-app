@@ -1,0 +1,22 @@
+appId: ${APP_ID}
+name: Owner explicitly deletes the test account after incidents are resolved
+tags:
+  - simulator
+  - destructive-test-fixture
+---
+- tapOn: "Zpět"
+- tapOn:
+    id: "account-delete-open"
+- assertVisible: "Nejdřív bezpečně uzavřete vztahy"
+- tapOn:
+    id: "account-delete-password"
+- inputText: ${E2E_CREDENTIAL}
+- hideKeyboard
+- tapOn:
+    id: "account-delete-submit"
+- assertVisible: "Trvale smazat účet?"
+- tapOn: "Smazat účet"
+- extendedWaitUntil:
+    visible:
+      id: "login-screen"
+    timeout: 20000

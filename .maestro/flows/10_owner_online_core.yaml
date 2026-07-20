@@ -1,0 +1,65 @@
+appId: ${APP_ID}
+name: Owner login, confirmed check-in, pause, resume, history and guardian
+tags:
+  - simulator
+  - owner
+---
+- tapOn:
+    id: "login-email-input"
+- inputText: ${OWNER_EMAIL}
+- tapOn:
+    id: "login-password-input"
+- inputText: ${E2E_CREDENTIAL}
+- hideKeyboard
+- tapOn:
+    id: "login-submit-button"
+- extendedWaitUntil:
+    visible:
+      id: "checkin-submit"
+    timeout: 20000
+- assertVisible: "E2E bezpečnostní profil"
+- tapOn:
+    id: "checkin-submit"
+- extendedWaitUntil:
+    visible: "Check-in potvrzen serverem"
+    timeout: 15000
+- tapOn: "Check-in potvrzen serverem"
+- extendedWaitUntil:
+    visible:
+      id: "profile-pause"
+    timeout: 10000
+- tapOn:
+    id: "profile-pause"
+- assertVisible: "Pozastavit profil?"
+- tapOn: "Potvrdit pauzu"
+- extendedWaitUntil:
+    visible:
+      id: "profile-resume"
+    timeout: 15000
+- tapOn:
+    id: "profile-resume"
+- assertVisible: "Obnovit profil?"
+- tapOn: "Obnovit"
+- extendedWaitUntil:
+    visible:
+      id: "profile-pause"
+    timeout: 15000
+- tapOn:
+    id: "tab-activity"
+- extendedWaitUntil:
+    visible:
+      id: "statistics-section"
+    timeout: 15000
+- assertVisible:
+    id: "history-section"
+- assertVisible: "Vyřešený incident"
+- tapOn:
+    id: "tab-guardians"
+- extendedWaitUntil:
+    visible: "E2E Strážce"
+    timeout: 15000
+- assertVisible: "1/5 aktivních"
+- tapOn:
+    id: "tab-index"
+- assertVisible:
+    id: "checkin-submit"

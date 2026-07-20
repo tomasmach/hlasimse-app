@@ -1,0 +1,19 @@
+appId: ${APP_ID}
+name: Owner synchronizes a pending request after API recovery
+tags:
+  - simulator
+  - offline
+---
+- tapOn:
+    id: "offline-queue-sync"
+- extendedWaitUntil:
+    visible: ".*čekající hlášení server potvrdil.*"
+    timeout: 20000
+- extendedWaitUntil:
+    notVisible: "Čeká na připojení — strážci zatím spoléhají na původní termín"
+    timeout: 15000
+- tapOn:
+    id: "tab-activity"
+- extendedWaitUntil:
+    visible: "Synchronizováno později z offline fronty.*"
+    timeout: 15000

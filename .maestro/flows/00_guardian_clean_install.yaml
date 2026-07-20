@@ -1,0 +1,74 @@
+appId: ${APP_ID}
+name: Guardian clean install, onboarding, incident acknowledgement
+tags:
+  - simulator
+  - guardian
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible: "Co vás přivedlo?"
+    timeout: 30000
+- tapOn: "Bydlím sám/sama"
+- extendedWaitUntil:
+    visible: "Víme, jaké to je"
+    timeout: 10000
+- tapOn: "Jak to funguje?"
+- assertVisible: "Takhle to řešíme"
+- tapOn: "Chci to vidět"
+- extendedWaitUntil:
+    visible: "Zkuste to. Klepněte."
+    timeout: 10000
+- tapOn: "Odeslat hlášení"
+- extendedWaitUntil:
+    visible: "Chci začít"
+    timeout: 10000
+- tapOn: "Chci začít"
+- assertVisible: "Pojďme na to"
+- tapOn: "Přihlásit se"
+- extendedWaitUntil:
+    visible:
+      id: "login-screen"
+    timeout: 10000
+- tapOn:
+    id: "login-email-input"
+- inputText: ${GUARDIAN_EMAIL}
+- tapOn:
+    id: "login-password-input"
+- inputText: ${E2E_CREDENTIAL}
+- hideKeyboard
+- tapOn:
+    id: "login-submit-button"
+- extendedWaitUntil:
+    visible:
+      id: "tab-activity"
+    timeout: 20000
+- tapOn:
+    id: "tab-activity"
+- extendedWaitUntil:
+    visible: "Aktivní incident"
+    timeout: 15000
+- tapOn: "Aktivní incident profilu E2E bezpečnostní profil"
+- extendedWaitUntil:
+    visible:
+      id: "incident-acknowledge"
+    timeout: 15000
+- tapOn:
+    id: "incident-acknowledge"
+- extendedWaitUntil:
+    visible: "Potvrzení uloženo serverem"
+    timeout: 15000
+- tapOn: "Zpět"
+- tapOn:
+    id: "tab-guardians"
+- assertVisible: "Profily, které hlídám"
+- assertVisible: "E2E bezpečnostní profil"
+- tapOn:
+    id: "tab-settings"
+- tapOn: "Odhlásit se"
+- assertVisible: "Odhlásit se?"
+- tapOn: "Odhlásit"
+- extendedWaitUntil:
+    visible:
+      id: "login-screen"
+    timeout: 15000

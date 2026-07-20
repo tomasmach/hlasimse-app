@@ -1,0 +1,30 @@
+appId: ${APP_ID}
+name: Owner creates a second free safety profile
+tags:
+  - simulator
+  - owner
+  - profile
+---
+- tapOn:
+    id: "profile-switcher"
+- tapOn:
+    id: "profile-create-open"
+- extendedWaitUntil:
+    visible:
+      id: "profile-create-name-input"
+    timeout: 10000
+- tapOn:
+    id: "profile-create-name-input"
+- inputText: "E2E druhý profil"
+- tapOn:
+    id: "profile-create-interval-input"
+- eraseText: 4
+- inputText: "120"
+- hideKeyboard
+- tapOn:
+    id: "profile-create-submit"
+- extendedWaitUntil:
+    visible: "E2E druhý profil"
+    timeout: 15000
+- assertVisible:
+    id: "checkin-submit"
