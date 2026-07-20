@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type ComponentType } from "react";
+import { useCallback, useMemo, useState, type ComponentType } from "react";
 import {
   ActivityIndicator,
   Pressable,
@@ -8,7 +8,7 @@ import {
   View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { router } from "expo-router";
+import { router, useFocusEffect } from "expo-router";
 import {
   Archive,
   ArrowRight,
@@ -178,9 +178,11 @@ export default function ActivityScreen() {
     ]);
   }, [filter, profile?.id, product.loadTimeline, product.loadStatistics, product.loadAlerts]);
 
-  useEffect(() => {
-    void load();
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
 
   const refresh = async () => {
     setRefreshing(true);

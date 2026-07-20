@@ -36,3 +36,9 @@ it("exposes the server-confirmed check-in overlay as one dismiss action", () => 
   expect(source).toContain('testID="checkin-success-overlay"');
   expect(source).toContain('accessibilityLabel="Check-in potvrzen serverem. Klepnutím zavřete."');
 });
+
+it("reloads safety history whenever its tab regains focus", () => {
+  const source = readFileSync(resolve(mobileRoot, "app/(tabs)/activity.tsx"), "utf8");
+  expect(source).toContain("useFocusEffect(");
+  expect(source).toContain("void load();");
+});
