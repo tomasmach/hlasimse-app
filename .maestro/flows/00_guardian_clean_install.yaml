@@ -57,11 +57,23 @@ tags:
     visible:
       id: "login-screen"
     timeout: 10000
-- tapOn:
-    id: "login-email-input"
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "login-email-input"
+      - assertVisible:
+          id: "login-email-input"
+          focused: true
 - inputText: ${GUARDIAN_EMAIL}
-- tapOn:
-    id: "login-password-input"
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "login-password-input"
+      - assertVisible:
+          id: "login-password-input"
+          focused: true
 - inputText: ${E2E_CREDENTIAL}
 - hideKeyboard
 - tapOn:

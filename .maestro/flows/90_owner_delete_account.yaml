@@ -4,12 +4,19 @@ tags:
   - simulator
   - destructive-test-fixture
 ---
-- tapOn: "Zpět"
+- tapOn:
+    id: "back-button"
 - tapOn:
     id: "account-delete-open"
 - assertVisible: "Nejdřív bezpečně uzavřete vztahy"
-- tapOn:
-    id: "account-delete-password"
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "account-delete-password"
+      - assertVisible:
+          id: "account-delete-password"
+          focused: true
 - inputText: ${E2E_CREDENTIAL}
 - hideKeyboard
 - tapOn:
