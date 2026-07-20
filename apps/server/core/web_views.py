@@ -520,9 +520,7 @@ def _timeline_page(profiles, page_number):
         item.pk: item
         for item in CheckIn.objects.filter(
             pk__in=[
-                event.aggregate_id
-                for event in events
-                if event.event_type == "checkin.confirmed"
+                event.aggregate_id for event in events if event.event_type == "checkin.confirmed"
             ]
         ).annotate(resolved_incident_count=Count("resolved_incidents", distinct=True))
     }
@@ -562,9 +560,7 @@ def _timeline_page(profiles, page_number):
             item["incident"] = incidents[event.aggregate_id]
         elif event.event_type in {"profile.paused", "profile.resumed"}:
             item["automatic"] = event.metadata.get("automatic", False)
-            item["has_scheduled_resume"] = event.metadata.get(
-                "has_scheduled_resume", False
-            )
+            item["has_scheduled_resume"] = event.metadata.get("has_scheduled_resume", False)
         timeline.append(item)
     page_obj.object_list = timeline
     return page_obj
@@ -823,13 +819,9 @@ def alert_detail_view(request, pk):
         ).first()
     else:
         alert.last_checkin = None
-    acknowledgements = alert.acknowledgements.select_related("user").order_by(
-        "acknowledged_at"
-    )
+    acknowledgements = alert.acknowledgements.select_related("user").order_by("acknowledged_at")
     for acknowledgement in acknowledgements:
-        acknowledgement.user_display_name = _display_name(
-            acknowledgement.user, "Strážce"
-        )
+        acknowledgement.user_display_name = _display_name(acknowledgement.user, "Strážce")
     attempts = alert.deliveries.all()
     if alert.profile.owner_id != request.user.id:
         attempts = attempts.filter(device__user=request.user)
@@ -840,9 +832,7 @@ def alert_detail_view(request, pk):
     delivery_counts = {key: value for key, value in delivery_counts.items() if value}
     if delivery_counts.get("delivered"):
         delivery_state = "delivered"
-    elif delivery_counts.get("ticket_received") or delivery_counts.get(
-        "receipt_processing"
-    ):
+    elif delivery_counts.get("ticket_received") or delivery_counts.get("receipt_processing"):
         delivery_state = "sent_to_provider"
     elif delivery_counts.get("queued") or delivery_counts.get("retryable_failure"):
         delivery_state = "pending"
