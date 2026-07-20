@@ -12,9 +12,11 @@ tags:
 - extendedWaitUntil:
     notVisible: "Čeká na připojení — strážci zatím spoléhají na původní termín"
     timeout: 15000
-- tapOn:
-    id: "tab-activity"
-    retryTapIfNoChange: true
-- extendedWaitUntil:
-    visible: "Synchronizováno později z offline fronty.*"
-    timeout: 15000
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-activity"
+      - extendedWaitUntil:
+          visible: "Synchronizováno později z offline fronty.*"
+          timeout: 5000

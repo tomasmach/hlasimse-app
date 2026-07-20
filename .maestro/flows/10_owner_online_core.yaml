@@ -48,25 +48,33 @@ tags:
     visible:
       id: "profile-pause"
     timeout: 15000
-- tapOn:
-    id: "tab-activity"
-    retryTapIfNoChange: true
-- extendedWaitUntil:
-    visible:
-      id: "statistics-section"
-    timeout: 15000
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-activity"
+      - extendedWaitUntil:
+          visible:
+            id: "statistics-section"
+          timeout: 5000
 - assertVisible:
     id: "history-section"
 - assertVisible: "Vyřešený incident"
-- tapOn:
-    id: "tab-guardians"
-    retryTapIfNoChange: true
-- extendedWaitUntil:
-    visible: "E2E Strážce"
-    timeout: 15000
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-guardians"
+      - extendedWaitUntil:
+          visible: "E2E Strážce"
+          timeout: 5000
 - assertVisible: "1/5 aktivních"
-- tapOn:
-    id: "tab-index"
-    retryTapIfNoChange: true
-- assertVisible:
-    id: "checkin-submit"
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-index"
+      - extendedWaitUntil:
+          visible:
+            id: "checkin-submit"
+          timeout: 5000

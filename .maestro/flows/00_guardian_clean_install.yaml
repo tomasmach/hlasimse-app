@@ -74,12 +74,14 @@ tags:
     visible:
       id: "tab-activity"
     timeout: 20000
-- tapOn:
-    id: "tab-activity"
-    retryTapIfNoChange: true
-- extendedWaitUntil:
-    visible: "Aktivní incident profilu E2E bezpečnostní profil"
-    timeout: 15000
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-activity"
+      - extendedWaitUntil:
+          visible: "Aktivní incident profilu E2E bezpečnostní profil"
+          timeout: 5000
 - tapOn: "Aktivní incident profilu E2E bezpečnostní profil"
 - extendedWaitUntil:
     visible:
@@ -96,14 +98,23 @@ tags:
     visible: "Potvrzení uloženo serverem"
     timeout: 15000
 - tapOn: "Zpět"
-- tapOn:
-    id: "tab-guardians"
-    retryTapIfNoChange: true
-- assertVisible: "Profily, které hlídám"
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-guardians"
+      - extendedWaitUntil:
+          visible: "Profily, které hlídám"
+          timeout: 5000
 - assertVisible: "E2E bezpečnostní profil"
-- tapOn:
-    id: "tab-settings"
-    retryTapIfNoChange: true
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-settings"
+      - extendedWaitUntil:
+          visible: "Odhlásit se"
+          timeout: 5000
 - tapOn: "Odhlásit se"
 - assertVisible: "Odhlásit se?"
 - tapOn: "Odhlásit"

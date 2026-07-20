@@ -4,9 +4,15 @@ tags:
   - simulator
   - export
 ---
-- tapOn:
-    id: "tab-settings"
-    retryTapIfNoChange: true
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-settings"
+      - extendedWaitUntil:
+          visible:
+            id: "account-export-open"
+          timeout: 5000
 - tapOn:
     id: "account-export-open"
 - assertVisible: "Vaše data bez černé skříňky"
