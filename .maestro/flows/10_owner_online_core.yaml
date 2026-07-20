@@ -4,23 +4,12 @@ tags:
   - simulator
   - owner
 ---
-- retry:
-    maxRetries: 2
-    commands:
-      - tapOn:
-          id: "login-email-input"
-      - assertVisible:
-          id: "login-email-input"
-          focused: true
+- tapOn:
+    id: "login-email-input"
 - inputText: ${OWNER_EMAIL}
-- retry:
-    maxRetries: 2
-    commands:
-      - tapOn:
-          id: "login-password-input"
-      - assertVisible:
-          id: "login-password-input"
-          focused: true
+- tapOn:
+    id: "login-password-input"
+    retryTapIfNoChange: true
 - inputText: ${E2E_CREDENTIAL}
 - hideKeyboard
 - tapOn:

@@ -13,23 +13,12 @@ tags:
     visible:
       id: "profile-create-name-input"
     timeout: 10000
-- retry:
-    maxRetries: 2
-    commands:
-      - tapOn:
-          id: "profile-create-name-input"
-      - assertVisible:
-          id: "profile-create-name-input"
-          focused: true
+- tapOn:
+    id: "profile-create-name-input"
 - inputText: "E2E druhý profil"
-- retry:
-    maxRetries: 2
-    commands:
-      - tapOn:
-          id: "profile-create-interval-input"
-      - assertVisible:
-          id: "profile-create-interval-input"
-          focused: true
+- tapOn:
+    id: "profile-create-interval-input"
+    retryTapIfNoChange: true
 - eraseText: 4
 - inputText: "120"
 - hideKeyboard

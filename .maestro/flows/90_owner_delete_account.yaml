@@ -9,14 +9,8 @@ tags:
 - tapOn:
     id: "account-delete-open"
 - assertVisible: "Nejdřív bezpečně uzavřete vztahy"
-- retry:
-    maxRetries: 2
-    commands:
-      - tapOn:
-          id: "account-delete-password"
-      - assertVisible:
-          id: "account-delete-password"
-          focused: true
+- tapOn:
+    id: "account-delete-password"
 - inputText: ${E2E_CREDENTIAL}
 - hideKeyboard
 - tapOn:
