@@ -8,6 +8,13 @@ tags:
     clearState: true
 - runFlow:
     when:
+      platform: iOS
+    commands:
+      - tapOn:
+          text: "Not Now"
+          optional: true
+- runFlow:
+    when:
       platform: Android
     commands:
       - openLink: ${DEV_CLIENT_URL}
@@ -99,6 +106,9 @@ tags:
       platform: iOS
     commands:
       - inputText: ${E2E_CREDENTIAL}
+      - tapOn:
+          text: "Not Now"
+          optional: true
 - scrollUntilVisible:
     element:
       id: "login-submit-button"
@@ -179,3 +189,10 @@ tags:
     visible:
       id: "login-screen"
     timeout: 15000
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn:
+          text: "Not Now"
+          optional: true

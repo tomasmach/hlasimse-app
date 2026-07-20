@@ -5,6 +5,13 @@ tags:
   - destructive-test-fixture
 ---
 - launchApp
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn:
+          text: "Not Now"
+          optional: true
 - retry:
     maxRetries: 2
     commands:
@@ -29,6 +36,13 @@ tags:
 - tapOn:
     id: "account-delete-password"
 - inputText: ${E2E_CREDENTIAL}
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn:
+          text: "Not Now"
+          optional: true
 - hideKeyboard
 - scrollUntilVisible:
     element:

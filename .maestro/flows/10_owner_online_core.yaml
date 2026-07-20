@@ -10,12 +10,18 @@ tags:
     commands:
       - launchApp
       - tapOn:
+          text: "Not Now"
+          optional: true
+      - tapOn:
           id: "login-email-input"
       - inputText: ${OWNER_EMAIL}
       - tapOn:
           id: "login-password-input"
           retryTapIfNoChange: true
       - inputText: ${E2E_CREDENTIAL}
+      - tapOn:
+          text: "Not Now"
+          optional: true
       - hideKeyboard
       - scrollUntilVisible:
           element:
