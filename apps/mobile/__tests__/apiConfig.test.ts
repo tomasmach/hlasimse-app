@@ -32,9 +32,9 @@ describe("resolveApiBaseUrl", () => {
     })).toThrow("Insecure API URLs are allowed only for local development hosts.");
   });
 
-  it("allows the exact Android emulator bridge only for the native E2E application ID", () => {
+  it("selects the exact Android emulator bridge from native E2E identity", () => {
     expect(resolveApiBaseUrl({
-      configuredBaseUrl: "http://10.0.2.2:8000",
+      configuredBaseUrl: "https://release-manifest.invalid",
       isDevelopment: false,
       isAndroidE2E: true,
       isIosE2E: false,
@@ -47,9 +47,9 @@ describe("resolveApiBaseUrl", () => {
     })).toThrow("EXPO_PUBLIC_API_URL must use HTTPS in production.");
   });
 
-  it("allows the exact iOS simulator loopback only for the native E2E application ID", () => {
+  it("selects the exact iOS loopback from native E2E identity with the production JS config", () => {
     expect(resolveApiBaseUrl({
-      configuredBaseUrl: "http://127.0.0.1:8000",
+      configuredBaseUrl: "https://release-manifest.invalid",
       isDevelopment: false,
       isAndroidE2E: false,
       isIosE2E: true,
@@ -63,20 +63,25 @@ describe("resolveApiBaseUrl", () => {
   });
 
   it.each([
-    ["http://localhost:8000", false, true],
-    ["http://127.0.0.1:9000", false, true],
-    ["http://10.0.2.2:8000", false, true],
-    ["http://api.example.test", false, true],
-    ["http://localhost:8000", true, false],
-    ["http://127.0.0.1:8000", true, false],
-    ["http://10.0.2.2:9000", true, false],
-    ["http://api.example.test", true, false],
-  ])("rejects non-exact production HTTP for native E2E targets: %s", (configuredBaseUrl, isAndroidE2E, isIosE2E) => {
+    "http://localhost:8000",
+    "http://127.0.0.1:8000",
+    "http://10.0.2.2:9000",
+    "http://api.example.test",
+  ])("rejects production HTTP without native E2E identity: %s", (configuredBaseUrl) => {
     expect(() => resolveApiBaseUrl({
       configuredBaseUrl,
       isDevelopment: false,
-      isAndroidE2E,
-      isIosE2E,
+      isAndroidE2E: false,
+      isIosE2E: false,
     })).toThrow("EXPO_PUBLIC_API_URL must use HTTPS in production.");
+  });
+
+  it("rejects conflicting native E2E identities", () => {
+    expect(() => resolveApiBaseUrl({
+      configuredBaseUrl: "https://release-manifest.invalid",
+      isDevelopment: false,
+      isAndroidE2E: true,
+      isIosE2E: true,
+    })).toThrow("Conflicting native E2E application identity.");
   });
 });

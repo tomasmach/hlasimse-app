@@ -259,11 +259,13 @@ ruby -e '
     ios_runtime_id xcode_version xcode_build
     production_app_id release_evidence_eligible device_cleanup_completed build_cleanup_completed build_configuration packaged_app_version packaged_app_build js_bundle_mode
     metro_used native_project_origin expo_prebuild_version cocoapods_version
-    podfile_lock_sha256 native_project_sha256 production_app_sha256 production_js_bundle_sha256 e2e_app_sha256
+    podfile_lock_sha256 native_project_sha256 production_app_sha256 production_app_sha256_after_isolation e2e_source_app_sha256 production_js_bundle_sha256 e2e_app_sha256
     e2e_executable_sha256 e2e_js_bundle_sha256 e2e_info_plist_sha256 installed_app_sha256
     e2e_codesign_cdhash signing_authority bundle_identity_derivation
+    js_bundle_relation production_entitlements_sha256 e2e_entitlements_sha256 bundle_bound_entitlements_present
     production_cleartext_allowed e2e_local_networking_allowed initial_install_mode
     update_artifact_relation n_minus_one_coverage store_signed_update_coverage
+    production_endpoint_coverage artifact_scope
     ios_architectures ios_bundle_present_before_install
   ]
   missing_ios = required_ios.reject { |key| ios.include?("e2e_record_property #{key}") }
@@ -283,11 +285,13 @@ ruby -e '
     %q{pod install},
     %q{-configuration Release},
     %q{EXPO_PUBLIC_API_URL="https://release-manifest.invalid"},
-    %q{EXPO_PUBLIC_API_URL="http://127.0.0.1:8000/"},
+    %q{E2E_APP_ID="${IOS_PRODUCTION_APP_ID}.e2e"},
     %q{main.jsbundle},
+    %q{ditto "${IOS_PRODUCTION_APP_PATH}" "${IOS_E2E_APP_PATH}"},
     %q{Set :CFBundleIdentifier ${E2E_APP_ID}},
     %q{Set :NSAppTransportSecurity:NSAllowsLocalNetworking true},
-    %q{codesign --force --sign - --timestamp=none},
+    %q{codesign --force --sign - --timestamp=none --entitlements},
+    %q{bundle_bound_entitlement in application-identifier com.apple.developer.team-identifier keychain-access-groups},
     %q{xcrun simctl install "${device_id}" "${IOS_E2E_APP_PATH}"},
     %q{xcrun simctl launch --terminate-running-process},
     %q{same-built-app-reinstall-not-n-minus-one},
@@ -316,9 +320,12 @@ ruby -e '
   abort("iOS release evidence still contains development tooling: #{ios_release_violation}") if ios_release_violation
   abort("iOS release evidence contains a Debug build configuration") if ios.match?(/-configuration\s+Debug/)
   production_release_build = ios.match?(/EXPO_PUBLIC_API_URL="https:\/\/release-manifest\.invalid".*?xcodebuild.*?-configuration Release.*?-derivedDataPath "\$\{production_derived_data\}" build/m)
-  e2e_release_build = ios.match?(/EXPO_PUBLIC_API_URL="http:\/\/127\.0\.0\.1:8000\/".*?xcodebuild.*?-configuration Release.*?-derivedDataPath "\$\{e2e_derived_data\}" build/m)
   abort("Production iOS build is not structurally tied to Release and its own DerivedData") unless production_release_build
-  abort("E2E iOS build is not structurally tied to Release and its own DerivedData") unless e2e_release_build
+  release_build_count = ios.scan(/-derivedDataPath "\$\{[^}]+\}" build/).length
+  abort("iOS harness must contain exactly one Xcode app build") unless release_build_count == 1
+  abort("iOS E2E transport must not depend on a separate loopback-configured JS build") if ios.match?(/EXPO_PUBLIC_API_URL="http:\/\//) || ios.include?("e2e_derived_data")
+  abort("iOS E2E JS must be byte-identical to production") unless ios.include?(%q{[[ "${IOS_PRODUCTION_JS_BUNDLE_SHA256}" == "${IOS_E2E_JS_BUNDLE_SHA256}" ]]})
+  abort("Production iOS ID does not reserve the E2E suffix") unless ios.include?(%q{[[ "${IOS_PRODUCTION_APP_ID}" == *.e2e ]]})
 
   forbidden_lifecycle = [
     /simctl\s+delete\s+(?:all|unavailable)/,
@@ -391,10 +398,19 @@ ruby -rjson -e '
   api = File.read(ARGV.fetch(1))
   config = File.read(ARGV.fetch(2))
   ats = app.dig("expo", "ios", "infoPlist", "NSAppTransportSecurity")
+  ios_bundle_id = app.dig("expo", "ios", "bundleIdentifier")
+  android_package = app.dig("expo", "android", "package")
+  abort("Production iOS bundle ID is missing") unless ios_bundle_id.is_a?(String) && !ios_bundle_id.empty?
+  abort("Production Android package is missing") unless android_package.is_a?(String) && !android_package.empty?
+  abort("Production iOS bundle ID must not use the reserved .e2e suffix") if ios_bundle_id.end_with?(".e2e")
+  abort("Production Android package must not use the reserved .e2e suffix") if android_package.end_with?(".e2e")
   abort("Production iOS ATS must reject arbitrary loads") unless ats.is_a?(Hash) && ats["NSAllowsArbitraryLoads"] == false
   abort("Production iOS ATS must reject local networking") unless ats["NSAllowsLocalNetworking"] == false
   abort("iOS E2E transport is not tied to the native application identity") unless api.include?(%q{Platform.OS === "ios" && Application.applicationId?.endsWith(".e2e") === true})
   abort("iOS E2E loopback URL is not exact") unless config.include?(%q{const IOS_SIMULATOR_E2E_URL = "http://127.0.0.1:8000"})
+  identity_override = config.index(%q{if (isIosE2E)})
+  configured_resolution = config.index(%q{const baseUrl = configuredBaseUrl})
+  abort("iOS native E2E identity does not override the production JS endpoint") unless identity_override && configured_resolution && identity_override < configured_resolution
   abort("Mobile API config uses a spoofable public E2E flag") if api.include?("EXPO_PUBLIC_E2E") || config.include?("EXPO_PUBLIC_E2E")
 ' "${ROOT_DIR}/apps/mobile/app.json" "${ROOT_DIR}/apps/mobile/lib/api.ts" \
   "${ROOT_DIR}/apps/mobile/lib/apiConfig.ts"

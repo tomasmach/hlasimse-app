@@ -16,6 +16,16 @@ export function resolveApiBaseUrl({
   isAndroidE2E,
   isIosE2E,
 }: ApiConfigInput): string {
+  if (isAndroidE2E && isIosE2E) {
+    throw new Error("Conflicting native E2E application identity.");
+  }
+  if (isAndroidE2E) {
+    return ANDROID_EMULATOR_E2E_URL;
+  }
+  if (isIosE2E) {
+    return IOS_SIMULATOR_E2E_URL;
+  }
+
   const baseUrl = configuredBaseUrl?.trim().replace(/\/$/, "")
     || (isDevelopment ? DEVELOPMENT_DEFAULT : "");
 
@@ -29,12 +39,6 @@ export function resolveApiBaseUrl({
     if (!LOCAL_DEVELOPMENT_URL.test(baseUrl)) {
       throw new Error("Insecure API URLs are allowed only for local development hosts.");
     }
-    return baseUrl;
-  }
-  if (
-    (isAndroidE2E && baseUrl === ANDROID_EMULATOR_E2E_URL)
-    || (isIosE2E && baseUrl === IOS_SIMULATOR_E2E_URL)
-  ) {
     return baseUrl;
   }
   throw new Error("EXPO_PUBLIC_API_URL must use HTTPS in production.");

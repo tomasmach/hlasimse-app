@@ -11,6 +11,7 @@ IOS_BUILD_ROOT=""
 IOS_PRODUCTION_APP_PATH=""
 IOS_E2E_APP_PATH=""
 IOS_PRODUCTION_APP_ID=""
+IOS_PRODUCTION_JS_BUNDLE_SHA256=""
 IOS_E2E_APP_SHA256=""
 IOS_E2E_EXECUTABLE_SHA256=""
 IOS_E2E_JS_BUNDLE_SHA256=""
@@ -106,6 +107,7 @@ e2e_ios_cleanup() {
 trap 'e2e_ios_cleanup "$?"' EXIT
 
 e2e_require curl
+e2e_require cmp
 e2e_require lsof
 e2e_require node
 e2e_require npx
@@ -177,6 +179,10 @@ IOS_PRODUCTION_APP_ID="$(e2e_app_id ios)"
 E2E_APP_ID="${IOS_PRODUCTION_APP_ID}.e2e"
 if [[ ! "${IOS_PRODUCTION_APP_ID}" =~ ^[A-Za-z][A-Za-z0-9-]*(\.[A-Za-z][A-Za-z0-9-]*)+$ ]]; then
   e2e_log "Invalid base iOS bundle ID: ${IOS_PRODUCTION_APP_ID}."
+  exit 2
+fi
+if [[ "${IOS_PRODUCTION_APP_ID}" == *.e2e ]]; then
+  e2e_log "Production iOS bundle ID must not end in the reserved .e2e suffix."
   exit 2
 fi
 export E2E_APP_ID
@@ -347,7 +353,6 @@ e2e_ios_prepare_release_apps() {
   local workspace="${native_dir}/Hlsmse.xcworkspace"
   local scheme="Hlsmse"
   local production_derived_data
-  local e2e_derived_data
   local production_info
   local e2e_info
   local executable_name
@@ -364,11 +369,17 @@ e2e_ios_prepare_release_apps() {
   local production_codesign_details
   local production_codesign_identifier
   local production_app_sha256
-  local production_js_bundle_sha256
+  local production_app_sha256_after_isolation
+  local e2e_source_app_sha256
   local packaged_app_version
   local packaged_app_build
   local e2e_info_plist_sha256
   local native_project_sha256
+  local production_entitlements_path="${E2E_ARTIFACT_DIR}/ios-production-entitlements.plist"
+  local e2e_entitlements_path="${E2E_ARTIFACT_DIR}/ios-e2e-entitlements.plist"
+  local production_entitlements_sha256
+  local e2e_entitlements_sha256
+  local bundle_bound_entitlement
 
   mkdir -p "${native_dir}"
   touch "${native_dir}/.hlasimse-prebuild-stale-sentinel"
@@ -397,7 +408,6 @@ e2e_ios_prepare_release_apps() {
   IOS_BUILD_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/hlasimse-ios-release.XXXXXX")"
   touch "${IOS_BUILD_ROOT}/.hlasimse-runner-owned-build-root"
   production_derived_data="${IOS_BUILD_ROOT}/production-derived-data"
-  e2e_derived_data="${IOS_BUILD_ROOT}/e2e-derived-data"
 
   (
     cd "${mobile_dir}"
@@ -410,27 +420,18 @@ e2e_ios_prepare_release_apps() {
         -derivedDataPath "${production_derived_data}" build
   ) 2>&1 | tee "${E2E_ARTIFACT_DIR}/ios-production-build.log"
 
-  (
-    cd "${mobile_dir}"
-    CI=1 NODE_PATH="${E2E_NODE_PATH}" NODE_ENV=production EXPO_NO_TELEMETRY=1 \
-      EXPO_PUBLIC_API_URL="http://127.0.0.1:8000/" \
-      NODE_BINARY="$(command -v node)" \
-      xcodebuild -workspace "${workspace}" -scheme "${scheme}" \
-        -configuration Release -sdk iphonesimulator \
-        -destination "id=${IOS_SIMULATOR_UDID}" \
-        -derivedDataPath "${e2e_derived_data}" build
-  ) 2>&1 | tee "${E2E_ARTIFACT_DIR}/ios-e2e-build.log"
-
   IOS_PRODUCTION_APP_PATH="${production_derived_data}/Build/Products/Release-iphonesimulator/Hlsmse.app"
-  local built_e2e_app="${e2e_derived_data}/Build/Products/Release-iphonesimulator/Hlsmse.app"
   [[ -d "${IOS_PRODUCTION_APP_PATH}" ]] || { e2e_log "Production Release .app is missing."; return 1; }
-  [[ -d "${built_e2e_app}" ]] || { e2e_log "E2E Release .app is missing."; return 1; }
 
   mkdir -p "${IOS_BUILD_ROOT}/immutable"
   IOS_E2E_APP_PATH="${IOS_BUILD_ROOT}/immutable/Hlsmse.app"
-  ditto "${built_e2e_app}" "${IOS_E2E_APP_PATH}"
+  ditto "${IOS_PRODUCTION_APP_PATH}" "${IOS_E2E_APP_PATH}"
   production_info="${IOS_PRODUCTION_APP_PATH}/Info.plist"
   e2e_info="${IOS_E2E_APP_PATH}/Info.plist"
+  production_app_sha256="$(e2e_ios_app_tree_sha256 "${IOS_PRODUCTION_APP_PATH}")"
+  e2e_source_app_sha256="$(e2e_ios_app_tree_sha256 "${IOS_E2E_APP_PATH}")"
+  [[ "${e2e_source_app_sha256}" == "${production_app_sha256}" ]] \
+    || { e2e_log "Release-derived E2E source copy differs before native isolation."; return 1; }
   production_bundle_id="$(e2e_ios_plist_value "${production_info}" CFBundleIdentifier)"
   [[ "${production_bundle_id}" == "${IOS_PRODUCTION_APP_ID}" ]] || { e2e_log "Production Release bundle ID mismatch."; return 1; }
   [[ "$(e2e_ios_plist_value "${e2e_info}" CFBundleIdentifier)" == "${IOS_PRODUCTION_APP_ID}" ]] || { e2e_log "E2E Release source bundle ID mismatch before isolation."; return 1; }
@@ -439,10 +440,36 @@ e2e_ios_prepare_release_apps() {
   [[ "$(e2e_ios_plist_value "${production_info}" CFBundleVersion)" == "$(e2e_app_build ios)" ]] \
     || { e2e_log "Production Release build number mismatch."; return 1; }
 
+  if ! codesign -d --entitlements :- "${IOS_PRODUCTION_APP_PATH}" \
+    >"${production_entitlements_path}" 2>"${E2E_ARTIFACT_DIR}/ios-production-entitlements.log"; then
+    e2e_log "Failed to extract production Release entitlements."
+    return 1
+  fi
+  plutil -lint "${production_entitlements_path}" >/dev/null \
+    || { e2e_log "Production Release entitlements are not a valid plist."; return 1; }
+  for bundle_bound_entitlement in application-identifier com.apple.developer.team-identifier keychain-access-groups; do
+    if /usr/libexec/PlistBuddy -c "Print :${bundle_bound_entitlement}" \
+      "${production_entitlements_path}" >/dev/null 2>&1; then
+      e2e_log "Refusing to preserve bundle-bound entitlement ${bundle_bound_entitlement} in the isolated E2E identity."
+      return 1
+    fi
+  done
   /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${E2E_APP_ID}" "${e2e_info}"
   /usr/libexec/PlistBuddy -c "Set :NSAppTransportSecurity:NSAllowsLocalNetworking true" "${e2e_info}"
-  codesign --force --sign - --timestamp=none "${IOS_E2E_APP_PATH}"
+  codesign --force --sign - --timestamp=none --entitlements "${production_entitlements_path}" \
+    "${IOS_E2E_APP_PATH}"
   codesign --verify --deep --strict "${IOS_E2E_APP_PATH}"
+  if ! codesign -d --entitlements :- "${IOS_E2E_APP_PATH}" \
+    >"${e2e_entitlements_path}" 2>"${E2E_ARTIFACT_DIR}/ios-e2e-entitlements.log"; then
+    e2e_log "Failed to extract isolated E2E entitlements."
+    return 1
+  fi
+  plutil -lint "${e2e_entitlements_path}" >/dev/null \
+    || { e2e_log "Isolated E2E entitlements are not a valid plist."; return 1; }
+  cmp -s "${production_entitlements_path}" "${e2e_entitlements_path}" \
+    || { e2e_log "Isolated E2E entitlements differ from the production Release app."; return 1; }
+  production_entitlements_sha256="$(shasum -a 256 "${production_entitlements_path}" | awk '{print $1}')"
+  e2e_entitlements_sha256="$(shasum -a 256 "${e2e_entitlements_path}" | awk '{print $1}')"
 
   e2e_bundle_id="$(e2e_ios_plist_value "${e2e_info}" CFBundleIdentifier)"
   [[ "${e2e_bundle_id}" == "${E2E_APP_ID}" ]] || { e2e_log "Isolated E2E Release bundle ID mismatch."; return 1; }
@@ -467,12 +494,10 @@ e2e_ios_prepare_release_apps() {
   [[ -s "${IOS_PRODUCTION_APP_PATH}/main.jsbundle" ]] || { e2e_log "Production Release embedded main.jsbundle is missing."; return 1; }
   grep -aFq 'https://release-manifest.invalid' "${IOS_PRODUCTION_APP_PATH}/main.jsbundle" \
     || { e2e_log "Production Release JS bundle does not contain its HTTPS endpoint sentinel."; return 1; }
-  grep -aFq 'http://127.0.0.1:8000/' "${IOS_E2E_APP_PATH}/main.jsbundle" \
-    || { e2e_log "E2E Release JS bundle does not contain its exact loopback endpoint."; return 1; }
-  if grep -aFq 'https://release-manifest.invalid' "${IOS_E2E_APP_PATH}/main.jsbundle"; then
-    e2e_log "E2E Release JS bundle unexpectedly contains the production endpoint sentinel."
-    return 1
-  fi
+  grep -aFq 'https://release-manifest.invalid' "${IOS_E2E_APP_PATH}/main.jsbundle" \
+    || { e2e_log "Release-derived E2E JS bundle lost the production endpoint sentinel."; return 1; }
+  grep -aFq 'http://127.0.0.1:8000' "${IOS_E2E_APP_PATH}/main.jsbundle" \
+    || { e2e_log "Release-derived E2E JS bundle lacks the native-identity loopback constant."; return 1; }
 
   xcodebuild -workspace "${workspace}" -scheme "${scheme}" -configuration Release \
     -sdk iphonesimulator -destination "id=${IOS_SIMULATOR_UDID}" -showBuildSettings \
@@ -493,13 +518,17 @@ e2e_ios_prepare_release_apps() {
   [[ "${production_codesign_identifier}" == "${IOS_PRODUCTION_APP_ID}" ]] \
     || { e2e_log "Production Release codesign identifier mismatch."; return 1; }
 
-  production_app_sha256="$(e2e_ios_app_tree_sha256 "${IOS_PRODUCTION_APP_PATH}")"
-  production_js_bundle_sha256="$(shasum -a 256 "${IOS_PRODUCTION_APP_PATH}/main.jsbundle" | awk '{print $1}')"
+  IOS_PRODUCTION_JS_BUNDLE_SHA256="$(shasum -a 256 "${IOS_PRODUCTION_APP_PATH}/main.jsbundle" | awk '{print $1}')"
   IOS_E2E_APP_SHA256="$(e2e_ios_app_tree_sha256 "${IOS_E2E_APP_PATH}")"
   IOS_E2E_EXECUTABLE_SHA256="$(shasum -a 256 "${IOS_E2E_APP_PATH}/${executable_name}" | awk '{print $1}')"
   IOS_E2E_JS_BUNDLE_SHA256="$(shasum -a 256 "${IOS_E2E_APP_PATH}/main.jsbundle" | awk '{print $1}')"
-  [[ "${production_js_bundle_sha256}" != "${IOS_E2E_JS_BUNDLE_SHA256}" ]] \
-    || { e2e_log "Production and E2E Release JS bundles are unexpectedly identical."; return 1; }
+  [[ "${IOS_PRODUCTION_JS_BUNDLE_SHA256}" == "${IOS_E2E_JS_BUNDLE_SHA256}" ]] \
+    || { e2e_log "Release-derived E2E JS bundle is not byte-identical to production."; return 1; }
+  [[ "${production_app_sha256}" != "${IOS_E2E_APP_SHA256}" ]] \
+    || { e2e_log "Native E2E isolation did not change the copied app tree."; return 1; }
+  production_app_sha256_after_isolation="$(e2e_ios_app_tree_sha256 "${IOS_PRODUCTION_APP_PATH}")"
+  [[ "${production_app_sha256_after_isolation}" == "${production_app_sha256}" ]] \
+    || { e2e_log "Production Release app changed while deriving the E2E copy."; return 1; }
   e2e_info_plist_sha256="$(shasum -a 256 "${e2e_info}" | awk '{print $1}')"
   native_project_sha256="$(shasum -a 256 "${native_dir}/Hlsmse.xcodeproj/project.pbxproj" | awk '{print $1}')"
 
@@ -514,10 +543,16 @@ e2e_ios_prepare_release_apps() {
   e2e_record_property podfile_lock_sha256 "${podfile_lock_sha256}"
   e2e_record_property native_project_sha256 "${native_project_sha256}"
   e2e_record_property production_app_sha256 "${production_app_sha256}"
-  e2e_record_property production_js_bundle_sha256 "${production_js_bundle_sha256}"
+  e2e_record_property production_app_sha256_after_isolation "${production_app_sha256_after_isolation}"
+  e2e_record_property e2e_source_app_sha256 "${e2e_source_app_sha256}"
+  e2e_record_property production_js_bundle_sha256 "${IOS_PRODUCTION_JS_BUNDLE_SHA256}"
   e2e_record_property e2e_app_sha256 "${IOS_E2E_APP_SHA256}"
   e2e_record_property e2e_executable_sha256 "${IOS_E2E_EXECUTABLE_SHA256}"
   e2e_record_property e2e_js_bundle_sha256 "${IOS_E2E_JS_BUNDLE_SHA256}"
+  e2e_record_property js_bundle_relation byte-identical-production-release
+  e2e_record_property production_entitlements_sha256 "${production_entitlements_sha256}"
+  e2e_record_property e2e_entitlements_sha256 "${e2e_entitlements_sha256}"
+  e2e_record_property bundle_bound_entitlements_present false
   e2e_record_property e2e_info_plist_sha256 "${e2e_info_plist_sha256}"
   e2e_record_property e2e_codesign_cdhash "${codesign_cdhash}"
   e2e_record_property signing_authority adhoc-simulator-test-only
@@ -528,6 +563,8 @@ e2e_ios_prepare_release_apps() {
   e2e_record_property update_artifact_relation same-built-app-reinstall-not-n-minus-one
   e2e_record_property n_minus_one_coverage false
   e2e_record_property store_signed_update_coverage false
+  e2e_record_property production_endpoint_coverage sentinel-not-real-production-endpoint
+  e2e_record_property artifact_scope release-derived-simulator-not-store-signed
   e2e_record_property ios_architectures "$(lipo -archs "${IOS_E2E_APP_PATH}/${executable_name}")"
 }
 
@@ -539,6 +576,8 @@ e2e_ios_install_and_launch_release_app() {
   local installed_app_sha256
   local installed_executable_sha256
   local installed_js_bundle_sha256
+  local installed_arbitrary_loads
+  local installed_local_networking
 
   if xcrun simctl get_app_container "${device_id}" "${E2E_APP_ID}" app >/dev/null 2>&1; then
     e2e_record_property ios_bundle_present_before_install true
@@ -555,6 +594,10 @@ e2e_ios_install_and_launch_release_app() {
     || { e2e_log "Installed E2E iOS version mismatch."; return 1; }
   [[ "$(e2e_ios_plist_value "${installed_info}" CFBundleVersion)" == "$(e2e_app_build ios)" ]] \
     || { e2e_log "Installed E2E iOS build number mismatch."; return 1; }
+  installed_arbitrary_loads="$(e2e_ios_plist_value "${installed_info}" NSAppTransportSecurity.NSAllowsArbitraryLoads)"
+  installed_local_networking="$(e2e_ios_plist_value "${installed_info}" NSAppTransportSecurity.NSAllowsLocalNetworking)"
+  [[ "${installed_arbitrary_loads}" == "false" && "${installed_local_networking}" == "true" ]] \
+    || { e2e_log "Installed E2E iOS ATS isolation mismatch."; return 1; }
   executable_name="$(e2e_ios_plist_value "${installed_info}" CFBundleExecutable)"
   installed_app_sha256="$(e2e_ios_app_tree_sha256 "${installed_bundle}")"
   installed_executable_sha256="$(shasum -a 256 "${installed_bundle}/${executable_name}" | awk '{print $1}')"
@@ -563,6 +606,10 @@ e2e_ios_install_and_launch_release_app() {
     || { e2e_log "Installed iOS executable differs from the immutable Release artifact."; return 1; }
   [[ "${installed_js_bundle_sha256}" == "${IOS_E2E_JS_BUNDLE_SHA256}" ]] \
     || { e2e_log "Installed iOS JS bundle differs from the immutable Release artifact."; return 1; }
+  [[ "${installed_js_bundle_sha256}" == "${IOS_PRODUCTION_JS_BUNDLE_SHA256}" ]] \
+    || { e2e_log "Installed iOS JS bundle differs from the production Release JS bundle."; return 1; }
+  grep -aFq 'https://release-manifest.invalid' "${installed_bundle}/main.jsbundle" \
+    || { e2e_log "Installed E2E JS bundle lost the production HTTPS endpoint sentinel."; return 1; }
   [[ "${installed_app_sha256}" == "${IOS_E2E_APP_SHA256}" ]] \
     || { e2e_log "Installed iOS app tree differs from the immutable Release artifact."; return 1; }
   e2e_record_property installed_app_sha256 "${installed_app_sha256}"

@@ -43,6 +43,15 @@ untouched even after a failed run. `E2E_IOS_REUSE_TEMPLATE=true` exists only for
 `device_origin=diagnostic-template-reuse` and `run_mode=diagnostic-template-reuse` are not accepted
 as fresh-device release evidence.
 
+The iOS runner compiles one production-like `Release` app with an embedded JS bundle and an HTTPS
+endpoint sentinel. Its simulator-only E2E copy keeps that JS bundle byte-identical, changes only
+the intended plist identity/ATS values, preserves the extracted entitlements, and is ad-hoc
+re-signed (which also updates signature material). The app selects loopback only when the native
+application ID ends in `.e2e`; the production identity keeps the HTTPS endpoint. This avoids
+environment-sensitive Metro transform-cache reuse while testing the same JS that is present in the
+production-like Release artifact. It is simulator evidence, not a store-signed artifact, real
+production-endpoint check, or N-1 update test.
+
 Run Android on an already booted emulator, or let the runner start the configured AVD:
 
 ```bash
