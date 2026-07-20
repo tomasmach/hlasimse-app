@@ -126,7 +126,13 @@ tags:
       - extendedWaitUntil:
           visible: "Odhlásit se"
           timeout: 5000
-- tapOn: "Odhlásit se"
+- scrollUntilVisible:
+    element:
+      id: "settings-sign-out"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "settings-sign-out"
 - assertVisible: "Odhlásit se?"
 - tapOn: "Odhlásit"
 - extendedWaitUntil:
