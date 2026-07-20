@@ -755,10 +755,10 @@ if ! xcrun simctl boot "${IOS_SIMULATOR_UDID}" 2>/dev/null; then
 fi
 xcrun simctl bootstatus "${IOS_SIMULATOR_UDID}" -b
 IOS_SIMULATOR_ARCHITECTURE="$(
-  xcrun simctl spawn "${IOS_SIMULATOR_UDID}" uname -m | tr -d '\r\n'
+  xcrun simctl spawn "${IOS_SIMULATOR_UDID}" /usr/sbin/sysctl -n hw.machine | tr -d '\r\n'
 )"
-if [[ "${IOS_SIMULATOR_ARCHITECTURE}" != "arm64" ]]; then
-  e2e_log "Release evidence requires an arm64 iOS simulator; found ${IOS_SIMULATOR_ARCHITECTURE}."
+if [[ ! "${IOS_SIMULATOR_ARCHITECTURE}" =~ ^(arm64|x86_64)$ ]]; then
+  e2e_log "Unsupported iOS simulator architecture: ${IOS_SIMULATOR_ARCHITECTURE}."
   exit 1
 fi
 e2e_record_property simulator_architecture "${IOS_SIMULATOR_ARCHITECTURE}"

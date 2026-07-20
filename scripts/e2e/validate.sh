@@ -287,7 +287,7 @@ ruby -e '
     %q{EXPO_PUBLIC_API_URL="https://release-manifest.invalid"},
     %q{E2E_APP_ID="${IOS_PRODUCTION_APP_ID}.e2e"},
     %q{ONLY_ACTIVE_ARCH=YES build},
-    %q{xcrun simctl spawn "${IOS_SIMULATOR_UDID}" uname -m},
+    %q{xcrun simctl spawn "${IOS_SIMULATOR_UDID}" /usr/sbin/sysctl -n hw.machine},
     %q{[[ "${ios_architectures}" == "${IOS_SIMULATOR_ARCHITECTURE}" ]]},
     %q{main.jsbundle},
     %q{ditto "${IOS_PRODUCTION_APP_PATH}" "${IOS_E2E_APP_PATH}"},
