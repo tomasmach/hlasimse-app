@@ -68,9 +68,15 @@ tags:
           visible:
             id: "statistics-section"
           timeout: 5000
-- assertVisible:
-    id: "history-section"
-- assertVisible: "Vyřešený incident"
+- scrollUntilVisible:
+    element: "Vyřešený incident"
+    direction: DOWN
+    centerElement: true
+- scrollUntilVisible:
+    element:
+      id: "history-section"
+    direction: DOWN
+    centerElement: true
 - retry:
     maxRetries: 2
     commands:
