@@ -4,6 +4,7 @@ tags:
   - simulator
   - offline
 ---
+- launchApp
 - tapOn:
     id: "checkin-submit"
 - extendedWaitUntil:

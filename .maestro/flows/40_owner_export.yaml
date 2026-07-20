@@ -4,6 +4,7 @@ tags:
   - simulator
   - export
 ---
+- launchApp
 - retry:
     maxRetries: 2
     commands:

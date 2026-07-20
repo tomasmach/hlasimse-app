@@ -5,6 +5,7 @@ tags:
   - owner
   - profile
 ---
+- launchApp
 - scrollUntilVisible:
     element:
       id: "profile-switcher"

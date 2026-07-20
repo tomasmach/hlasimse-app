@@ -4,6 +4,7 @@ tags:
   - simulator
   - offline
 ---
+- launchApp
 - tapOn:
     id: "offline-queue-sync"
 - extendedWaitUntil:

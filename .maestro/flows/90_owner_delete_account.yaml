@@ -4,6 +4,7 @@ tags:
   - simulator
   - destructive-test-fixture
 ---
+- launchApp
 - retry:
     maxRetries: 2
     commands:

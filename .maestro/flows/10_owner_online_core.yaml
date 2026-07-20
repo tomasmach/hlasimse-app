@@ -4,6 +4,7 @@ tags:
   - simulator
   - owner
 ---
+- launchApp
 - tapOn:
     id: "login-email-input"
 - runFlow:
