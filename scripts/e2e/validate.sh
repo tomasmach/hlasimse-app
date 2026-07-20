@@ -263,7 +263,7 @@ ruby -e '
     e2e_executable_sha256 e2e_js_bundle_sha256 e2e_info_plist_sha256 installed_app_sha256
     e2e_codesign_cdhash signing_authority bundle_identity_derivation
     js_bundle_relation production_entitlements_sha256 e2e_entitlements_sha256 bundle_bound_entitlements_present
-    framework_executable_mode_normalization normalized_framework_executable_count framework_executable_content_preserved
+    framework_executable_mode_normalization framework_executable_count normalized_framework_executable_count preexisting_framework_executable_0644_count framework_executable_content_preserved
     production_cleartext_allowed e2e_local_networking_allowed initial_install_mode
     update_artifact_relation n_minus_one_coverage store_signed_update_coverage
     production_endpoint_coverage artifact_scope
@@ -299,9 +299,17 @@ ruby -e '
     %q{bundle_bound_entitlement in application-identifier com.apple.developer.team-identifier keychain-access-groups},
     %q{[[ ! "${framework_executable}" =~ ^[A-Za-z0-9._+-]+$ ]]},
     %q{stat -f %Lp "${framework_executable_path}"},
+    %q{case "${framework_executable_mode}" in},
+    %q{755)},
+    %q{644)},
+    %q{Unexpected packaged framework executable mode},
     %q{chmod 0644 "${framework_executable_path}"},
+    %q{[[ "$(stat -f %Lp "${framework_executable_path}")" == "644" ]]},
     %q{[[ "${framework_executable_sha256_after}" == "${framework_executable_sha256_before}" ]]},
+    %q{[[ "${framework_executable_count}" -gt 0 ]]},
     %q{[[ "${normalized_framework_executable_count}" -gt 0 ]]},
+    %q{[[ "${preexisting_framework_executable_0644_count}" -gt 0 ]]},
+    %q{[[ "${framework_executable_count}" -eq "$((normalized_framework_executable_count + preexisting_framework_executable_0644_count))" ]]},
     %q{e2e_record_property framework_executable_content_preserved true},
     %q{release-postbuild-identity-ats-and-coresimulator-mode-isolated},
     %q{xcrun simctl install "${device_id}" "${IOS_E2E_APP_PATH}"},
@@ -312,6 +320,15 @@ ruby -e '
   ]
   missing_lifecycle = required_lifecycle.reject { |fragment| ios.include?(fragment) }
   abort("Missing fail-closed iOS lifecycle fragments: #{missing_lifecycle.join(", ")}") unless missing_lifecycle.empty?
+
+  framework_mode_case = ios[/case "\$\{framework_executable_mode\}" in(.*?)^    esac$/m, 1]
+  abort("Could not inspect iOS framework executable mode branches") unless framework_mode_case
+  mode_755_branch = framework_mode_case[/^      755\)(.*?)^        ;;$/m, 1]
+  mode_644_branch = framework_mode_case[/^      644\)(.*?)^        ;;$/m, 1]
+  unexpected_mode_branch = framework_mode_case[/^      \*\)(.*?)^        ;;$/m, 1]
+  abort("iOS 0755 framework mode branch is incomplete") unless mode_755_branch&.include?(%q{chmod 0644 "${framework_executable_path}"}) && mode_755_branch.include?(%q{normalized_framework_executable_count=$((normalized_framework_executable_count + 1))})
+  abort("iOS 0644 framework mode branch is incomplete") unless mode_644_branch&.include?(%q{preexisting_framework_executable_0644_count=$((preexisting_framework_executable_0644_count + 1))}) && !mode_644_branch.include?("chmod")
+  abort("Unexpected iOS framework modes do not fail closed") unless unexpected_mode_branch&.include?("Unexpected packaged framework executable mode") && unexpected_mode_branch.include?("return 1")
 
   cleanup_body = ios[/e2e_ios_cleanup\(\) \{(.*?)\n\}/m, 1]
   abort("Could not inspect iOS cleanup") unless cleanup_body

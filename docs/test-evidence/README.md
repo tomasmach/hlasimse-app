@@ -51,10 +51,13 @@ application ID ends in `.e2e`; the production identity keeps the HTTPS endpoint.
 environment-sensitive Metro transform-cache reuse while testing the same JS that is present in the
 production-like Release artifact. It is simulator evidence, not a store-signed artifact, real
 production-endpoint check, or N-1 update test.
-Before signing the isolated copy, the runner also normalizes only each embedded framework's exact
-`CFBundleExecutable` mode from Xcode's `0755` to CoreSimulator's installed `0644`; byte content and
-the production app remain unchanged. The installed app must then match the isolated copy across
-every path, byte, symlink, and POSIX mode.
+Before signing the isolated copy, the runner also verifies that every embedded framework's exact
+`CFBundleExecutable` arrives from Xcode with mode `0644` or `0755`, preserves existing `0644`
+entries, and normalizes only `0755` entries to CoreSimulator's installed `0644`. The current pinned
+dependency packaging is expected to contain both input modes, so an unexpected Xcode or dependency
+packaging change fails closed for review.
+Byte content and the production app remain unchanged. The installed app must then match the
+isolated copy across every path, byte, symlink, and POSIX mode.
 
 Run Android on an already booted emulator, or let the runner start the configured AVD:
 

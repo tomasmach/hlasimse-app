@@ -425,7 +425,9 @@ e2e_ios_prepare_release_apps() {
   local framework_executable_mode
   local framework_executable_sha256_before
   local framework_executable_sha256_after
+  local framework_executable_count=0
   local normalized_framework_executable_count=0
+  local preexisting_framework_executable_0644_count=0
 
   mkdir -p "${native_dir}"
   touch "${native_dir}/.hlasimse-prebuild-stale-sentinel"
@@ -517,18 +519,34 @@ e2e_ios_prepare_release_apps() {
       || { e2e_log "Framework executable is missing: ${framework_executable_path}."; return 1; }
     framework_executable_sha256_before="$(shasum -a 256 "${framework_executable_path}" | awk '{print $1}')"
     framework_executable_mode="$(stat -f %Lp "${framework_executable_path}")"
-    [[ "${framework_executable_mode}" == "755" ]] \
-      || { e2e_log "Unexpected packaged framework executable mode ${framework_executable_mode}: ${framework_executable_path}."; return 1; }
-    chmod 0644 "${framework_executable_path}"
+    case "${framework_executable_mode}" in
+      755)
+        chmod 0644 "${framework_executable_path}"
+        normalized_framework_executable_count=$((normalized_framework_executable_count + 1))
+        ;;
+      644)
+        preexisting_framework_executable_0644_count=$((preexisting_framework_executable_0644_count + 1))
+        ;;
+      *)
+        e2e_log "Unexpected packaged framework executable mode ${framework_executable_mode}: ${framework_executable_path}."
+        return 1
+        ;;
+    esac
     [[ "$(stat -f %Lp "${framework_executable_path}")" == "644" ]] \
       || { e2e_log "Failed to normalize framework executable mode: ${framework_executable_path}."; return 1; }
     framework_executable_sha256_after="$(shasum -a 256 "${framework_executable_path}" | awk '{print $1}')"
     [[ "${framework_executable_sha256_after}" == "${framework_executable_sha256_before}" ]] \
       || { e2e_log "Framework executable bytes changed during mode normalization: ${framework_executable_path}."; return 1; }
-    normalized_framework_executable_count=$((normalized_framework_executable_count + 1))
+    framework_executable_count=$((framework_executable_count + 1))
   done
+  [[ "${framework_executable_count}" -gt 0 ]] \
+    || { e2e_log "No embedded framework executables were found for CoreSimulator mode verification."; return 1; }
   [[ "${normalized_framework_executable_count}" -gt 0 ]] \
-    || { e2e_log "No embedded framework executables were found for CoreSimulator mode normalization."; return 1; }
+    || { e2e_log "No packaged 0755 framework executable required the expected CoreSimulator mode normalization."; return 1; }
+  [[ "${preexisting_framework_executable_0644_count}" -gt 0 ]] \
+    || { e2e_log "No packaged 0644 framework executable matched the expected mixed Xcode output."; return 1; }
+  [[ "${framework_executable_count}" -eq "$((normalized_framework_executable_count + preexisting_framework_executable_0644_count))" ]] \
+    || { e2e_log "Framework executable mode accounting is incomplete."; return 1; }
   /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${E2E_APP_ID}" "${e2e_info}"
   /usr/libexec/PlistBuddy -c "Set :NSAppTransportSecurity:NSAllowsLocalNetworking true" "${e2e_info}"
   codesign --force --sign - --timestamp=none --entitlements "${production_entitlements_path}" \
@@ -633,8 +651,10 @@ e2e_ios_prepare_release_apps() {
   e2e_record_property production_entitlements_sha256 "${production_entitlements_sha256}"
   e2e_record_property e2e_entitlements_sha256 "${e2e_entitlements_sha256}"
   e2e_record_property bundle_bound_entitlements_present false
-  e2e_record_property framework_executable_mode_normalization coresimulator-0755-to-0644
+  e2e_record_property framework_executable_mode_normalization coresimulator-preserve-0644-normalize-0755-to-0644
+  e2e_record_property framework_executable_count "${framework_executable_count}"
   e2e_record_property normalized_framework_executable_count "${normalized_framework_executable_count}"
+  e2e_record_property preexisting_framework_executable_0644_count "${preexisting_framework_executable_0644_count}"
   e2e_record_property framework_executable_content_preserved true
   e2e_record_property e2e_info_plist_sha256 "${e2e_info_plist_sha256}"
   e2e_record_property e2e_codesign_cdhash "${codesign_cdhash}"
