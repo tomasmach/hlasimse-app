@@ -106,12 +106,14 @@ describe("auth and onboarding UI contract", () => {
     expect(input).toContain('accessibilityLabel={passwordVisible ? "Skrýt heslo" : "Zobrazit heslo"}');
   });
 
-  it("keeps primary button hit targets stable while animating only their content", () => {
+  it("keeps primary button hit targets stable without press-time layout animation", () => {
     const button = read("components/auth/AuthButton.tsx");
     const persona = read("app/(onboarding)/index.tsx");
 
     expect(button).toContain("<Pressable");
     expect(button).not.toContain("Animated.createAnimatedComponent(Pressable)");
+    expect(button).not.toContain("onPressIn");
+    expect(button).not.toContain("onPressOut");
     expect(button).toContain('pointerEvents="none"');
     expect(persona.indexOf("await setPersona(selected)")).toBeLessThan(
       persona.indexOf('router.push("/(onboarding)/empathy")'),

@@ -2,22 +2,13 @@ import { useState } from "react";
 import { Pressable, Text, View } from "react-native";
 import { router } from "expo-router";
 import * as Haptics from "expo-haptics";
-import Animated, {
-  FadeInDown,
-  ReduceMotion,
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withSpring,
-} from "react-native-reanimated";
+import Animated, { FadeInDown, ReduceMotion } from "react-native-reanimated";
 import { Check } from "phosphor-react-native";
 import { AuthButton } from "@/components/auth";
 import { OnboardingFrame } from "@/components/onboarding/OnboardingFrame";
 import { PERSONA_CARDS, type PersonaCard } from "@/constants/onboarding";
 import { COLORS } from "@/constants/design";
 import { useOnboardingStore, type Persona } from "@/stores/onboarding";
-
-const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 function PersonaChoice({
   card,
@@ -31,73 +22,66 @@ function PersonaChoice({
   onSelect: (persona: Persona) => void;
 }) {
   const Icon = card.icon;
-  const reduceMotion = useReducedMotion();
-  const scale = useSharedValue(1);
-  const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.value }] }));
 
   return (
-    <AnimatedPressable
+    <Animated.View
       entering={FadeInDown.delay(100 + index * 70)
         .duration(360)
         .reduceMotion(ReduceMotion.System)}
-      style={style}
-      onPress={() => onSelect(card.id)}
-      onPressIn={() => {
-        if (!reduceMotion) scale.value = withSpring(0.985, { damping: 22, stiffness: 240 });
-      }}
-      onPressOut={() => {
-        scale.value = reduceMotion ? 1 : withSpring(1, { damping: 22, stiffness: 240 });
-      }}
-      className={`min-h-[94px] overflow-hidden rounded-[24px] border p-4 ${
-        selected ? "border-charcoal bg-charcoal" : "border-sand bg-white"
-      }`}
-      accessibilityRole="radio"
-      accessibilityState={{ checked: selected }}
-      accessibilityLabel={`${card.title}. ${card.description}`}
-      testID={`onboarding-persona-${card.id}`}
     >
-      <View className="flex-row items-center gap-4">
-        <View
-          className={`h-14 w-14 items-center justify-center rounded-[18px] ${
-            selected ? "bg-white/10" : "bg-cream-dark"
-          }`}
-          importantForAccessibility="no"
-        >
-          <Icon
-            size={29}
-            color={selected ? COLORS.cream.default : COLORS.charcoal.default}
-            weight="regular"
-          />
-        </View>
-        <View className="flex-1">
-          <Text
-            className={`font-body-semibold text-[18px] leading-6 ${
-              selected ? "text-cream" : "text-charcoal"
+      <Pressable
+        onPress={() => onSelect(card.id)}
+        className={`min-h-[94px] overflow-hidden rounded-[24px] border p-4 ${
+          selected ? "border-charcoal bg-charcoal" : "border-sand bg-white"
+        }`}
+        accessibilityRole="radio"
+        accessibilityState={{ checked: selected }}
+        accessibilityLabel={`${card.title}. ${card.description}`}
+        testID={`onboarding-persona-${card.id}`}
+      >
+        <View className="flex-row items-center gap-4">
+          <View
+            className={`h-14 w-14 items-center justify-center rounded-[18px] ${
+              selected ? "bg-white/10" : "bg-cream-dark"
             }`}
+            importantForAccessibility="no"
           >
-            {card.title}
-          </Text>
-          <Text
-            className={`mt-1 font-body text-[15px] leading-5 ${
-              selected ? "text-white/75" : "text-muted"
-            }`}
+            <Icon
+              size={29}
+              color={selected ? COLORS.cream.default : COLORS.charcoal.default}
+              weight="regular"
+            />
+          </View>
+          <View className="flex-1">
+            <Text
+              className={`font-body-semibold text-[18px] leading-6 ${
+                selected ? "text-cream" : "text-charcoal"
+              }`}
+            >
+              {card.title}
+            </Text>
+            <Text
+              className={`mt-1 font-body text-[15px] leading-5 ${
+                selected ? "text-white/75" : "text-muted"
+              }`}
+            >
+              {card.description}
+            </Text>
+          </View>
+          <View className="h-7 w-7 items-center justify-center" importantForAccessibility="no">
+            {selected ? <Check size={24} color={COLORS.cream.default} weight="bold" /> : null}
+          </View>
+        </View>
+        {selected ? (
+          <Animated.Text
+            entering={FadeInDown.duration(220).reduceMotion(ReduceMotion.System)}
+            className="ml-[72px] mt-3 font-body text-sm leading-5 text-white/75"
           >
-            {card.description}
-          </Text>
-        </View>
-        <View className="h-7 w-7 items-center justify-center" importantForAccessibility="no">
-          {selected ? <Check size={24} color={COLORS.cream.default} weight="bold" /> : null}
-        </View>
-      </View>
-      {selected ? (
-        <Animated.Text
-          entering={FadeInDown.duration(220).reduceMotion(ReduceMotion.System)}
-          className="ml-[72px] mt-3 font-body text-sm leading-5 text-white/75"
-        >
-          Volba upraví pouze úvodní vysvětlení. Funkce aplikace zůstávají stejné a zdarma.
-        </Animated.Text>
-      ) : null}
-    </AnimatedPressable>
+            Volba upraví pouze úvodní vysvětlení. Funkce aplikace zůstávají stejné a zdarma.
+          </Animated.Text>
+        ) : null}
+      </Pressable>
+    </Animated.View>
   );
 }
 

@@ -12,12 +12,18 @@ tags:
     timeout: 30000
 - tapOn:
     id: "onboarding-persona-alone"
-- tapOn:
-    id: "onboarding-persona-continue-button"
-- extendedWaitUntil:
-    visible:
-      id: "onboarding-empathy-screen"
-    timeout: 10000
+- waitForAnimationToEnd:
+    timeout: 5000
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "onboarding-persona-continue-button"
+          retryTapIfNoChange: true
+      - extendedWaitUntil:
+          visible:
+            id: "onboarding-empathy-screen"
+          timeout: 5000
 - tapOn:
     id: "onboarding-empathy-continue-button"
 - extendedWaitUntil:
@@ -41,6 +47,10 @@ tags:
     visible:
       id: "onboarding-register-screen"
     timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "onboarding-register-login-button"
+    direction: DOWN
 - tapOn:
     id: "onboarding-register-login-button"
 - extendedWaitUntil:
