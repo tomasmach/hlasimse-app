@@ -27,13 +27,18 @@ tags:
     centerElement: true
 - tapOn:
     id: "account-delete-password"
-- setClipboard: ${E2E_CREDENTIAL}
-- pasteText
 - runFlow:
     when:
       platform: Android
     commands:
+      - setClipboard: ${E2E_CREDENTIAL}
+      - pasteText
       - hideKeyboard
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - inputText: ${E2E_CREDENTIAL}
 - scrollUntilVisible:
     element:
       id: "account-delete-submit"

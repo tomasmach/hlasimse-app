@@ -6,18 +6,32 @@ tags:
 ---
 - tapOn:
     id: "login-email-input"
-- setClipboard: ${OWNER_EMAIL}
-- pasteText
-- tapOn:
-    id: "login-password-input"
-    retryTapIfNoChange: true
-- setClipboard: ${E2E_CREDENTIAL}
-- pasteText
 - runFlow:
     when:
       platform: Android
     commands:
+      - setClipboard: ${OWNER_EMAIL}
+      - pasteText
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - inputText: ${OWNER_EMAIL}
+- tapOn:
+    id: "login-password-input"
+    retryTapIfNoChange: true
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setClipboard: ${E2E_CREDENTIAL}
+      - pasteText
       - hideKeyboard
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - inputText: ${E2E_CREDENTIAL}
 - scrollUntilVisible:
     element:
       id: "login-submit-button"

@@ -15,7 +15,17 @@ tags:
     visible:
       id: "onboarding-persona-screen"
     timeout: 90000
-- tapOn: "Bydlím sám/sama.*"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn: "Bydlím sám/sama.*"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn:
+          id: "onboarding-persona-alone"
 - waitForAnimationToEnd:
     timeout: 5000
 - retry:
@@ -63,18 +73,32 @@ tags:
     timeout: 10000
 - tapOn:
     id: "login-email-input"
-- setClipboard: ${GUARDIAN_EMAIL}
-- pasteText
-- tapOn:
-    id: "login-password-input"
-    retryTapIfNoChange: true
-- setClipboard: ${E2E_CREDENTIAL}
-- pasteText
 - runFlow:
     when:
       platform: Android
     commands:
+      - setClipboard: ${GUARDIAN_EMAIL}
+      - pasteText
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - inputText: ${GUARDIAN_EMAIL}
+- tapOn:
+    id: "login-password-input"
+    retryTapIfNoChange: true
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setClipboard: ${E2E_CREDENTIAL}
+      - pasteText
       - hideKeyboard
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - inputText: ${E2E_CREDENTIAL}
 - scrollUntilVisible:
     element:
       id: "login-submit-button"

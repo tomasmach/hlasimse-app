@@ -87,6 +87,20 @@ if [[ "$(adb -s "${ANDROID_SERIAL}" shell getprop sys.boot_completed 2>/dev/null
   exit 2
 fi
 
+ANDROID_MEMORY_KB="$(adb -s "${ANDROID_SERIAL}" shell awk '/MemTotal/ {print $2}' /proc/meminfo 2>/dev/null | tr -d '\r')"
+ANDROID_CORE_COUNT="$(adb -s "${ANDROID_SERIAL}" shell nproc 2>/dev/null | tr -d '\r')"
+ANDROID_MIN_MEMORY_KB="$((E2E_ANDROID_MEMORY_MB * 900))"
+if [[ ! "${ANDROID_MEMORY_KB}" =~ ^[0-9]+$ ]] || ((ANDROID_MEMORY_KB < ANDROID_MIN_MEMORY_KB)); then
+  e2e_log "Android emulator has ${ANDROID_MEMORY_KB:-unknown} KiB RAM; the release journey requires about ${E2E_ANDROID_MEMORY_MB} MB."
+  exit 2
+fi
+if [[ ! "${ANDROID_CORE_COUNT}" =~ ^[0-9]+$ ]] || ((ANDROID_CORE_COUNT < E2E_ANDROID_CORES)); then
+  e2e_log "Android emulator has ${ANDROID_CORE_COUNT:-unknown} cores; the release journey requires ${E2E_ANDROID_CORES}."
+  exit 2
+fi
+e2e_log "Android emulator resources: ${ANDROID_MEMORY_KB} KiB RAM, ${ANDROID_CORE_COUNT} cores."
+adb -s "${ANDROID_SERIAL}" logcat -c
+
 E2E_APP_ID="$(e2e_app_id android)"
 export E2E_APP_ID
 e2e_log "Android AVD: ${ANDROID_AVD_NAME}; serial: ${ANDROID_SERIAL}; app ID: ${E2E_APP_ID}"

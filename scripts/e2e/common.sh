@@ -7,8 +7,9 @@ E2E_NODE_PATH="${E2E_ROOT_DIR}/apps/mobile/node_modules:${E2E_ROOT_DIR}/node_mod
 if [[ -n "${NODE_PATH:-}" ]]; then
   E2E_NODE_PATH="${E2E_NODE_PATH}:${NODE_PATH}"
 fi
-E2E_MAESTRO_BIN="${E2E_MAESTRO_BIN:-/Users/tomasmach/.maestro/bin/maestro}"
-E2E_MIN_MAESTRO_VERSION="${E2E_MIN_MAESTRO_VERSION:-2.6.1}"
+E2E_MAESTRO_BIN="${E2E_MAESTRO_BIN:-$(command -v maestro || true)}"
+E2E_REQUIRED_MAESTRO_VERSION="${E2E_REQUIRED_MAESTRO_VERSION:-2.6.1}"
+E2E_MAESTRO_VERSION=""
 E2E_ARTIFACT_DIR="${E2E_ARTIFACT_DIR:-/tmp/hlasimse-e2e/$(date -u +%Y%m%dT%H%M%SZ)}"
 E2E_OWNER_EMAIL="e2e.owner@hlasimse.invalid"
 E2E_GUARDIAN_EMAIL="e2e.guardian@hlasimse.invalid"
@@ -33,34 +34,24 @@ e2e_require() {
 
 e2e_require_maestro_version() {
   local actual_version
-  local required_version="${E2E_MIN_MAESTRO_VERSION}"
-  local actual_major actual_minor actual_patch
-  local required_major required_minor required_patch
+  local required_version="${E2E_REQUIRED_MAESTRO_VERSION}"
 
   actual_version="$("${E2E_MAESTRO_BIN}" --version | tr -d '\r' | head -n 1)"
-  if [[ ! "${actual_version}" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+  if [[ ! "${actual_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     e2e_log "Could not parse Maestro version: ${actual_version}"
     return 1
   fi
-  actual_major="${BASH_REMATCH[1]}"
-  actual_minor="${BASH_REMATCH[2]}"
-  actual_patch="${BASH_REMATCH[3]}"
-
-  if [[ ! "${required_version}" =~ ^([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
-    e2e_log "Invalid E2E_MIN_MAESTRO_VERSION: ${required_version}"
+  if [[ ! "${required_version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    e2e_log "Invalid E2E_REQUIRED_MAESTRO_VERSION: ${required_version}"
     return 1
   fi
-  required_major="${BASH_REMATCH[1]}"
-  required_minor="${BASH_REMATCH[2]}"
-  required_patch="${BASH_REMATCH[3]}"
-
-  if ((actual_major < required_major)) \
-    || ((actual_major == required_major && actual_minor < required_minor)) \
-    || ((actual_major == required_major && actual_minor == required_minor && actual_patch < required_patch)); then
-    e2e_log "Maestro ${required_version} or newer is required; found ${actual_version}."
+  if [[ "${actual_version}" != "${required_version}" ]] && [[ "${E2E_ALLOW_UNTESTED_MAESTRO:-false}" != "true" ]]; then
+    e2e_log "Maestro ${required_version} is required; found ${actual_version}. Set E2E_ALLOW_UNTESTED_MAESTRO=true only for an explicit compatibility run."
     return 1
   fi
-  e2e_log "Maestro ${actual_version} satisfies the minimum ${required_version}."
+  E2E_MAESTRO_VERSION="${actual_version}"
+  export E2E_MAESTRO_VERSION
+  e2e_log "Using Maestro ${actual_version}; tested release version is ${required_version}."
 }
 
 e2e_generate_credential() {
@@ -256,7 +247,12 @@ e2e_cleanup() {
     printf 'finished_at=%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     printf 'exit_code=%s\n' "$exit_code"
     printf 'git_commit=%s\n' "$(git -C "${E2E_ROOT_DIR}" rev-parse HEAD)"
+    printf 'maestro_version=%s\n' "${E2E_MAESTRO_VERSION:-unknown}"
   } >"${E2E_ARTIFACT_DIR}/run.properties"
+  if [[ -n "${E2E_RUN_CREDENTIAL:-}" ]]; then
+    E2E_REDACTION_VALUE="${E2E_RUN_CREDENTIAL}" node \
+      "${E2E_ROOT_DIR}/scripts/e2e/redact-output.mjs" --directory "${E2E_ARTIFACT_DIR}" || true
+  fi
   e2e_log "Artifacts: ${E2E_ARTIFACT_DIR}"
   return "$exit_code"
 }

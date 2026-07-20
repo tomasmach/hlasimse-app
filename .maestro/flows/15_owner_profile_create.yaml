@@ -24,13 +24,18 @@ tags:
     timeout: 10000
 - tapOn:
     id: "profile-create-name-input"
-- setClipboard: "E2E Druhy profil"
-- pasteText
 - runFlow:
     when:
       platform: Android
     commands:
+      - setClipboard: "E2E Druhy profil"
+      - pasteText
       - hideKeyboard
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - inputText: "E2E druhý profil"
 - scrollUntilVisible:
     element: "1 hodina"
     direction: DOWN
@@ -43,8 +48,19 @@ tags:
     centerElement: true
 - tapOn:
     id: "profile-create-submit"
-- extendedWaitUntil:
-    visible: "Vybraný profil E2E Druhy profil"
-    timeout: 15000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: "Vybraný profil E2E Druhy profil"
+          timeout: 15000
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: "Vybraný profil E2E druhý profil"
+          timeout: 15000
 - assertVisible:
     id: "checkin-submit"
