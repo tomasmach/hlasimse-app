@@ -256,7 +256,7 @@ ruby -e '
   required_ios = %w[
     device_id device_name device_origin device_owned device_type_identifier
     template_device_id template_device_name os_name os_version api_level
-    ios_runtime_id xcode_version xcode_build simulator_architecture
+    ios_runtime_id xcode_version xcode_build host_architecture simulator_reported_machine simulator_arm64_capable
     production_app_id release_evidence_eligible device_cleanup_completed build_cleanup_completed build_configuration packaged_app_version packaged_app_build js_bundle_mode
     metro_used native_project_origin expo_prebuild_version cocoapods_version
     podfile_lock_sha256 native_project_sha256 production_app_sha256 production_app_sha256_after_isolation e2e_source_app_sha256 production_js_bundle_sha256 e2e_app_sha256
@@ -288,7 +288,8 @@ ruby -e '
     %q{E2E_APP_ID="${IOS_PRODUCTION_APP_ID}.e2e"},
     %q{ONLY_ACTIVE_ARCH=YES build},
     %q{xcrun simctl spawn "${IOS_SIMULATOR_UDID}" /usr/sbin/sysctl -n hw.machine},
-    %q{[[ "${ios_architectures}" == "${IOS_SIMULATOR_ARCHITECTURE}" ]]},
+    %q{xcrun simctl spawn "${IOS_SIMULATOR_UDID}" /usr/sbin/sysctl -n hw.optional.arm64},
+    %q{[[ "${ios_architectures}" == "${IOS_BUILD_ARCHITECTURE}" ]]},
     %q{main.jsbundle},
     %q{ditto "${IOS_PRODUCTION_APP_PATH}" "${IOS_E2E_APP_PATH}"},
     %q{Set :CFBundleIdentifier ${E2E_APP_ID}},

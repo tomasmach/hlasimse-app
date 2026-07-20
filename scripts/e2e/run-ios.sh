@@ -12,7 +12,7 @@ IOS_PRODUCTION_APP_PATH=""
 IOS_E2E_APP_PATH=""
 IOS_PRODUCTION_APP_ID=""
 IOS_PRODUCTION_JS_BUNDLE_SHA256=""
-IOS_SIMULATOR_ARCHITECTURE=""
+IOS_BUILD_ARCHITECTURE=""
 IOS_E2E_APP_SHA256=""
 IOS_E2E_EXECUTABLE_SHA256=""
 IOS_E2E_JS_BUNDLE_SHA256=""
@@ -119,6 +119,7 @@ e2e_require pod
 e2e_require plutil
 e2e_require shasum
 e2e_require tr
+e2e_require uname
 e2e_require uv
 e2e_require xcrun
 e2e_require xcodebuild
@@ -570,8 +571,8 @@ e2e_ios_prepare_release_apps() {
   e2e_info_plist_sha256="$(shasum -a 256 "${e2e_info}" | awk '{print $1}')"
   native_project_sha256="$(shasum -a 256 "${native_dir}/Hlsmse.xcodeproj/project.pbxproj" | awk '{print $1}')"
   ios_architectures="$(lipo -archs "${IOS_E2E_APP_PATH}/${executable_name}")"
-  [[ "${ios_architectures}" == "${IOS_SIMULATOR_ARCHITECTURE}" ]] \
-    || { e2e_log "Release app architecture does not match the active simulator architecture."; return 1; }
+  [[ "${ios_architectures}" == "${IOS_BUILD_ARCHITECTURE}" ]] \
+    || { e2e_log "Release app architecture does not match the active host toolchain architecture."; return 1; }
 
   e2e_record_property build_configuration Release
   e2e_record_property packaged_app_version "${packaged_app_version}"
@@ -754,14 +755,32 @@ if ! xcrun simctl boot "${IOS_SIMULATOR_UDID}" 2>/dev/null; then
   fi
 fi
 xcrun simctl bootstatus "${IOS_SIMULATOR_UDID}" -b
-IOS_SIMULATOR_ARCHITECTURE="$(
-  xcrun simctl spawn "${IOS_SIMULATOR_UDID}" /usr/sbin/sysctl -n hw.machine | tr -d '\r\n'
-)"
-if [[ ! "${IOS_SIMULATOR_ARCHITECTURE}" =~ ^(arm64|x86_64)$ ]]; then
-  e2e_log "Unsupported iOS simulator architecture: ${IOS_SIMULATOR_ARCHITECTURE}."
+IOS_BUILD_ARCHITECTURE="$(uname -m | tr -d '\r\n')"
+if [[ ! "${IOS_BUILD_ARCHITECTURE}" =~ ^(arm64|x86_64)$ ]]; then
+  e2e_log "Unsupported host toolchain architecture: ${IOS_BUILD_ARCHITECTURE}."
   exit 1
 fi
-e2e_record_property simulator_architecture "${IOS_SIMULATOR_ARCHITECTURE}"
+IOS_SIMULATOR_REPORTED_MACHINE="$(
+  xcrun simctl spawn "${IOS_SIMULATOR_UDID}" /usr/sbin/sysctl -n hw.machine | tr -d '\r\n'
+)"
+if [[ ! "${IOS_SIMULATOR_REPORTED_MACHINE}" =~ ^(arm64|x86_64)$ ]]; then
+  e2e_log "Unsupported iOS simulator-reported machine: ${IOS_SIMULATOR_REPORTED_MACHINE}."
+  exit 1
+fi
+IOS_SIMULATOR_ARM64_CAPABLE="$(
+  xcrun simctl spawn "${IOS_SIMULATOR_UDID}" /usr/sbin/sysctl -n hw.optional.arm64 | tr -d '\r\n'
+)"
+if [[ ! "${IOS_SIMULATOR_ARM64_CAPABLE}" =~ ^(0|1)$ ]]; then
+  e2e_log "Invalid iOS simulator arm64 capability value: ${IOS_SIMULATOR_ARM64_CAPABLE}."
+  exit 1
+fi
+if [[ "${IOS_BUILD_ARCHITECTURE}" == "arm64" && "${IOS_SIMULATOR_ARM64_CAPABLE}" != "1" ]]; then
+  e2e_log "The iOS simulator cannot execute the active arm64 host toolchain architecture."
+  exit 1
+fi
+e2e_record_property host_architecture "${IOS_BUILD_ARCHITECTURE}"
+e2e_record_property simulator_reported_machine "${IOS_SIMULATOR_REPORTED_MACHINE}"
+e2e_record_property simulator_arm64_capable "${IOS_SIMULATOR_ARM64_CAPABLE}"
 e2e_prepare_backend
 e2e_ios_prepare_release_apps
 e2e_ios_install_and_launch_release_app "${IOS_SIMULATOR_UDID}"
