@@ -112,7 +112,7 @@ tags:
       - extendedWaitUntil:
           visible: "Profily, které hlídám"
           timeout: 5000
-- assertVisible: "E2E bezpečnostní profil"
+- assertVisible: "Otevřít aktivní incident profilu E2E bezpečnostní profil"
 - retry:
     maxRetries: 2
     commands:
