@@ -7,7 +7,7 @@ from django.db.migrations.executor import MigrationExecutor
 from django.utils import timezone
 
 MIGRATION_SNAPSHOT = ("core", "0007_profile_archive_and_queue_provenance")
-EXPECTED_CORE_LEAF = ("core", "0009_retire_checkin_outbox_events")
+EXPECTED_CORE_LEAF = ("core", "0011_user_terms_acceptance")
 RETIRED_EVENT_MESSAGE = "Retired legacy no-op event; check-in remains in audit history"
 
 OWNER_ID = uuid.UUID("10000000-0000-0000-0000-000000000001")
@@ -22,6 +22,7 @@ INSTALLATION_ID = uuid.UUID("60000000-0000-0000-0000-000000000002")
 DELIVERY_ID = uuid.UUID("70000000-0000-0000-0000-000000000001")
 RECIPIENT_ID = uuid.UUID("80000000-0000-0000-0000-000000000001")
 MEMBERSHIP_ID = uuid.UUID("90000000-0000-0000-0000-000000000001")
+ACKNOWLEDGEMENT_ID = uuid.UUID("a0000000-0000-0000-0000-000000000001")
 
 
 def _seed_anonymized_snapshot(apps):
@@ -31,6 +32,7 @@ def _seed_anonymized_snapshot(apps):
     GuardianMembership = apps.get_model("core", "GuardianMembership")
     AlertIncident = apps.get_model("core", "AlertIncident")
     AlertRecipient = apps.get_model("core", "AlertRecipient")
+    AlertAcknowledgement = apps.get_model("core", "AlertAcknowledgement")
     PushDevice = apps.get_model("core", "PushDevice")
     OutboxEvent = apps.get_model("core", "OutboxEvent")
     DeliveryAttempt = apps.get_model("core", "DeliveryAttempt")
@@ -100,6 +102,12 @@ def _seed_anonymized_snapshot(apps):
         incident=incident,
         user=guardian,
         user_id_snapshot=guardian.id,
+    )
+    AlertAcknowledgement.objects.create(
+        id=ACKNOWLEDGEMENT_ID,
+        incident=incident,
+        user=guardian,
+        acknowledged_at=snapshot_time - timedelta(hours=23),
     )
     device = PushDevice.objects.create(
         id=DEVICE_ID,
@@ -176,6 +184,7 @@ def test_anonymized_snapshot_migrates_to_leaf_without_safety_gaps():
         GuardianMembership = leaf_apps.get_model("core", "GuardianMembership")
         AlertIncident = leaf_apps.get_model("core", "AlertIncident")
         AlertRecipient = leaf_apps.get_model("core", "AlertRecipient")
+        AlertAcknowledgement = leaf_apps.get_model("core", "AlertAcknowledgement")
         PushDevice = leaf_apps.get_model("core", "PushDevice")
         OutboxEvent = leaf_apps.get_model("core", "OutboxEvent")
         DeliveryAttempt = leaf_apps.get_model("core", "DeliveryAttempt")
@@ -187,6 +196,7 @@ def test_anonymized_snapshot_migrates_to_leaf_without_safety_gaps():
             "memberships": GuardianMembership.objects.count(),
             "incidents": AlertIncident.objects.count(),
             "recipients": AlertRecipient.objects.count(),
+            "acknowledgements": AlertAcknowledgement.objects.count(),
             "devices": PushDevice.objects.count(),
             "outbox_events": OutboxEvent.objects.count(),
             "delivery_attempts": DeliveryAttempt.objects.count(),
@@ -197,6 +207,7 @@ def test_anonymized_snapshot_migrates_to_leaf_without_safety_gaps():
             "memberships": 1,
             "incidents": 1,
             "recipients": 1,
+            "acknowledgements": 1,
             "devices": 1,
             "outbox_events": 2,
             "delivery_attempts": 1,
@@ -207,10 +218,13 @@ def test_anonymized_snapshot_migrates_to_leaf_without_safety_gaps():
         membership = GuardianMembership.objects.get(pk=MEMBERSHIP_ID)
         incident = AlertIncident.objects.get(pk=INCIDENT_ID)
         recipient = AlertRecipient.objects.get(pk=RECIPIENT_ID)
+        acknowledgement = AlertAcknowledgement.objects.get(pk=ACKNOWLEDGEMENT_ID)
         device = PushDevice.objects.get(pk=DEVICE_ID)
         alert_event = OutboxEvent.objects.get(pk=ALERT_EVENT_ID)
         retired_event = OutboxEvent.objects.get(pk=CHECK_IN_EVENT_ID)
         delivery = DeliveryAttempt.objects.get(pk=DELIVERY_ID)
+
+        assert User.objects.filter(terms_accepted_at__isnull=True, terms_version="").count() == 2
 
         assert profile.owner_id == OWNER_ID
         assert check_in.profile_id == profile.id
@@ -219,6 +233,9 @@ def test_anonymized_snapshot_migrates_to_leaf_without_safety_gaps():
         assert incident.profile_id == profile.id
         assert recipient.incident_id == incident.id
         assert recipient.user_id == GUARDIAN_ID
+        assert acknowledgement.incident_id == incident.id
+        assert acknowledgement.user_id == GUARDIAN_ID
+        assert acknowledgement.user_id_snapshot == GUARDIAN_ID
         assert device.user_id == GUARDIAN_ID
         assert alert_event.aggregate_id == incident.id
         assert delivery.incident_id == incident.id

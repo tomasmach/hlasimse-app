@@ -34,6 +34,16 @@ def test_pause_duration_presets_are_part_of_create_and_patch_contracts():
         assert pause_field["writeOnly"] is True
 
 
+def test_registration_requires_write_only_terms_acceptance():
+    request = load_schema()["components"]["schemas"]["RegisterRequest"]
+
+    assert "terms_accepted" in request["required"]
+    assert request["properties"]["terms_accepted"] == {
+        "type": "boolean",
+        "writeOnly": True,
+    }
+
+
 def test_provider_acceptance_is_not_documented_as_device_delivery():
     properties = load_schema()["components"]["schemas"]["DeliveryAttemptCountsSchema"]["properties"]
 

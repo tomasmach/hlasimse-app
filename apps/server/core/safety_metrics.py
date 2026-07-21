@@ -1,5 +1,6 @@
 from datetime import UTC, datetime, timedelta
 
+from django.conf import settings
 from django.db import connection
 from django.db.models import Exists, Min, OuterRef
 from django.utils import timezone
@@ -90,7 +91,7 @@ def safety_metrics_snapshot(
     heartbeat_max_age_seconds = _seconds(heartbeat_max_age)
 
     return {
-        "schema_version": 1,
+        "schema_version": 2,
         "observed_at": app_now.isoformat(),
         "clock": {
             "app_time": app_now.isoformat(),
@@ -114,8 +115,12 @@ def safety_metrics_snapshot(
         },
         "delivery": {
             "dead_letter_count": DeliveryAttempt.objects.filter(
-                status=DeliveryAttempt.Status.DEAD_LETTER
+                status=DeliveryAttempt.Status.DEAD_LETTER,
+                account_erasure_tombstone=False,
             ).count(),
+        },
+        "safety_switches": {
+            "guardian_location_disclosure_enabled": (settings.GUARDIAN_LOCATION_DISCLOSURE_ENABLED),
         },
         "workers": {
             "required_count": len(REQUIRED_DELIVERY_WORKERS),

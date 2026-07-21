@@ -48,7 +48,7 @@ Následující hodnoty jsou záměrně pouze šablony. Nesmí se odeslat, dokud 
 |---|---|
 | Marketing URL | `https://<production-domain>/` |
 | Support URL | `https://<production-domain>/podpora/` |
-| Privacy policy URL | `https://<production-domain>/soukromi/` |
+| Privacy policy URL | `https://<production-domain>/ochrana-soukromi/` |
 | Account deletion URL pro Google Play | `https://<production-domain>/ucet/smazat/` |
 | Support e-mail | `<support-email-on-production-domain>` |
 

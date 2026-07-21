@@ -2,6 +2,7 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from django.test import override_settings
 from django.utils import timezone
 
 from core.models import (
@@ -332,3 +333,34 @@ def test_location_with_accuracy_only_exists_on_active_incident_for_current_recip
     owner_detail = authenticate(api_client, user).get(f"/api/v1/alerts/{incident.id}/")
     assert owner_detail.status_code == 200
     assert owner_detail.json()["last_known_location"] is None
+
+
+@override_settings(GUARDIAN_LOCATION_DISCLOSURE_ENABLED=False)
+def test_location_disclosure_switch_suppresses_guardian_only_and_keeps_safety_flow_running(
+    api_client, user, other_user, profile
+):
+    GuardianMembership.objects.create(profile=profile, guardian=other_user)
+    check_in = perform_check_in(
+        profile=profile,
+        idempotency_key="location-switch-source",
+        latitude="50.075500",
+        longitude="14.437800",
+        location_accuracy_meters="12.50",
+    ).check_in
+    profile.refresh_from_db()
+    profile.next_deadline_at = timezone.now() - timedelta(minutes=1)
+    profile.save(update_fields=["next_deadline_at", "updated_at"])
+
+    assert sweep_expired_deadlines() == (1, 1)
+    incident = AlertIncident.objects.get(profile=profile)
+
+    guardian_detail = authenticate(api_client, other_user).get(f"/api/v1/alerts/{incident.id}/")
+    assert guardian_detail.status_code == 200
+    assert guardian_detail.json()["last_known_location"] is None
+
+    owner_detail = authenticate(api_client, user).get(f"/api/v1/alerts/{incident.id}/")
+    assert owner_detail.status_code == 200
+    assert owner_detail.json()["last_known_location"]["latitude"] == "50.075500"
+    check_in.refresh_from_db()
+    assert check_in.latitude is not None
+    assert incident.status == AlertIncident.Status.OPEN

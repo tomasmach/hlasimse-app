@@ -66,6 +66,7 @@ from .models import (
     GuardianInvitation,
     GuardianMembership,
     PushDevice,
+    User,
 )
 from .password_reset import revoke_outstanding_refresh_tokens
 from .services import (
@@ -101,6 +102,10 @@ def legal_release_blocker_view(request, document):
     response["Retry-After"] = "86400"
     response["X-Robots-Tag"] = "noindex, nofollow"
     return response
+
+
+def support_view(request):
+    return render(request, "core/support.html")
 
 
 class SessionLoginView(WebAuthRateLimitMixin, LoginView):
@@ -187,6 +192,7 @@ def register_view(request):
         register_unverified_user(
             email=form.cleaned_data["email"],
             password=form.cleaned_data["password1"],
+            terms_accepted=True,
             first_name=form.cleaned_data["first_name"],
             last_name=form.cleaned_data["last_name"],
         )
@@ -272,6 +278,8 @@ def _notification_health(profiles):
 
 
 def _display_name(user, fallback="Uživatel"):
+    if user is None:
+        return fallback
     return " ".join(part for part in (user.first_name, user.last_name) if part).strip() or fallback
 
 
@@ -884,7 +892,12 @@ def _accessible_alert_or_404(user, pk):
 @login_required(login_url="accounts:login")
 def alert_detail_view(request, pk):
     alert = _accessible_alert_or_404(request.user, pk)
-    if alert.status == AlertIncident.Status.OPEN or alert.profile.owner_id == request.user.id:
+    is_owner = alert.profile.owner_id == request.user.id
+    guardian_location_allowed = settings.GUARDIAN_LOCATION_DISCLOSURE_ENABLED
+    alert.guardian_location_disclosure_disabled = not is_owner and not guardian_location_allowed
+    if (alert.status == AlertIncident.Status.OPEN or is_owner) and (
+        is_owner or guardian_location_allowed
+    ):
         alert.last_checkin = alert.profile.check_ins.filter(
             accepted_at__lte=alert.opened_at,
             latitude__isnull=False,
@@ -894,9 +907,12 @@ def alert_detail_view(request, pk):
         alert.last_checkin = None
     acknowledgements = alert.acknowledgements.select_related("user").order_by("acknowledged_at")
     for acknowledgement in acknowledgements:
-        acknowledgement.user_display_name = _display_name(acknowledgement.user, "Strážce")
+        acknowledgement.user_display_name = _display_name(
+            acknowledgement.user,
+            "Smazaný strážce" if acknowledgement.user is None else "Strážce",
+        )
     attempts = alert.deliveries.all()
-    if alert.profile.owner_id != request.user.id:
+    if not is_owner:
         attempts = attempts.filter(device__user=request.user)
     delivery_counts = {
         value: attempts.filter(status=value).count()
@@ -941,13 +957,20 @@ def alert_ack_view(request, pk):
         messages.info(request, "Upozornění už je uzavřené.")
         return redirect("alerts:detail", pk=alert.pk)
     if not can_acknowledge_incident(request.user, alert):
-        raise PermissionDenied("Převzetí může zaznamenat pouze aktivní strážce incidentu.")
-    AlertAcknowledgement.objects.get_or_create(
-        incident=alert,
-        user=request.user,
-        defaults={"acknowledged_at": timezone.now()},
-    )
-    messages.success(request, "Převzetí upozornění bylo zaznamenáno.")
+        raise PermissionDenied("Incident může potvrdit pouze jeho aktivní strážce.")
+    with transaction.atomic():
+        guardian = User.objects.select_for_update().filter(pk=request.user.pk).first()
+        if guardian is None:
+            raise PermissionDenied("Účet už není aktivní.")
+        AlertAcknowledgement.objects.get_or_create(
+            incident=alert,
+            user=guardian,
+            defaults={
+                "user_id_snapshot": guardian.id,
+                "acknowledged_at": timezone.now(),
+            },
+        )
+    messages.success(request, "Potvrzení strážce bylo zaznamenáno.")
     return redirect("alerts:detail", pk=alert.pk)
 
 
@@ -995,8 +1018,13 @@ def export_data_view(request):
     )
 
 
-@login_required(login_url="accounts:login")
 def delete_account_view(request):
+    if not request.user.is_authenticated:
+        if request.method == "POST":
+            return redirect(f"{reverse('accounts:login')}?next={reverse('accounts:delete')}")
+        response = render(request, "core/account_deletion_public.html")
+        response["Cache-Control"] = "no-store"
+        return response
     form = DeleteAccountForm(request.POST if request.method == "POST" else None)
     if request.method == "POST" and form.is_valid():
         user_id = request.user.pk

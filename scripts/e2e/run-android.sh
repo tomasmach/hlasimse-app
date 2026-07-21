@@ -817,11 +817,7 @@ e2e_run_flow "${ANDROID_SERIAL}" 15a_android_profile_focus_name
 android_input_text "E2E Druhy profil" "profile name"
 e2e_run_flow "${ANDROID_SERIAL}" 15b_android_profile_after_name
 
-e2e_log "Stopping only the owned backend PID for the deterministic API-outage check."
-e2e_stop_backend
-e2e_run_flow "${ANDROID_SERIAL}" 20_owner_offline_queue
-e2e_start_backend
-e2e_run_flow "${ANDROID_SERIAL}" 30_owner_offline_sync
+e2e_run_at08_offline_deadline "${ANDROID_SERIAL}"
 
 e2e_run_flow "${ANDROID_SERIAL}" 40_owner_export
 e2e_run_flow "${ANDROID_SERIAL}" 90a_android_delete_focus_password
@@ -852,6 +848,7 @@ node "${E2E_ROOT_DIR}/scripts/e2e/assert-junit-evidence.mjs" "${E2E_ARTIFACT_DIR
   15a_android_profile_focus_name \
   15b_android_profile_after_name \
   20_owner_offline_queue \
+  25_owner_offline_deadline_pending \
   30_owner_offline_sync \
   40_owner_export \
   90a_android_delete_focus_password \

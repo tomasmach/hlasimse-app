@@ -44,7 +44,14 @@ def web_settings():
 
 
 def test_public_pages_render_and_private_page_requires_session(client):
-    assert client.get(reverse("core:landing")).status_code == 200
+    landing = client.get(reverse("core:landing"))
+    support = client.get(reverse("core:support"))
+
+    assert landing.status_code == 200
+    assert reverse("core:support") in landing.content.decode()
+    assert support.status_code == 200
+    assert "mailto:support@example.invalid" in support.content.decode()
+    assert "nesleduje incidenty v reálném čase" in support.content.decode()
     assert client.get(reverse("accounts:login")).status_code == 200
     assert client.get(reverse("accounts:register")).status_code == 200
 
@@ -54,6 +61,7 @@ def test_public_pages_render_and_private_page_requires_session(client):
     assert reverse("accounts:login") in response.url
 
 
+@override_settings(LEGAL_TERMS_VERSION="2026-07-21-web-v1")
 def test_registration_requires_terms_and_redirects_to_verification(client):
     payload = {
         "email": "new@example.cz",
@@ -71,7 +79,10 @@ def test_registration_requires_terms_and_redirects_to_verification(client):
     assert created.status_code == 302
     assert created.url == reverse("accounts:verification-sent")
     assert "_auth_user_id" not in client.session
-    assert User.objects.get(email="new@example.cz").email_verified_at is None
+    created_user = User.objects.get(email="new@example.cz")
+    assert created_user.email_verified_at is None
+    assert created_user.terms_version == "2026-07-21-web-v1"
+    assert created_user.terms_accepted_at is not None
 
 
 def test_login_and_logout_use_session_and_logout_is_post_only(client, user):
@@ -129,7 +140,7 @@ def test_profile_create_edit_and_pause_keep_scheduled_resume_semantics(client, u
     client.force_login(user)
     created = client.post(
         reverse("checkins:profile-create"),
-        {"name": "Cesta", "interval_seconds": 14_400},
+        {"name": "Cesta", "interval_seconds": 240},
     )
     profile = CheckInProfile.objects.get(owner=user, name="Cesta")
 
@@ -138,12 +149,16 @@ def test_profile_create_edit_and_pause_keep_scheduled_resume_semantics(client, u
 
     edited = client.post(
         reverse("checkins:profile-edit", kwargs={"pk": profile.pk}),
-        {"name": "Výlet", "interval_seconds": 28_800},
+        {"name": "Výlet", "interval_seconds": 61},
     )
     assert edited.status_code == 302
     profile.refresh_from_db()
     assert profile.name == "Výlet"
-    assert profile.interval_seconds == 28_800
+    assert profile.interval_seconds == 3_660
+
+    edit_form = client.get(reverse("checkins:profile-edit", kwargs={"pk": profile.pk}))
+    assert edit_form.status_code == 200
+    assert 'value="61"' in edit_form.content.decode()
 
     paused_until = timezone.localtime() + timedelta(days=1)
     paused = client.post(
@@ -180,7 +195,7 @@ def test_profile_limit_hides_create_ui_and_rejects_direct_sixth_post(client, use
     create_page = client.get(create_url)
     rejected = client.post(
         create_url,
-        {"name": "Šestý profil", "interval_seconds": 86_400},
+        {"name": "Šestý profil", "interval_seconds": 1_440},
     )
 
     assert dashboard.status_code == create_page.status_code == rejected.status_code == 200
@@ -345,9 +360,39 @@ def test_alert_detail_and_ack_require_current_recipient(client, user, other_user
     owner_detail = client.get(reverse("alerts:detail", kwargs={"pk": incident.pk}))
     owner_ack = client.post(reverse("alerts:ack", kwargs={"pk": incident.pk}))
     assert owner_detail.status_code == 200
-    assert "Zaznamenat převzetí" not in owner_detail.content.decode()
+    assert "Viděl/a jsem incident" not in owner_detail.content.decode()
     assert owner_ack.status_code == 403
     assert not AlertAcknowledgement.objects.filter(incident=incident, user=user).exists()
+
+
+@override_settings(GUARDIAN_LOCATION_DISCLOSURE_ENABLED=False)
+def test_web_location_disclosure_switch_suppresses_guardian_only(client, user, other_user, profile):
+    GuardianMembership.objects.create(profile=profile, guardian=other_user)
+    check_in = perform_check_in(
+        profile=profile,
+        idempotency_key="web-location-switch-source",
+        latitude="50.075500",
+        longitude="14.437800",
+    ).check_in
+    profile.refresh_from_db()
+    profile.next_deadline_at = timezone.now() - timedelta(minutes=1)
+    profile.save(update_fields=["next_deadline_at", "updated_at"])
+    assert sweep_expired_deadlines() == (1, 1)
+    incident = AlertIncident.objects.get(profile=profile)
+
+    client.force_login(other_user)
+    guardian_detail = client.get(reverse("alerts:detail", kwargs={"pk": incident.pk}))
+    assert guardian_detail.status_code == 200
+    assert guardian_detail.context["alert"].last_checkin is None
+    assert "Otevřít poslední známou polohu" not in guardian_detail.content.decode()
+    assert "Sdílení polohy se strážci je dočasně pozastavené" in guardian_detail.content.decode()
+
+    client.force_login(user)
+    owner_detail = client.get(reverse("alerts:detail", kwargs={"pk": incident.pk}))
+    assert owner_detail.status_code == 200
+    assert owner_detail.context["alert"].last_checkin.pk == check_in.pk
+    assert "Otevřít poslední známou polohu" in owner_detail.content.decode()
+    assert "Sdílení polohy se strážci je dočasně pozastavené" not in owner_detail.content.decode()
 
 
 def test_history_filter_cannot_select_another_users_profile(client, user, other_user, profile):
@@ -448,6 +493,9 @@ def test_gdpr_export_is_json_scoped_and_omits_operational_secrets(
     assert [item["id"] for item in web_payload["alert_acknowledgements"]] == [
         str(own_acknowledgement.pk)
     ]
+    assert web_payload["alert_acknowledgements"][0]["user_id"] == str(
+        own_acknowledgement.user_id_snapshot
+    )
     assert str(other_profile.pk) not in web_response.content.decode()
     assert str(foreign_acknowledgement.pk) not in web_response.content.decode()
     assert "ExponentPushToken" not in web_response.content.decode()
@@ -472,6 +520,10 @@ def test_account_delete_requires_exact_confirmation_and_removes_owned_data(
         incident=incident,
         user=user,
         user_id_snapshot=user.pk,
+    )
+    acknowledgement = AlertAcknowledgement.objects.create(
+        incident=incident,
+        user=user,
     )
     event = OutboxEvent.objects.create(
         event_type="alert.opened",
@@ -512,21 +564,6 @@ def test_account_delete_requires_exact_confirmation_and_removes_owned_data(
     assert wrong_password.status_code == 200
     assert User.objects.filter(pk=user.pk).exists()
 
-    blocked = client.post(
-        endpoint,
-        {
-            "password": "Safely-testing-123",
-            "confirmation": "SMAZAT",
-            "understood": "on",
-        },
-    )
-    assert blocked.status_code == 200
-    assert "aktivního incidentu" in blocked.content.decode()
-    assert User.objects.filter(pk=user.pk).exists()
-
-    incident.status = AlertIncident.Status.RESOLVED
-    incident.resolved_at = timezone.now()
-    incident.save(update_fields=["status", "resolved_at", "updated_at"])
     deleted = client.post(
         endpoint,
         {
@@ -541,15 +578,25 @@ def test_account_delete_requires_exact_confirmation_and_removes_owned_data(
     assert not User.objects.filter(pk=deleted_user_id).exists()
     assert not CheckInProfile.objects.filter(pk=profile.pk).exists()
     assert not GuardianMembership.objects.filter(pk=membership.pk).exists()
+    incident.refresh_from_db()
+    assert incident.status == AlertIncident.Status.OPEN
+    assert incident.resolved_at is None
     recipient.refresh_from_db()
     assert recipient.user_id is None
     assert recipient.user_id_snapshot != deleted_user_id
+    acknowledgement.refresh_from_db()
+    assert acknowledgement.user_id is None
+    assert acknowledgement.user_id_snapshot != deleted_user_id
     event.refresh_from_db()
     assert str(deleted_user_id) not in event.payload["recipient_user_ids"]
     incoming.refresh_from_db()
     assert incoming.status == GuardianInvitation.Status.REVOKED
     assert incoming.email.endswith("@invalid.local")
     assert "_auth_user_id" not in client.session
+    client.force_login(other_user)
+    incident_detail = client.get(reverse("alerts:detail", kwargs={"pk": incident.pk}))
+    assert incident_detail.status_code == 200
+    assert "Smazaný strážce" in incident_detail.content.decode()
 
 
 def test_guardian_only_dashboard_shows_watched_profile_and_open_incident(
@@ -797,3 +844,21 @@ def test_legal_placeholders_are_explicit_non_indexable_release_blockers(client, 
     assert response["Cache-Control"] == "no-store"
     assert response["X-Robots-Tag"] == "noindex, nofollow"
     assert "Blokuje veřejné vydání" in response.content.decode()
+
+
+def test_account_deletion_instructions_are_public_without_exposing_account_data(client):
+    response = client.get(reverse("accounts:delete"))
+
+    assert response.status_code == 200
+    assert response["Cache-Control"] == "no-store"
+    content = response.content.decode()
+    assert "Přihlásit se a smazat účet" in content
+    assert reverse("accounts:login") in content
+    assert "potvrďte smazání svým heslem" in content
+
+
+def test_anonymous_account_deletion_post_requires_login(client):
+    response = client.post(reverse("accounts:delete"), {"password": "never-used"})
+
+    assert response.status_code == 302
+    assert response.url == (f"{reverse('accounts:login')}?next={reverse('accounts:delete')}")

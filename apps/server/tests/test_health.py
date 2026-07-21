@@ -2,6 +2,9 @@ import uuid
 from datetime import timedelta
 
 import pytest
+from django.core.management import call_command
+from django.core.management.base import CommandError
+from django.test import override_settings
 from django.utils import timezone
 
 from core.health import REQUIRED_DELIVERY_WORKERS, delivery_health
@@ -157,3 +160,59 @@ def test_processed_alert_without_recipient_does_not_invent_missing_delivery(prof
 
     assert health["missing_delivery_attempts"] == 0
     assert health["healthy"] is True
+
+
+def test_anonymized_recipient_without_attempt_does_not_poison_health(profile):
+    _fresh_worker_heartbeats()
+    incident = _incident(profile)
+    AlertRecipient.objects.create(
+        incident=incident,
+        user=None,
+        user_id_snapshot=uuid.uuid4(),
+    )
+    _alert_event(incident)
+
+    health = delivery_health()
+
+    assert health["missing_delivery_attempts"] == 0
+    assert health["healthy"] is True
+
+
+def test_account_erasure_tombstones_preserve_history_without_poisoning_health(profile):
+    _fresh_worker_heartbeats()
+    incident = _incident(profile, status=AlertIncident.Status.RESOLVED)
+    event = _alert_event(incident)
+    DeliveryAttempt.objects.create(
+        incident=incident,
+        outbox_event=event,
+        status=DeliveryAttempt.Status.DEAD_LETTER,
+        account_erasure_tombstone=True,
+    )
+
+    health = delivery_health()
+
+    assert DeliveryAttempt.objects.filter(account_erasure_tombstone=True).exists()
+    assert health["dead_letter_deliveries"] == 0
+    assert health["stale_delivery_attempts"] == 0
+
+
+@override_settings(GUARDIAN_LOCATION_DISCLOSURE_ENABLED=False)
+def test_disabled_guardian_location_disclosure_fails_delivery_health_visibly():
+    _fresh_worker_heartbeats()
+
+    health = delivery_health()
+
+    assert health["healthy"] is False
+    assert health["disabled_safety_features"] == ["guardian_location_disclosure"]
+
+
+@pytest.mark.parametrize(
+    ("option", "value", "message"),
+    [
+        ("heartbeat_max_age_seconds", 0, "heartbeat-max-age-seconds"),
+        ("poll_interval", 0, "poll-interval"),
+    ],
+)
+def test_delivery_health_monitor_rejects_non_positive_timing(option, value, message):
+    with pytest.raises(CommandError, match=message):
+        call_command("check_delivery_health", **{option: value})

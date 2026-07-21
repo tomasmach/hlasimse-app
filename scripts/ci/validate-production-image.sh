@@ -7,10 +7,19 @@ run_id="${GITHUB_RUN_ID:-local}-${GITHUB_RUN_ATTEMPT:-0}-$$"
 network_name="hlasimse-container-gate-${run_id}"
 postgres_name="hlasimse-container-gate-postgres-${run_id}"
 web_name="hlasimse-container-gate-web-${run_id}"
+worker_names=(
+  "hlasimse-container-gate-sweep-${run_id}"
+  "hlasimse-container-gate-alerts-${run_id}"
+  "hlasimse-container-gate-email-${run_id}"
+  "hlasimse-container-gate-receipts-${run_id}"
+  "hlasimse-container-gate-reconciliation-${run_id}"
+  "hlasimse-container-gate-metrics-${run_id}"
+  "hlasimse-container-gate-monitor-${run_id}"
+)
 postgres_image="postgres:18.4-bookworm@sha256:1961f96e6029a02c3812d7cb329a3b03a3ac2bb067058dec17b0f5596aca9296"
 
 cleanup() {
-  docker rm --force "${web_name}" "${postgres_name}" >/dev/null 2>&1 || true
+  docker rm --force "${web_name}" "${worker_names[@]}" "${postgres_name}" >/dev/null 2>&1 || true
   docker network rm "${network_name}" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT INT TERM
@@ -46,6 +55,8 @@ export DJANGO_STATIC_MANIFEST=true
 export DATABASE_URL=postgresql://hlasimse@postgres:5432/hlasimse_container_gate
 export DATABASE_ALLOW_INSECURE_LOCAL_COMPOSE=true
 export APP_BASE_URL=https://ci.hlasim.se
+export SUPPORT_EMAIL=support@ci.hlasim.se
+export LEGAL_TERMS_VERSION=2026-07-21-container-gate
 export EXPO_ACCESS_TOKEN=container-gate-only-no-provider-requests
 export MOBILE_MIN_IOS_VERSION=1.0.0
 export MOBILE_MIN_IOS_BUILD=1
@@ -72,6 +83,8 @@ production_env=(
   --env DATABASE_URL
   --env DATABASE_ALLOW_INSECURE_LOCAL_COMPOSE
   --env APP_BASE_URL
+  --env SUPPORT_EMAIL
+  --env LEGAL_TERMS_VERSION
   --env EXPO_ACCESS_TOKEN
   --env MOBILE_MIN_IOS_VERSION
   --env MOBILE_MIN_IOS_BUILD
@@ -105,6 +118,16 @@ run_manage() {
     "${image_ref}" manage.py "$@"
 }
 
+run_worker() {
+  local name="$1"
+  shift
+  docker run --detach --name "${name}" \
+    "${runtime_security[@]}" \
+    "${production_env[@]}" \
+    --entrypoint python \
+    "${image_ref}" manage.py "$@" >/dev/null
+}
+
 configured_user="$(docker image inspect --format '{{.Config.User}}' "${image_ref}")"
 if [[ "${configured_user}" != "10001:10001" ]]; then
   echo "Production image must run as UID/GID 10001:10001, got '${configured_user}'" >&2
@@ -123,15 +146,69 @@ docker run --detach --name "${web_name}" \
   "${production_env[@]}" \
   "${image_ref}" >/dev/null
 
+web_ready=false
 for _ in $(seq 1 30); do
   if docker exec "${web_name}" python -c \
-    "import urllib.request; request = urllib.request.Request('http://127.0.0.1:8000/health/live/', headers={'Host': 'ci.hlasim.se', 'X-Forwarded-Proto': 'https'}); urllib.request.urlopen(request, timeout=3).read()" \
+    "import urllib.request; request = urllib.request.Request('http://127.0.0.1:8000/health/ready/', headers={'Host': 'ci.hlasim.se', 'X-Forwarded-Proto': 'https'}); urllib.request.urlopen(request, timeout=3).read()" \
     >/dev/null 2>&1; then
-    exit 0
+    web_ready=true
+    break
   fi
   sleep 1
 done
+if [[ "${web_ready}" != "true" ]]; then
+  docker logs "${web_name}" >&2
+  echo "Production container did not pass its readiness probe" >&2
+  exit 1
+fi
 
-docker logs "${web_name}" >&2
-echo "Production container did not pass its live probe" >&2
-exit 1
+run_worker "${worker_names[0]}" sweep_deadlines --watch --poll-interval 1
+run_worker "${worker_names[1]}" process_outbox --watch --queue alert --poll-interval 0.25
+run_worker "${worker_names[2]}" process_outbox --watch --queue email --poll-interval 0.25
+run_worker "${worker_names[3]}" fetch_push_receipts --watch --poll-interval 1 --error-backoff 1
+run_worker "${worker_names[4]}" reconcile_safety_state --repair --fail-on-gaps --watch --poll-interval 1
+run_worker "${worker_names[5]}" emit_safety_metrics --watch --poll-interval 1 --heartbeat-max-age-seconds 30
+
+workers_healthy=false
+for _ in $(seq 1 30); do
+  all_running=true
+  for name in "${worker_names[@]:0:6}"; do
+    if [[ "$(docker inspect --format '{{.State.Running}}' "${name}")" != "true" ]]; then
+      all_running=false
+      docker logs "${name}" >&2
+    fi
+  done
+  if [[ "${all_running}" == "true" ]] && run_manage check_delivery_health \
+    --heartbeat-max-age-seconds 30 >/dev/null 2>&1; then
+    workers_healthy=true
+    break
+  fi
+  sleep 1
+done
+if [[ "${workers_healthy}" != "true" ]]; then
+  run_manage check_delivery_health --heartbeat-max-age-seconds 30 || true
+  echo "Production worker topology did not reach healthy delivery state" >&2
+  exit 1
+fi
+
+run_worker "${worker_names[6]}" check_delivery_health --watch --poll-interval 1 \
+  --heartbeat-max-age-seconds 30
+sleep 2
+if [[ "$(docker inspect --format '{{.State.Running}}' "${worker_names[6]}")" != "true" ]]; then
+  docker logs "${worker_names[6]}" >&2
+  echo "Production delivery monitor role exited unexpectedly" >&2
+  exit 1
+fi
+
+metrics_line="$(docker logs "${worker_names[5]}" 2>&1 | tail -n 1)"
+python3 - "${metrics_line}" <<'PY'
+import json
+import sys
+
+payload = json.loads(sys.argv[1])
+assert payload["schema_version"] == 2
+assert payload["safety_switches"]["guardian_location_disclosure_enabled"] is True
+assert payload["workers"]["required_count"] == 5
+PY
+
+echo "Production image readiness, five delivery heartbeats, metrics, and monitor topology passed."

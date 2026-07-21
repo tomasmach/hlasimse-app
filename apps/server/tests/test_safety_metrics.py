@@ -6,6 +6,7 @@ from io import StringIO
 
 import pytest
 from django.core.management import call_command
+from django.test import override_settings
 
 from core.health import REQUIRED_DELIVERY_WORKERS
 from core.models import AlertIncident, DeliveryAttempt, OutboxEvent, WorkerHeartbeat
@@ -75,6 +76,12 @@ def test_snapshot_reports_clock_due_backlog_and_worker_aggregates(user, profile)
         outbox_event=oldest_alert,
         status=DeliveryAttempt.Status.DEAD_LETTER,
     )
+    DeliveryAttempt.objects.create(
+        incident=incident,
+        outbox_event=oldest_alert,
+        status=DeliveryAttempt.Status.DEAD_LETTER,
+        account_erasure_tombstone=True,
+    )
 
     required_workers = sorted(REQUIRED_DELIVERY_WORKERS)
     heartbeat_states = [
@@ -97,7 +104,7 @@ def test_snapshot_reports_clock_due_backlog_and_worker_aggregates(user, profile)
     )
 
     assert snapshot == {
-        "schema_version": 1,
+        "schema_version": 2,
         "observed_at": "2026-07-20T12:00:02.500000+00:00",
         "clock": {
             "app_time": "2026-07-20T12:00:02.500000+00:00",
@@ -115,6 +122,7 @@ def test_snapshot_reports_clock_due_backlog_and_worker_aggregates(user, profile)
             "oldest_pending_age_seconds": 90.0,
         },
         "delivery": {"dead_letter_count": 1},
+        "safety_switches": {"guardian_location_disclosure_enabled": True},
         "workers": {
             "required_count": 5,
             "reported_count": 4,
@@ -144,6 +152,7 @@ def test_empty_snapshot_uses_null_ages():
         "pending_count": 0,
         "oldest_pending_age_seconds": None,
     }
+    assert snapshot["safety_switches"] == {"guardian_location_disclosure_enabled": True}
     assert snapshot["workers"]["oldest_heartbeat_age_seconds"] is None
     assert snapshot["workers"]["missing_count"] == len(REQUIRED_DELIVERY_WORKERS)
 
@@ -164,12 +173,23 @@ def test_one_shot_command_queries_database_clock_and_emits_one_private_snapshot(
         "incidents",
         "alert_outbox",
         "delivery",
+        "safety_switches",
         "workers",
     }
     assert isinstance(snapshot["clock"]["app_minus_database_seconds"], float)
     assert snapshot["workers"]["required_count"] == len(REQUIRED_DELIVERY_WORKERS)
     for forbidden in ("email", "latitude", "longitude", "profile_id", "incident_id", "user_id"):
         assert forbidden not in lines[0]
+
+
+@override_settings(GUARDIAN_LOCATION_DISCLOSURE_ENABLED=False)
+def test_snapshot_exposes_disabled_guardian_location_switch_without_sensitive_data():
+    observed_at = datetime(2026, 7, 20, 12, 0, tzinfo=UTC)
+
+    snapshot = safety_metrics_snapshot(app_now=observed_at, database_now=observed_at)
+
+    assert snapshot["schema_version"] == 2
+    assert snapshot["safety_switches"] == {"guardian_location_disclosure_enabled": False}
 
 
 def test_watch_mode_emits_json_and_cooperatively_waits(monkeypatch):

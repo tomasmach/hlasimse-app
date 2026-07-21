@@ -10,9 +10,10 @@ bash -n "${ROOT_DIR}/scripts/e2e/run-ios.sh"
 bash -n "${ROOT_DIR}/scripts/e2e/run-android.sh"
 node --check "${ROOT_DIR}/scripts/e2e/redact-output.mjs"
 node --check "${ROOT_DIR}/scripts/e2e/assert-junit-evidence.mjs"
+node --check "${ROOT_DIR}/scripts/e2e/assert-at08-evidence.mjs"
 node --check "${ROOT_DIR}/apps/mobile/plugins/with-android-e2e-build.js"
 NODE_PATH="${ROOT_DIR}/apps/mobile/node_modules:${ROOT_DIR}/node_modules" \
-  node -e 'require.resolve("expo-router/_ctx-shared")'
+  node -e 'require.resolve("expo-router/_ctx-shared"); require.resolve("expo-secure-store")'
 
 VALIDATION_DIR="$(mktemp -d "${TMPDIR:-/tmp}/hlasimse-e2e-validate.XXXXXX")"
 cleanup_validation() {
@@ -39,6 +40,27 @@ node "${ROOT_DIR}/scripts/e2e/assert-junit-evidence.mjs" "${JUNIT_FIXTURE}" flow
 grep -Fq '"report_count":2' "${JUNIT_FIXTURE}/summary.json"
 ! node "${ROOT_DIR}/scripts/e2e/assert-junit-evidence.mjs" "${JUNIT_FIXTURE}" flow_one \
   >/dev/null 2>&1
+
+AT08_FIXTURE="${VALIDATION_DIR}/at08"
+mkdir -p "${AT08_FIXTURE}/backend"
+for key in 20_owner_offline_queue 25_owner_offline_deadline_pending 30_owner_offline_sync; do
+  mkdir -p "${AT08_FIXTURE}/maestro/${key}"
+  printf '%s\n' '<testsuites><testsuite tests="1" failures="0"><testcase status="SUCCESS" /></testsuite></testsuites>' \
+    >"${AT08_FIXTURE}/maestro/${key}/report.xml"
+done
+printf '%s\n' '{"acceptance_test":"AT-08","schema_version":1,"phase":"incident_opened_while_mobile_pending","profile_id":"11111111-1111-4111-8111-111111111111","deadline_generation":7,"original_deadline_was_future":true,"deadline_forced_past_for_e2e":true,"production_interval_unchanged":true,"profile_interval_seconds":3600,"server_queued_checkin_count":0,"incident_id":"22222222-2222-4222-8222-222222222222","incident_status":"open","opened_audit_id":"33333333-3333-4333-8333-333333333333","opened_audit_system_actor":true,"opened_outbox_id":"44444444-4444-4444-8444-444444444444","opened_outbox_status":"pending","scheduler_incidents_created":1,"scheduler_events_created":1}' \
+  >"${AT08_FIXTURE}/backend/at08-incident-opened.json"
+printf '%s\n' '{"acceptance_test":"AT-08","schema_version":1,"phase":"exact_incident_resolved_after_api_restart","profile_id":"11111111-1111-4111-8111-111111111111","deadline_generation":7,"incident_id":"22222222-2222-4222-8222-222222222222","incident_status":"resolved","queued_check_in_id":"55555555-5555-4555-8555-555555555555","submitted_from_queue":true,"client_recorded_before_incident":true,"server_accepted_after_incident":true,"opened_audit_id":"33333333-3333-4333-8333-333333333333","resolved_audit_id":"66666666-6666-4666-8666-666666666666","check_in_audit_id":"77777777-7777-4777-8777-777777777777","owner_audit_actor_verified":true,"opened_outbox_id":"44444444-4444-4444-8444-444444444444","resolved_outbox_id":"88888888-8888-4888-8888-888888888888","opened_outbox_preserved":true,"audit_event_types":["incident.opened","incident.resolved","checkin.confirmed"],"outbox_event_types":["alert.opened","alert.resolved"]}' \
+  >"${AT08_FIXTURE}/backend/at08-incident-resolved.json"
+node "${ROOT_DIR}/scripts/e2e/assert-at08-evidence.mjs" \
+  "${AT08_FIXTURE}" "${ROOT_DIR}/apps/mobile/lib/offlineQueue.ts" \
+  >"${AT08_FIXTURE}/backend/at08-evidence.json"
+grep -Fq '"audit_and_outbox_identity_verified":true' \
+  "${AT08_FIXTURE}/backend/at08-evidence.json"
+rm -f -- "${AT08_FIXTURE}/maestro/25_owner_offline_deadline_pending/report.xml"
+! node "${ROOT_DIR}/scripts/e2e/assert-at08-evidence.mjs" \
+  "${AT08_FIXTURE}" "${ROOT_DIR}/apps/mobile/lib/offlineQueue.ts" \
+  >/dev/null 2>&1
 E2E_ARTIFACT_DIR="${VALIDATION_DIR}" bash -c '
   set -Eeuo pipefail
   source "$1"
@@ -54,6 +76,9 @@ E2E_ARTIFACT_DIR="${VALIDATION_DIR}" bash -c '
   declare -F e2e_source_is_clean >/dev/null
   declare -F e2e_record_property >/dev/null
   declare -F e2e_finalize_run_properties >/dev/null
+  declare -F e2e_run_at08_offline_deadline >/dev/null
+  declare -F e2e_open_at08_incident >/dev/null
+  declare -F e2e_verify_at08_resolution >/dev/null
   ! e2e_record_property access_token forbidden
   e2e_record_property zeta last
   e2e_record_property alpha first
@@ -462,6 +487,18 @@ ruby -e '
     n_minus_one_scope, store_signed_scope, update_sentinel, reinstall, update_flow, completion,
   ]
   abort("Android evidence is not ordered owned-AVD/eligible/build/install/scope/sentinel/reinstall/UI/complete") unless ordered_android_proof.all? && ordered_android_proof.each_cons(2).all? { |left, right| left < right }
+
+  at08_stop = common.index(%q{e2e_stop_backend}, common.index("e2e_run_at08_offline_deadline").to_i)
+  at08_queue = common.index(%q{20_owner_offline_queue}, at08_stop.to_i)
+  at08_open = common.index(%q{e2e_open_at08_incident}, at08_queue.to_i)
+  at08_pending = common.index(%q{25_owner_offline_deadline_pending}, at08_open.to_i)
+  at08_restart = common.index(%q{e2e_start_backend}, at08_pending.to_i)
+  at08_sync = common.index(%q{30_owner_offline_sync}, at08_restart.to_i)
+  at08_verify = common.index(%q{e2e_verify_at08_resolution}, at08_sync.to_i)
+  ordered_at08 = [at08_stop, at08_queue, at08_open, at08_pending, at08_restart, at08_sync, at08_verify]
+  abort("AT-08 is not ordered API-stop/queue/sweep/persist/restart/sync/exact-verify") unless ordered_at08.all? && ordered_at08.each_cons(2).all? { |left, right| left < right }
+  abort("iOS JUnit evidence omits AT-08 persistent pending flow") unless ios.include?("25_owner_offline_deadline_pending")
+  abort("Android JUnit evidence omits AT-08 persistent pending flow") unless android.include?("25_owner_offline_deadline_pending")
 ' "${ROOT_DIR}/scripts/e2e/common.sh" "${ROOT_DIR}/scripts/e2e/run-ios.sh" \
   "${ROOT_DIR}/scripts/e2e/run-android.sh"
 

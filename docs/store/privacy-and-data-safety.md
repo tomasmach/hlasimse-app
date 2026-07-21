@@ -64,16 +64,16 @@ Produkční konfigurace vyžaduje HTTPS pro aplikaci a TLS pro e-mail. „Data i
 
 ### Výmaz dat — RELEASE BLOCKER
 
-Mobilní aplikace obsahuje cestu Nastavení → Smazat účet. Server výmaz nepovolí během otevřeného incidentu, aby nebyl obcházen bezpečnostní stav. Google navíc vyžaduje veřejný webový zdroj, přes který lze výmaz zahájit; cílová šablona je `https://<production-domain>/ucet/smazat/`. Pole lze uzavřít až po nasazení a review testu této stránky.
+Mobilní aplikace obsahuje cestu Nastavení → Smazat účet. Server výmaz nepovolí, pokud má některý z profilů vlastněných účtem otevřený incident, aby výmazem nezmizel jeho zdroj pravdy. Strážce může účet odstranit i během cizího otevřeného incidentu: incident zůstane otevřený a jeho recipient, potvrzení a doručovací audit se od identity strážce odpojí. Google navíc vyžaduje veřejný webový zdroj, přes který lze výmaz zahájit; cílová šablona je `https://<production-domain>/ucet/smazat/`. Pole lze uzavřít až po nasazení a review testu této stránky.
 
 ## Retence, výmaz a export
 
 Aktuální runtime umožňuje:
 
 - export JSON s účtem, profily, check-iny včetně případné polohy, vztahy a pozvánkami strážců, incidenty a identifikátory registrovaných zařízení; provider tokeny se do exportu nevkládají;
-- trvalý výmaz vlastního účtu po bezpečném uzavření otevřených incidentů;
+- trvalý výmaz vlastního účtu po bezpečném uzavření otevřených incidentů jeho vlastních profilů; cizí incident, který účet pouze hlídá, výmaz neblokuje ani neuzavírá;
 - při výmazu odstranění vlastněných profilů a jejich dat, vztahů, pozvánek, zařízení a navázaného doručovacího stavu;
-- anonymizaci identity smazaného příjemce v uzavřených incidentech jiných vlastníků, včetně odstranění jeho UUID z alert outboxu a odstranění snapshotu zařízení, hashe cílového tokenu a provider ticketu z doručovacích pokusů; neidentifikující výsledek pokusu zůstává zachovaný kvůli bezpečnostní historii incidentu;
+- anonymizaci identity smazaného příjemce v otevřených i uzavřených incidentech jiných vlastníků, včetně tombstoningu recipient a acknowledgement snapshotů, odstranění jeho UUID z alert outboxu a odstranění snapshotu zařízení, hashe cílového tokenu a provider ticketu z doručovacích pokusů; stav incidentu, ostatní příjemci a neidentifikující výsledky pokusů zůstávají zachované kvůli bezpečnostní historii incidentu;
 - odstranění polohy konkrétního check-inu na webu bez odstranění zbytku historického záznamu;
 - pseudonymní bezpečnostní auditní událost po výmazu účtu; model auditních metadat zakazuje jméno, e-mail, polohu, token a tajemství.
 

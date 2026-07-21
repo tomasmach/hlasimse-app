@@ -11,6 +11,7 @@ from django.utils import timezone
 from rest_framework.test import APIClient
 
 from core.models import (
+    AlertAcknowledgement,
     AlertIncident,
     AlertRecipient,
     AuditEvent,
@@ -58,6 +59,10 @@ def test_account_patch_only_updates_names(api_client, user, other_user):
 
 
 def test_account_export_is_scoped_complete_and_excludes_secrets(api_client, user, profile):
+    accepted_at = timezone.now().replace(microsecond=0)
+    user.terms_accepted_at = accepted_at
+    user.terms_version = "2026-07-21-export-v1"
+    user.save(update_fields=["terms_accepted_at", "terms_version"])
     perform_check_in(
         profile=profile,
         idempotency_key="export-check-in",
@@ -83,6 +88,8 @@ def test_account_export_is_scoped_complete_and_excludes_secrets(api_client, user
     payload = response.json()
     serialized = response.content.decode()
     assert payload["account"]["email"] == user.email
+    assert payload["account"]["terms_accepted_at"] == accepted_at.isoformat().replace("+00:00", "Z")
+    assert payload["account"]["terms_version"] == "2026-07-21-export-v1"
     assert payload["check_ins"][0]["latitude"] == "50.075500"
     assert payload["sent_invitations"][0]["id"] == str(invitation.id)
     assert "password" not in serialized
@@ -235,29 +242,170 @@ def test_account_delete_invalidates_existing_access_and_refresh_tokens(api_clien
     )
 
 
-def test_account_delete_blocks_any_open_incident(api_client, user, other_user, profile):
-    membership = GuardianMembership.objects.create(profile=profile, guardian=other_user)
+def test_account_delete_blocks_owner_but_anonymizes_guardian_in_open_incident(
+    api_client, user, other_user, profile
+):
+    remaining_guardian = User.objects.create_user(
+        email="remaining-guardian@example.cz",
+        password="Safely-testing-123",
+    )
+    deleted_membership = GuardianMembership.objects.create(
+        profile=profile,
+        guardian=other_user,
+    )
+    remaining_membership = GuardianMembership.objects.create(
+        profile=profile,
+        guardian=remaining_guardian,
+    )
     incident = AlertIncident.objects.create(
         profile=profile,
         deadline_generation=profile.deadline_generation,
         deadline_at=timezone.now(),
     )
-    AlertRecipient.objects.create(
+    deleted_recipient = AlertRecipient.objects.create(
         incident=incident,
         user=other_user,
         user_id_snapshot=other_user.id,
     )
+    remaining_recipient = AlertRecipient.objects.create(
+        incident=incident,
+        user=remaining_guardian,
+        user_id_snapshot=remaining_guardian.id,
+    )
+    deleted_acknowledgement = AlertAcknowledgement.objects.create(
+        incident=incident,
+        user=other_user,
+    )
+    remaining_acknowledgement = AlertAcknowledgement.objects.create(
+        incident=incident,
+        user=remaining_guardian,
+    )
+    event = OutboxEvent.objects.create(
+        event_type="alert.opened",
+        aggregate_type="alert_incident",
+        aggregate_id=incident.id,
+        deduplication_key=f"role-aware-delete:{incident.id}",
+        payload={
+            "recipient_user_ids": [str(other_user.id), str(remaining_guardian.id)],
+        },
+    )
+    deleted_device = PushDevice.objects.create(
+        user=other_user,
+        installation_id=uuid.uuid4(),
+        expo_push_token="ExponentPushToken[deleted-open-guardian]",
+        platform=PushDevice.Platform.ANDROID,
+    )
+    remaining_device = PushDevice.objects.create(
+        user=remaining_guardian,
+        installation_id=uuid.uuid4(),
+        expo_push_token="ExponentPushToken[remaining-open-guardian]",
+        platform=PushDevice.Platform.IOS,
+    )
+    deleted_attempt = DeliveryAttempt.objects.create(
+        incident=incident,
+        outbox_event=event,
+        device=deleted_device,
+        device_id_snapshot=deleted_device.id,
+        destination_token_hash="deleted-recipient-token-hash",
+        platform_snapshot=PushDevice.Platform.ANDROID,
+        status=DeliveryAttempt.Status.TICKET_RECEIVED,
+        expo_ticket_id="deleted-recipient-ticket",
+        response_data={"status": "ok", "id": "deleted-recipient-ticket"},
+    )
+    remaining_attempt = DeliveryAttempt.objects.create(
+        incident=incident,
+        outbox_event=event,
+        device=remaining_device,
+        device_id_snapshot=remaining_device.id,
+        destination_token_hash="remaining-recipient-token-hash",
+        platform_snapshot=PushDevice.Platform.IOS,
+        status=DeliveryAttempt.Status.TICKET_RECEIVED,
+        expo_ticket_id="remaining-recipient-ticket",
+        response_data={"status": "ok", "id": "remaining-recipient-ticket"},
+    )
 
-    for participant in (user, other_user):
-        response = authenticate(api_client, participant).delete(
-            "/api/v1/account/",
-            {"password": "Safely-testing-123", "confirmed": True},
-            format="json",
+    owner_response = authenticate(api_client, user).delete(
+        "/api/v1/account/",
+        {"password": "Safely-testing-123", "confirmed": True},
+        format="json",
+    )
+
+    assert owner_response.status_code == 409
+    assert "vašich profilů" in owner_response.json()["error"]["details"]
+    assert User.objects.filter(pk=user.pk).exists()
+    assert AlertIncident.objects.get(pk=incident.pk).status == AlertIncident.Status.OPEN
+
+    guardian_response = authenticate(api_client, other_user).delete(
+        "/api/v1/account/",
+        {"password": "Safely-testing-123", "confirmed": True},
+        format="json",
+    )
+
+    assert guardian_response.status_code == 204
+    assert not User.objects.filter(pk=other_user.pk).exists()
+    assert User.objects.filter(pk=user.pk).exists()
+    assert User.objects.filter(pk=remaining_guardian.pk).exists()
+    assert not GuardianMembership.objects.filter(pk=deleted_membership.pk).exists()
+    remaining_membership.refresh_from_db()
+    assert remaining_membership.status == GuardianMembership.Status.ACTIVE
+    incident.refresh_from_db()
+    assert incident.status == AlertIncident.Status.OPEN
+    assert incident.resolved_at is None
+    deleted_recipient.refresh_from_db()
+    assert deleted_recipient.user is None
+    assert deleted_recipient.user_id_snapshot != other_user.id
+    remaining_recipient.refresh_from_db()
+    assert remaining_recipient.user == remaining_guardian
+    assert remaining_recipient.user_id_snapshot == remaining_guardian.id
+    deleted_acknowledgement.refresh_from_db()
+    assert deleted_acknowledgement.user is None
+    assert deleted_acknowledgement.user_id_snapshot != other_user.id
+    remaining_acknowledgement.refresh_from_db()
+    assert remaining_acknowledgement.user == remaining_guardian
+    assert remaining_acknowledgement.user_id_snapshot == remaining_guardian.id
+    event.refresh_from_db()
+    assert event.payload["recipient_user_ids"] == [str(remaining_guardian.id)]
+    assert not DeliveryAttempt.objects.filter(pk=deleted_attempt.pk).exists()
+    deleted_attempt_tombstone = DeliveryAttempt.objects.get(
+        incident=incident,
+        outbox_event=event,
+        device__isnull=True,
+        device_id_snapshot__isnull=True,
+        platform_snapshot=PushDevice.Platform.ANDROID,
+    )
+    assert deleted_attempt_tombstone.destination_token_hash == ""
+    assert deleted_attempt_tombstone.expo_ticket_id == ""
+    assert deleted_attempt_tombstone.response_data == {}
+    assert deleted_attempt_tombstone.status == DeliveryAttempt.Status.TICKET_RECEIVED
+    assert deleted_attempt_tombstone.account_erasure_tombstone is True
+    assert deleted_attempt_tombstone.created_at == deleted_attempt.created_at
+    assert (
+        DeliveryAttempt.objects.filter(pk=deleted_attempt.pk).update(
+            expo_ticket_id="late-provider-ticket",
+            response_data={"id": "late-provider-ticket"},
         )
-        assert response.status_code == 409
-        assert User.objects.filter(pk=participant.pk).exists()
-    membership.refresh_from_db()
-    assert membership.status == GuardianMembership.Status.ACTIVE
+        == 0
+    )
+    deleted_attempt_tombstone.refresh_from_db()
+    assert deleted_attempt_tombstone.expo_ticket_id == ""
+    assert deleted_attempt_tombstone.response_data == {}
+    remaining_attempt.refresh_from_db()
+    assert remaining_attempt.device == remaining_device
+    assert remaining_attempt.device_id_snapshot == remaining_device.id
+    assert remaining_attempt.destination_token_hash == "remaining-recipient-token-hash"
+    assert remaining_attempt.expo_ticket_id == "remaining-recipient-ticket"
+    assert remaining_attempt.response_data == {
+        "status": "ok",
+        "id": "remaining-recipient-ticket",
+    }
+    owner_detail = authenticate(api_client, user).get(f"/api/v1/alerts/{incident.id}/")
+    assert owner_detail.status_code == 200
+    serialized_acknowledgement_ids = {
+        item["user_id"] for item in owner_detail.json()["acknowledgements"]
+    }
+    assert str(other_user.id) not in serialized_acknowledgement_ids
+    assert str(deleted_acknowledgement.user_id_snapshot) in serialized_acknowledgement_ids
+    assert str(remaining_guardian.id) in serialized_acknowledgement_ids
 
 
 def test_account_delete_anonymizes_closed_third_party_audit(api_client, user, other_user):
@@ -274,6 +422,10 @@ def test_account_delete_anonymizes_closed_third_party_audit(api_client, user, ot
         incident=incident,
         user=user,
         user_id_snapshot=user.id,
+    )
+    acknowledgement = AlertAcknowledgement.objects.create(
+        incident=incident,
+        user=user,
     )
     retry_event = OutboxEvent.objects.create(
         event_type="alert.retry",
@@ -323,20 +475,33 @@ def test_account_delete_anonymizes_closed_third_party_audit(api_client, user, ot
     recipient.refresh_from_db()
     assert recipient.user is None
     assert recipient.user_id_snapshot != user.id
-    assert OutboxEvent.objects.get(aggregate_id=incident.id).payload["recipient_user_ids"] == []
-    attempt.refresh_from_db()
-    assert attempt.device is None
-    assert attempt.device_id_snapshot is None
-    assert attempt.destination_token_hash == ""
-    assert attempt.expo_ticket_id == ""
-    assert attempt.response_data == {}
-    assert attempt.platform_snapshot == PushDevice.Platform.IOS
-    assert attempt.status == DeliveryAttempt.Status.TICKET_RECEIVED
-    legacy_attempt.refresh_from_db()
-    assert legacy_attempt.device is None
-    assert legacy_attempt.destination_token_hash == ""
-    assert legacy_attempt.expo_ticket_id == ""
-    assert legacy_attempt.response_data == {}
+    acknowledgement.refresh_from_db()
+    assert acknowledgement.user is None
+    assert acknowledgement.user_id_snapshot != user.id
+    erased_event = OutboxEvent.objects.get(aggregate_id=incident.id)
+    assert erased_event.payload["recipient_user_ids"] == []
+    assert erased_event.status == OutboxEvent.Status.PROCESSED
+    assert erased_event.last_error == "No recipient remains after account erasure"
+    assert not DeliveryAttempt.objects.filter(pk__in=[attempt.pk, legacy_attempt.pk]).exists()
+    tombstones = list(
+        DeliveryAttempt.objects.filter(
+            incident=incident,
+            outbox_event=retry_event,
+            device__isnull=True,
+            device_id_snapshot__isnull=True,
+            platform_snapshot=PushDevice.Platform.IOS,
+        ).order_by("status")
+    )
+    assert len(tombstones) == 2
+    assert {item.status for item in tombstones} == {
+        DeliveryAttempt.Status.TICKET_RECEIVED,
+        DeliveryAttempt.Status.RETRYABLE_FAILURE,
+    }
+    assert all(item.destination_token_hash == "" for item in tombstones)
+    assert all(item.expo_ticket_id == "" for item in tombstones)
+    assert all(item.response_data == {} for item in tombstones)
+    assert all(item.next_retry_at is None for item in tombstones)
+    assert all(item.account_erasure_tombstone is True for item in tombstones)
 
 
 def test_history_is_owner_scoped_paginated_and_validates_filters(

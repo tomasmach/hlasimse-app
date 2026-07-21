@@ -18,6 +18,7 @@ core_patterns = (
             {"document": "terms"},
             name="terms",
         ),
+        path("podpora/", web_views.support_view, name="support"),
     ],
     "core",
 )

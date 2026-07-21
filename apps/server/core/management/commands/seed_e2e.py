@@ -31,11 +31,19 @@ from core.services import (
 
 OWNER_EMAIL = "e2e.owner@hlasimse.invalid"
 GUARDIAN_EMAIL = "e2e.guardian@hlasimse.invalid"
+OWNER_SAFE_PROFILE_NAME = "E2E vlastník – bezpečný check-in"
+INCIDENT_PROFILE_NAME = "E2E strážce – aktivní incident"
 BOUNDARY_GUARDIAN_EMAILS = tuple(
     f"e2e.boundary-guardian-{number}@hlasimse.invalid" for number in range(2, 6)
 )
 E2E_EMAILS = (OWNER_EMAIL, GUARDIAN_EMAIL, *BOUNDARY_GUARDIAN_EMAILS)
-SEED_MODES = ("guardian-open", "free-boundaries", "owner-no-profile", "cleanup-only")
+SEED_MODES = (
+    "guardian-open",
+    "store-review",
+    "free-boundaries",
+    "owner-no-profile",
+    "cleanup-only",
+)
 
 
 def assert_safe_e2e_database() -> None:
@@ -149,6 +157,8 @@ class Command(BaseCommand):
             default="guardian-open",
             help=(
                 "guardian-open creates the two-account active-incident fixture; "
+                "store-review separates the owner's safe check-in profile from the "
+                "guardian's active-incident profile; "
                 "free-boundaries creates five profiles, five guardians on the selected "
                 "seven-day profile; "
                 "owner-no-profile creates verified accounts with no safety profile; "
@@ -173,6 +183,7 @@ class Command(BaseCommand):
             removed_aggregate_ids = delete_previous_e2e_dataset()
 
             profile = None
+            owner_safe_profile = None
             invitation = None
             membership = None
             incident = None
@@ -199,15 +210,34 @@ class Command(BaseCommand):
                         )
                         for number, email in enumerate(BOUNDARY_GUARDIAN_EMAILS, start=2)
                     ]
-            if options["mode"] == "guardian-open":
+            if options["mode"] in {"guardian-open", "store-review"}:
+                if options["mode"] == "store-review":
+                    owner_safe_profile = create_profile(
+                        owner=owner,
+                        name=OWNER_SAFE_PROFILE_NAME,
+                        interval_seconds=3_600,
+                    )
+                    perform_check_in(
+                        profile=owner_safe_profile,
+                        idempotency_key="e2e-store-review-owner-safe-check-in",
+                        client_recorded_at=timezone.now() - timedelta(minutes=20),
+                    )
                 profile = create_profile(
                     owner=owner,
-                    name="E2E bezpečnostní profil",
+                    name=(
+                        INCIDENT_PROFILE_NAME
+                        if options["mode"] == "store-review"
+                        else "E2E bezpečnostní profil"
+                    ),
                     interval_seconds=3_600,
                 )
                 perform_check_in(
                     profile=profile,
-                    idempotency_key="e2e-seed-baseline-check-in",
+                    idempotency_key=(
+                        "e2e-store-review-incident-baseline-check-in"
+                        if options["mode"] == "store-review"
+                        else "e2e-seed-baseline-check-in"
+                    ),
                     client_recorded_at=timezone.now() - timedelta(minutes=20),
                 )
                 invitation, raw_token = create_invitation(
@@ -251,6 +281,10 @@ class Command(BaseCommand):
             "mode": options["mode"],
             "removed_aggregate_count": len(removed_aggregate_ids),
             "profile_id": str(profile.id) if profile else None,
+            "incident_profile_id": str(profile.id) if incident else None,
+            "incident_profile_name": profile.name if incident else None,
+            "owner_safe_profile_id": (str(owner_safe_profile.id) if owner_safe_profile else None),
+            "owner_safe_profile_name": (owner_safe_profile.name if owner_safe_profile else None),
             "membership_id": str(membership.id) if membership else None,
             "invitation_id": str(invitation.id) if invitation else None,
             "incident_id": str(incident.id) if incident else None,

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}Podpora — Hlásím se{% endblock %}
+{% block meta_description %}Kontakt na podporu služby Hlásím se a bezpečnostní informace pro naléhavé situace.{% endblock %}
+{% block content %}
+<section class="legal-blocker container" aria-labelledby="support-title">
+  <div class="legal-blocker__copy">
+    <p class="eyebrow">Podpora služby</p>
+    <h1 id="support-title">Napište nám, co se stalo a s čím potřebujete pomoci.</h1>
+    <p>Do zprávy neposílejte heslo, přesnou polohu, push token ani jiné citlivé údaje. Pro dohledání technického problému uveďte pouze platformu, verzi aplikace a přibližný čas události.</p>
+    <a class="button button--dark" href="mailto:{{ support_email }}">Napsat na {{ support_email }}</a>
+  </div>
+  <aside class="emergency-card emergency-card--light">
+    <h2>Nejde o tísňovou linku</h2>
+    <p>Podpora nesleduje incidenty v reálném čase a nezajišťuje fyzickou pomoc. V bezprostředním ohrožení volejte <a href="tel:112">112</a> nebo <a href="tel:155">155</a>.</p>
+  </aside>
+</section>
+{% endblock %}

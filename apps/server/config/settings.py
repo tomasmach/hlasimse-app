@@ -1,11 +1,13 @@
 import ipaddress
 import os
+import re
 from datetime import timedelta
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
 import dj_database_url
-from django.core.exceptions import ImproperlyConfigured
+from django.core.exceptions import ImproperlyConfigured, ValidationError
+from django.core.validators import validate_email
 
 from core.versioning import InvalidSemVer, parse_semver
 
@@ -95,6 +97,9 @@ MOBILE_RELEASES = {
     "android": mobile_release("android"),
 }
 MOBILE_API_MAINTENANCE = env_bool("MOBILE_API_MAINTENANCE", default=False)
+GUARDIAN_LOCATION_DISCLOSURE_ENABLED = env_bool(
+    "GUARDIAN_LOCATION_DISCLOSURE_ENABLED", default=True
+)
 DEADLINE_SWEEPER_ENABLED = env_bool("DEADLINE_SWEEPER_ENABLED", default=True)
 ALERT_OUTBOX_ENABLED = env_bool("ALERT_OUTBOX_ENABLED", default=True)
 EMAIL_OUTBOX_ENABLED = env_bool("EMAIL_OUTBOX_ENABLED", default=True)
@@ -168,6 +173,7 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                "core.context_processors.public_support",
             ],
         },
     }
@@ -384,7 +390,44 @@ if not DEBUG and not EXPO_ACCESS_TOKEN:
         "Production requires EXPO_ACCESS_TOKEN and Expo enhanced push security"
     )
 
+raw_legal_terms_version = os.getenv("LEGAL_TERMS_VERSION")
+LEGAL_TERMS_VERSION = (raw_legal_terms_version or "development-unpublished").strip()
+if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", LEGAL_TERMS_VERSION):
+    raise ImproperlyConfigured(
+        "LEGAL_TERMS_VERSION must be a stable 1-64 character identifier using only "
+        "letters, numbers, dots, underscores, and hyphens"
+    )
+if not DEBUG and (
+    not raw_legal_terms_version
+    or any(
+        marker in LEGAL_TERMS_VERSION.casefold()
+        for marker in ("draft", "placeholder", "unpublished", "development", "latest")
+    )
+):
+    raise ImproperlyConfigured("Production requires an explicit finalized LEGAL_TERMS_VERSION")
+
 APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000").rstrip("/")
+try:
+    parsed_app_base_url = urlsplit(APP_BASE_URL)
+    app_base_port = parsed_app_base_url.port
+except ValueError as exc:
+    raise ImproperlyConfigured("APP_BASE_URL must be a valid absolute URL") from exc
+SUPPORT_EMAIL = os.getenv("SUPPORT_EMAIL", "support@example.invalid").strip().lower()
+try:
+    validate_email(SUPPORT_EMAIL)
+except ValidationError as exc:
+    raise ImproperlyConfigured("SUPPORT_EMAIL must be one valid email address") from exc
+if not DEBUG:
+    support_domain = SUPPORT_EMAIL.rsplit("@", 1)[-1]
+    local_compose_support = (
+        env_bool("EMAIL_ALLOW_INSECURE_LOCAL_COMPOSE", default=False)
+        and APP_BASE_URL == "https://localhost"
+        and support_domain == "localhost.invalid"
+    )
+    if not local_compose_support and (
+        not os.getenv("SUPPORT_EMAIL") or support_domain.endswith((".invalid", ".test", ".example"))
+    ):
+        raise ImproperlyConfigured("Production requires a verified, monitored SUPPORT_EMAIL")
 EMAIL_BACKEND = os.getenv(
     "DJANGO_EMAIL_BACKEND",
     "django.core.mail.backends.locmem.EmailBackend"
@@ -407,8 +450,20 @@ if EMAIL_USE_TLS and EMAIL_USE_SSL:
 if EMAIL_PORT <= 0 or EMAIL_TIMEOUT <= 0:
     raise ImproperlyConfigured("EMAIL_PORT and EMAIL_TIMEOUT must be positive")
 if not DEBUG:
-    if not APP_BASE_URL.startswith("https://"):
-        raise ImproperlyConfigured("Production APP_BASE_URL must use HTTPS")
+    if (
+        parsed_app_base_url.scheme != "https"
+        or not parsed_app_base_url.hostname
+        or parsed_app_base_url.username
+        or parsed_app_base_url.password
+        or app_base_port is not None
+        or parsed_app_base_url.path
+        or parsed_app_base_url.query
+        or parsed_app_base_url.fragment
+    ):
+        raise ImproperlyConfigured(
+            "Production APP_BASE_URL must be a clean HTTPS origin without credentials, "
+            "port, path, query, or fragment"
+        )
     if EMAIL_BACKEND != "django.core.mail.backends.smtp.EmailBackend":
         raise ImproperlyConfigured("Production requires the Django SMTP email backend")
     if EMAIL_ALLOW_INSECURE_LOCAL_COMPOSE:

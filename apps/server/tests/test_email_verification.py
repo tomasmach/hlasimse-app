@@ -9,7 +9,7 @@ from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.core.mail import EmailMultiAlternatives
 from django.db import IntegrityError, transaction
-from django.test import Client
+from django.test import Client, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -34,6 +34,7 @@ REGISTRATION = {
     "password": "A-strong-unique-password-123",
     "first_name": "Alena",
     "last_name": "Nová",
+    "terms_accepted": True,
 }
 
 
@@ -52,27 +53,56 @@ def _challenge(email=REGISTRATION["email"]):
     return EmailVerificationChallenge.objects.get(user__email=email)
 
 
+@override_settings(LEGAL_TERMS_VERSION="2026-07-21-api-v1")
 def test_trusted_manager_is_verified_but_public_registration_is_not(api_client):
     trusted = User.objects.create_user(
         email="fixture@example.cz", password="A-strong-unique-password-123"
     )
     assert trusted.email_verified_at is not None
 
+    accepted_after = timezone.now()
     response = _register(api_client)
 
     assert response.status_code == 202
     assert response.data["verification_required"] is True
     public_user = User.objects.get(email=REGISTRATION["email"])
     assert public_user.email_verified_at is None
+    assert public_user.terms_version == "2026-07-21-api-v1"
+    assert public_user.terms_accepted_at is not None
+    assert public_user.terms_accepted_at >= accepted_after
     assert OutboxEvent.objects.filter(event_type="user.email_verification").count() == 1
 
 
+@pytest.mark.parametrize("value", [None, False])
+def test_public_registration_requires_explicit_terms_acceptance(api_client, value):
+    payload = dict(REGISTRATION)
+    if value is None:
+        payload.pop("terms_accepted")
+    else:
+        payload["terms_accepted"] = value
+
+    response = api_client.post(
+        reverse("register"),
+        payload,
+        format="json",
+    )
+
+    assert response.status_code == 400
+    assert "terms_accepted" in response.data["error"]["details"]
+    assert not User.objects.filter(email=REGISTRATION["email"]).exists()
+    assert not OutboxEvent.objects.filter(event_type="user.email_verification").exists()
+
+
+@override_settings(LEGAL_TERMS_VERSION="2026-07-21-api-v1")
 def test_registration_replay_is_non_enumerating_and_keeps_valid_challenge(api_client):
     first = _register(api_client)
     challenge = _challenge()
     event = OutboxEvent.objects.get(event_type="user.email_verification")
+    public_user = User.objects.get(email=REGISTRATION["email"])
+    original_acceptance = (public_user.terms_accepted_at, public_user.terms_version)
 
-    replay = _register(api_client, password="Another-strong-password-456")
+    with override_settings(LEGAL_TERMS_VERSION="2026-07-21-api-v2"):
+        replay = _register(api_client, password="Another-strong-password-456")
 
     assert replay.status_code == first.status_code == 202
     assert replay.data == first.data
@@ -80,6 +110,8 @@ def test_registration_replay_is_non_enumerating_and_keeps_valid_challenge(api_cl
     assert challenge.cancelled_at is None
     assert EmailVerificationChallenge.objects.count() == 1
     assert OutboxEvent.objects.get().pk == event.pk
+    public_user.refresh_from_db()
+    assert (public_user.terms_accepted_at, public_user.terms_version) == original_acceptance
 
     User.objects.create_user(email="verified@example.cz", password="A-strong-unique-password-123")
     verified_replay = _register(api_client, email="verified@example.cz")
@@ -92,6 +124,16 @@ def test_database_rejects_case_insensitive_duplicate_email():
     User.objects.create_user(email="Case@Example.cz", password="A-strong-password-123")
     with pytest.raises(IntegrityError), transaction.atomic():
         User.objects.create_user(email="CASE@example.cz", password="A-strong-password-456")
+
+
+def test_database_rejects_incomplete_terms_acceptance_pair():
+    with pytest.raises(IntegrityError), transaction.atomic():
+        User.objects.create_user(
+            email="incomplete-consent@example.cz",
+            password="A-strong-password-123",
+            terms_accepted_at=timezone.now(),
+            terms_version="",
+        )
 
 
 def test_migration_backfills_existing_accounts_as_verified():

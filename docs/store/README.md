@@ -2,6 +2,8 @@
 
 **Stav: DRAFT — NOT READY TO SUBMIT.** Tento adresář je pracovní zdroj pravdivých českých podkladů pro App Store a Google Play. Nejde o schválení releasu ani o náhradu právní kontroly.
 
+Strojově kontrolovaný stav balíčku je v `release-pack.json`. Finální fail-closed postup a hranice podepisování popisuje `../runbooks/mobile-release-gate.md`.
+
 ## Obsah
 
 - [metadata-cs.md](metadata-cs.md) — názvy, krátké a dlouhé texty, klíčová slova a URL pole.
@@ -16,8 +18,8 @@ Normativním produktovým zdrojem je [feature-contract.md](../feature-contract.m
 
 Dokud nejsou uzavřené všechny následující body, nejsou metadata ani privacy formuláře připravené k odeslání:
 
-- finální produkční doména a veřejné HTTPS adresy marketingového webu, podpory, privacy policy a webového zahájení výmazu účtu;
-- identita provozovatele, právní kontakty a skutečný support e-mail/telefon uvedený na cílové support stránce;
+- finální produkční doména a veřejné HTTPS adresy marketingového webu, podpory, privacy policy, podmínek a webového zahájení výmazu účtu; candidate gate je musí živě načíst jako HTTP 2xx bez redirectu či blocker obsahu;
+- identita provozovatele, právní kontakty a skutečný support e-mail uvedený na cílové support stránce;
 - finální iOS bundle ID, Android application ID, názvy vývojářských účtů a podepsané produkční buildy;
 - výběr hostingu aplikace, PostgreSQL, SMTP, záloh a logů včetně regionů, rolí zpracovatelů, smluv a případných mezinárodních přenosů;
 - ověření rolí Expo, APNs a FCM v konečných smlouvách a privacy dokumentaci; bez něj nelze uzavřít odpověď na sdílení dat;

@@ -71,27 +71,16 @@ class EmailVerificationResendForm(forms.Form):
         return get_user_model().objects.normalize_email(self.cleaned_data["email"]).lower()
 
 
-INTERVAL_CHOICES = (
-    (3_600, "1 hodina"),
-    (7_200, "2 hodiny"),
-    (14_400, "4 hodiny"),
-    (28_800, "8 hodin"),
-    (43_200, "12 hodin"),
-    (86_400, "24 hodin"),
-    (172_800, "2 dny"),
-    (259_200, "3 dny"),
-    (604_800, "7 dní"),
-)
-
-
 class CheckInProfileForm(forms.ModelForm):
-    interval_seconds = forms.TypedChoiceField(
-        label="Interval ohlášení",
-        choices=INTERVAL_CHOICES,
-        coerce=int,
+    interval_seconds = forms.IntegerField(
+        label="Interval ohlášení v minutách",
+        min_value=MIN_INTERVAL_SECONDS // 60,
+        max_value=MAX_INTERVAL_SECONDS // 60,
+        widget=forms.NumberInput(attrs={"min": 60, "max": 10_080, "step": 1}),
         help_text=(
-            "Po uplynutí intervalu bez ohlášení server vytvoří incident a pokusí se "
-            "upozornit aktivní strážce best-effort push notifikací."
+            "Zadejte 60 až 10 080 celých minut. Po uplynutí intervalu bez ohlášení "
+            "server vytvoří incident a pokusí se upozornit aktivní strážce "
+            "best-effort push notifikací."
         ),
     )
 
@@ -101,11 +90,14 @@ class CheckInProfileForm(forms.ModelForm):
         labels = {"name": "Název profilu"}
         widgets = {"name": forms.TextInput(attrs={"autocomplete": "name"})}
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not self.is_bound and self.instance and self.instance.pk:
+            self.initial["interval_seconds"] = self.instance.interval_seconds // 60
+
     def clean_interval_seconds(self):
-        value = self.cleaned_data["interval_seconds"]
-        if not MIN_INTERVAL_SECONDS <= value <= MAX_INTERVAL_SECONDS or value % 60:
-            raise ValidationError("Interval musí být od jedné hodiny do sedmi dní.")
-        return value
+        minutes = self.cleaned_data["interval_seconds"]
+        return minutes * 60
 
 
 class PauseProfileForm(forms.Form):

@@ -11,7 +11,7 @@ import {
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Animated, { FadeInDown, ReduceMotion } from "react-native-reanimated";
-import { AuthButton, AuthInput } from "@/components/auth";
+import { AuthButton, AuthInput, LegalConsent } from "@/components/auth";
 import { ProgressDots } from "@/components/onboarding/ProgressDots";
 import { register } from "@/lib/auth";
 import { useOnboardingStore } from "@/stores/onboarding";
@@ -30,6 +30,8 @@ export default function SignUpScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [termsError, setTermsError] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<{ field?: Field; message: string } | null>(null);
 
@@ -53,10 +55,15 @@ export default function SignUpScreen() {
       refs[invalid.field].current?.focus();
       return;
     }
+    if (!termsAccepted) {
+      setTermsError("Před vytvořením účtu potvrďte podmínky a ochranu soukromí.");
+      return;
+    }
     setLoading(true);
     setError(null);
+    setTermsError("");
     try {
-      await register({ email, password, firstName: name });
+      await register({ email, password, firstName: name, termsAccepted: true });
       await completeOnboarding();
       router.replace({ pathname: "/(auth)/verify-email", params: { email: email.trim() } });
     } catch (cause) {
@@ -196,6 +203,16 @@ export default function SignUpScreen() {
           <Text className="mb-6 font-body text-sm leading-5 text-muted">
             Všechny funkce jsou zdarma. Hlásím se není tísňová služba a doručení push nelze garantovat.
           </Text>
+          <LegalConsent
+            checked={termsAccepted}
+            disabled={loading}
+            error={termsError}
+            onChange={(accepted) => {
+              setTermsAccepted(accepted);
+              setTermsError("");
+            }}
+            testIDPrefix="onboarding-register"
+          />
           <AuthButton
             label="Vytvořit účet zdarma"
             onPress={() => void handleSignUp()}

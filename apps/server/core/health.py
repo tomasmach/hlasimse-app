@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.conf import settings
 from django.db.models import Q
 from django.utils import timezone
 
@@ -47,7 +48,7 @@ def delivery_health(
     open_incident_ids = AlertIncident.objects.filter(status=AlertIncident.Status.OPEN).values("id")
     open_incident_ids_with_recipients = AlertIncident.objects.filter(
         status=AlertIncident.Status.OPEN,
-        recipients__isnull=False,
+        recipients__user__isnull=False,
     ).values("id")
     actionable_failed_events = OutboxEvent.objects.filter(
         Q(updated_at__gte=recent_failure_cutoff)
@@ -99,21 +100,27 @@ def delivery_health(
         .exclude(last_error="")
         .count()
     )
-    stale_delivery_attempts = DeliveryAttempt.objects.filter(
-        Q(
-            status__in=NON_TERMINAL_DELIVERY_STATUSES,
-            updated_at__lt=delivery_attempt_cutoff,
+    stale_delivery_attempts = (
+        DeliveryAttempt.objects.filter(
+            account_erasure_tombstone=False,
         )
-        | Q(
-            status=DeliveryAttempt.Status.RETRYABLE_FAILURE,
-            next_retry_at__lt=delivery_attempt_cutoff,
+        .filter(
+            Q(
+                status__in=NON_TERMINAL_DELIVERY_STATUSES,
+                updated_at__lt=delivery_attempt_cutoff,
+            )
+            | Q(
+                status=DeliveryAttempt.Status.RETRYABLE_FAILURE,
+                next_retry_at__lt=delivery_attempt_cutoff,
+            )
+            | Q(
+                status=DeliveryAttempt.Status.RETRYABLE_FAILURE,
+                next_retry_at__isnull=True,
+                updated_at__lt=delivery_attempt_cutoff,
+            )
         )
-        | Q(
-            status=DeliveryAttempt.Status.RETRYABLE_FAILURE,
-            next_retry_at__isnull=True,
-            updated_at__lt=delivery_attempt_cutoff,
-        )
-    ).count()
+        .count()
+    )
     missing_delivery_attempts = (
         OutboxEvent.objects.filter(
             aggregate_id__in=open_incident_ids_with_recipients,
@@ -123,10 +130,20 @@ def delivery_health(
         .filter(delivery_attempts__isnull=True)
         .count()
     )
-    dead_letters = DeliveryAttempt.objects.filter(
-        Q(updated_at__gte=recent_failure_cutoff) | Q(incident__status=AlertIncident.Status.OPEN),
-        status=DeliveryAttempt.Status.DEAD_LETTER,
-    ).count()
+    dead_letters = (
+        DeliveryAttempt.objects.filter(
+            account_erasure_tombstone=False,
+        )
+        .filter(
+            Q(updated_at__gte=recent_failure_cutoff)
+            | Q(incident__status=AlertIncident.Status.OPEN),
+            status=DeliveryAttempt.Status.DEAD_LETTER,
+        )
+        .count()
+    )
+    disabled_safety_features = (
+        [] if settings.GUARDIAN_LOCATION_DISCLOSURE_ENABLED else ["guardian_location_disclosure"]
+    )
     healthy = not any(
         [
             missing_workers,
@@ -140,6 +157,7 @@ def delivery_health(
             stale_delivery_attempts,
             missing_delivery_attempts,
             dead_letters,
+            disabled_safety_features,
         ]
     )
     return {
@@ -157,4 +175,5 @@ def delivery_health(
         "stale_delivery_attempts": stale_delivery_attempts,
         "missing_delivery_attempts": missing_delivery_attempts,
         "dead_letter_deliveries": dead_letters,
+        "disabled_safety_features": disabled_safety_features,
     }

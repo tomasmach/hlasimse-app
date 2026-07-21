@@ -56,6 +56,7 @@ supabase/.temp/
 /android
 /apps/mobile/ios
 /apps/mobile/android
+/release-evidence/
 .env.local
 
 supabase/.temp

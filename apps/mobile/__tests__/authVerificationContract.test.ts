@@ -26,12 +26,14 @@ it("registers without attempting a JWT login before e-mail verification", async 
       email: " NEW@Example.cz ",
       password: "A-strong-unique-password-123",
       firstName: " Alena ",
+      termsAccepted: true,
     }),
   ).resolves.toMatchObject({ verification_required: true });
 
   expect(fetchMock).toHaveBeenCalledTimes(1);
   expect(String(fetchMock.mock.calls[0][0])).toContain("/api/v1/auth/register/");
   expect(String(fetchMock.mock.calls[0][1]?.body)).toContain('"email":"new@example.cz"');
+  expect(String(fetchMock.mock.calls[0][1]?.body)).toContain('"terms_accepted":true');
 });
 
 it("uses unauthenticated resend and confirmation endpoints", async () => {

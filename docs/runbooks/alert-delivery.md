@@ -122,15 +122,50 @@ reconciliation. E-mailová fronta má samostatně `EMAIL_OUTBOX_ENABLED=false`.
 
 ### H. Únik nebo neoprávněný přístup k poloze
 
-1. SEV-1: okamžitě zablokujte guardian location endpoint feature flagem, ne celý check-in nebo vznik incidentů.
+1. SEV-1: nastavte `GUARDIAN_LOCATION_DISCLOSURE_ENABLED=false` v revidované deployment
+   konfiguraci, aplikujte ji do všech procesních rolí a nejdřív postupně restartujte web/API. Tím se
+   souřadnice skryjí strážcům v mobilním API i Django webu; check-iny, ukládání polohy, vznik a
+   doručení incidentů i přístup vlastníka pokračují.
 2. Zachovejte auditní logy a zapojte security/privacy odpovědné osoby.
 3. Ověřte rozsah podle autorizovaných requestů a incident activity bez exportu souřadnic.
 4. Rotujte dotčené sessions/credentials, opravte autorizaci a před obnovením proveďte negativní testy před incidentem, během něj, po vyřešení a po odebrání strážce.
 5. Posuďte ohlašovací povinnost a lhůty podle GDPR incident procesu a DPIA.
 
+Po aktivaci vypínače ověřte guardian API i web negativním testem. `check_delivery_health` musí vracet
+`disabled_safety_features=["guardian_location_disclosure"]` a safety metrics musí obsahovat
+`guardian_location_disclosure_enabled=false`; tento alarm má vlastníka po celou dobu zásahu. Přepněte
+hodnotu zpět na `true` až po opravě autorizace, negativních testech před incidentem, během něj, po
+vyřešení a po odebrání strážce a po schválení velitelem incidentu. Poté znovu nasaďte stejnou
+konfiguraci do všech rolí a ověřte zelený delivery health. Vypínač nemaže uložené souřadnice; pro
+výmaz použijte vlastnickou akci odstranění polohy.
+
 ## Ruční zásahy
 
 Ruční opakování doručení je povoleno pouze přes auditovaný management postup, který používá existující outbox/idempotency mechanismus. Operátor nesmí sestavovat push payload ručně ani měnit stav na „provider accepted“; ani tento stav není důkaz doručení zařízení.
+
+Pro jeden ručně posouzený dead-letter použijte přesně:
+
+```bash
+uv run python manage.py recover_alert_delivery \
+  --event-id <TERMINAL_DEAD_LETTER_OUTBOX_UUID> \
+  --incident-id <OPEN_INCIDENT_UUID> \
+  --operator-id <ACTIVE_STAFF_USER_UUID> \
+  --reason "INC-1234: provider je obnoven, schváleno druhým operátorem"
+```
+
+Příkaz spusťte z `apps/server`. Před spuštěním druhý operátor read-only kontrolou potvrdí, že ID
+patří stejnému otevřenému incidentu, původní event je terminální (`failed`, nebo `processed` při
+částečném doručení) a obsahuje jednoznačný dead-letter. U částečného doručení nový event zahrne
+jen strážce bez jediného providerem přijatého cíle; strážce s přijatým cílem znovu neupozorní.
+Příkaz odmítne neaktivního/ne-staff operátora, neúplný nebo
+rozporný recipient snapshot, odebraného strážce, vyřešený incident i běžnou permanentní chybu.
+Důvod musí být stručný provozní záznam s opaque ticket ID, bez jmen, e-mailů, polohy nebo tokenů.
+Původní event ani attempts nemění: založí nový `alert.retry` s dedupe klíčem odvozeným od zdrojového
+eventu a audit eventem s operátorem a omezeným důvodem. Opakování stejného příkazu je idempotentní.
+Pokud i nový retry skončí jako dead-letter, musí být po novém posouzení uvedeno jeho vlastní event ID;
+nikdy neuvolňujte znovu původní event změnou `status`, `attempts` nebo `available_at`. Worker při
+zpracování znovu ověřuje aktivní guardian membership, takže odebrání strážce po vytvoření retry
+bezpečně zabrání odeslání.
 
 Ruční vytvoření nebo uzavření incidentu vyžaduje princip čtyř očí, důvod, actor ID a audit event. Nikdy se nesmí zpětně změnit původní deadline, `triggered_at`, attempts nebo recipient snapshot.
 

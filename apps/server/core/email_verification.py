@@ -103,9 +103,16 @@ def _enqueue_verification_email(*, challenge: EmailVerificationChallenge) -> Out
 
 
 def register_unverified_user(
-    *, email: str, password: str, first_name: str = "", last_name: str = ""
+    *,
+    email: str,
+    password: str,
+    terms_accepted: bool,
+    first_name: str = "",
+    last_name: str = "",
 ) -> tuple[User, bool]:
     """Create an unverified user or safely replay registration without enumeration."""
+    if terms_accepted is not True:
+        raise ValueError("Registration requires explicit acceptance of the current terms.")
     normalized = normalize_email(email)
     with transaction.atomic():
         user = User.objects.select_for_update().filter(email__iexact=normalized).first()
@@ -119,6 +126,8 @@ def register_unverified_user(
                         first_name=first_name.strip(),
                         last_name=last_name.strip(),
                         email_verified_at=None,
+                        terms_accepted_at=timezone.now(),
+                        terms_version=settings.LEGAL_TERMS_VERSION,
                     )
                     created = True
             except IntegrityError:

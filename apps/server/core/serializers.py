@@ -1,5 +1,6 @@
 from datetime import timedelta
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -25,10 +26,11 @@ from .services import can_acknowledge_incident, create_profile, update_profile
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, min_length=10, trim_whitespace=False)
+    terms_accepted = serializers.BooleanField(write_only=True)
 
     class Meta:
         model = get_user_model()
-        fields = ("id", "email", "password", "first_name", "last_name")
+        fields = ("id", "email", "password", "first_name", "last_name", "terms_accepted")
         read_only_fields = ("id",)
         extra_kwargs = {"email": {"validators": []}}
 
@@ -39,7 +41,17 @@ class RegisterSerializer(serializers.ModelSerializer):
         validate_password(value)
         return value
 
+    def validate_terms_accepted(self, value):
+        if not value:
+            raise serializers.ValidationError(
+                "Pro vytvoření účtu je nutné přijmout podmínky používání."
+            )
+        return value
+
     def create(self, validated_data):
+        validated_data.pop("terms_accepted")
+        validated_data["terms_accepted_at"] = timezone.now()
+        validated_data["terms_version"] = settings.LEGAL_TERMS_VERSION
         try:
             with transaction.atomic():
                 return get_user_model().objects.create_user(**validated_data)
@@ -475,7 +487,7 @@ class PushDeviceSerializer(serializers.ModelSerializer):
 
 
 class AcknowledgementSerializer(serializers.ModelSerializer):
-    user_id = serializers.UUIDField(read_only=True)
+    user_id = serializers.UUIDField(source="user_id_snapshot", read_only=True)
 
     class Meta:
         model = AlertAcknowledgement
@@ -520,6 +532,8 @@ class AlertIncidentSerializer(serializers.ModelSerializer):
             return None
         user = request.user
         is_owner = obj.profile.owner_id == user.id
+        if not is_owner and not settings.GUARDIAN_LOCATION_DISCLOSURE_ENABLED:
+            return None
         is_active_recipient = obj.recipients.filter(user_id=user.id).exists() and (
             GuardianMembership.objects.filter(
                 profile=obj.profile,

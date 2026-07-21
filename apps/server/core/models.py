@@ -48,6 +48,8 @@ class User(AbstractBaseUser, PermissionsMixin):
     is_active = models.BooleanField(default=True)
     date_joined = models.DateTimeField(default=timezone.now)
     email_verified_at = models.DateTimeField(null=True, blank=True)
+    terms_accepted_at = models.DateTimeField(null=True, blank=True, editable=False)
+    terms_version = models.CharField(max_length=64, blank=True, editable=False)
 
     objects = UserManager()
 
@@ -59,6 +61,11 @@ class User(AbstractBaseUser, PermissionsMixin):
             models.UniqueConstraint(
                 Lower("email"),
                 name="unique_user_email_case_insensitive",
+            ),
+            models.CheckConstraint(
+                condition=(Q(terms_accepted_at__isnull=True) & Q(terms_version=""))
+                | (Q(terms_accepted_at__isnull=False) & ~Q(terms_version="")),
+                name="user_terms_acceptance_pair",
             ),
         ]
 
@@ -320,18 +327,32 @@ class AlertAcknowledgement(UUIDModel):
     incident = models.ForeignKey(
         AlertIncident, on_delete=models.CASCADE, related_name="acknowledgements"
     )
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+    )
+    user_id_snapshot = models.UUIDField(editable=False)
     acknowledged_at = models.DateTimeField(default=timezone.now)
 
     class Meta:
         constraints = [
             models.UniqueConstraint(
-                fields=["incident", "user"], name="unique_incident_acknowledgement"
+                fields=["incident", "user_id_snapshot"],
+                name="unique_incident_acknowledgement_snapshot",
             )
         ]
 
     def __str__(self) -> str:
-        return f"{self.user_id} acknowledged {self.incident_id}"
+        return f"{self.user_id_snapshot} acknowledged {self.incident_id}"
+
+    def save(self, *args, **kwargs):
+        if self.user_id_snapshot is None and self.user_id is not None:
+            self.user_id_snapshot = self.user_id
+            if kwargs.get("update_fields") is not None:
+                kwargs["update_fields"] = {*kwargs["update_fields"], "user_id_snapshot"}
+        super().save(*args, **kwargs)
 
 
 class PushDevice(UUIDModel):
@@ -386,6 +407,7 @@ class DeliveryAttempt(UUIDModel):
     expo_ticket_id = models.CharField(max_length=128, blank=True, db_index=True)
     response_data = models.JSONField(default=dict, blank=True)
     next_retry_at = models.DateTimeField(null=True, blank=True)
+    account_erasure_tombstone = models.BooleanField(default=False, db_index=True)
 
     class Meta:
         constraints = [

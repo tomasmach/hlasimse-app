@@ -44,6 +44,8 @@ def build_account_export(user) -> dict:
             "first_name": user.first_name,
             "last_name": user.last_name,
             "date_joined": user.date_joined,
+            "terms_accepted_at": user.terms_accepted_at,
+            "terms_version": user.terms_version,
         },
         "profiles": [
             {
@@ -163,16 +165,17 @@ def build_account_export(user) -> dict:
                 "status",
             )
         ),
-        "alert_acknowledgements": list(
-            AlertAcknowledgement.objects.filter(user=user)
-            .order_by("acknowledged_at", "id")
-            .values(
-                "id",
-                "incident_id",
-                "user_id",
-                "acknowledged_at",
+        "alert_acknowledgements": [
+            {
+                "id": acknowledgement.id,
+                "incident_id": acknowledgement.incident_id,
+                "user_id": acknowledgement.user_id_snapshot,
+                "acknowledged_at": acknowledgement.acknowledged_at,
+            }
+            for acknowledgement in AlertAcknowledgement.objects.filter(user=user).order_by(
+                "acknowledged_at", "id"
             )
-        ),
+        ],
         "push_devices": list(
             PushDevice.objects.filter(user=user)
             .order_by("created_at")
@@ -182,14 +185,18 @@ def build_account_export(user) -> dict:
 
 
 def delete_account_safely(*, user_id, password: str) -> None:
-    """Erase an account while retaining anonymized closed third-party incident audit.
+    """Erase an account while retaining anonymized third-party incident audit.
 
-    The schema cannot preserve guardian acknowledgement identity after erasure and has
-    no reliable channel for a final guardian notification. Deletion is therefore
-    blocked whenever the account participates in an open incident.
+    Owners cannot erase the source of truth for an open incident. A guardian can
+    leave an open incident because recipient, acknowledgement, and delivery records
+    are tombstoned without changing that incident or its remaining recipients.
     """
     with transaction.atomic():
-        user = User.objects.select_for_update().get(pk=user_id)
+        # Safety operations acquire profile rows before they write audit rows that
+        # reference the user. Keep account erasure in the same lock order: the
+        # profile locks below serialize check-ins, and the final user deletion
+        # acquires the user row only after those operations have completed.
+        user = User.objects.get(pk=user_id)
         if not user.check_password(password):
             raise AccountPasswordInvalid
         involved_profile_ids = set(
@@ -210,22 +217,18 @@ def delete_account_safely(*, user_id, password: str) -> None:
             .values_list("pk", flat=True)
         )
         owned_open_incident_ids = AlertIncident.objects.filter(
-            profile_id__in=involved_profile_ids,
             profile__owner=user,
             status=AlertIncident.Status.OPEN,
         ).values_list("id", flat=True)
-        received_open_incident_ids = AlertRecipient.objects.filter(
-            user=user,
-            incident__status=AlertIncident.Status.OPEN,
-        ).values_list("incident_id", flat=True)
-        open_incident_ids = set(owned_open_incident_ids) | set(received_open_incident_ids)
         has_open_incident = (
-            AlertIncident.objects.select_for_update().filter(pk__in=open_incident_ids).exists()
+            AlertIncident.objects.select_for_update()
+            .filter(pk__in=owned_open_incident_ids)
+            .exists()
         )
         if has_open_incident:
             raise AccountDeletionBlocked(
-                "Účet nelze odstranit během aktivního incidentu. "
-                "Nejprve incident bezpečně vyřešte potvrzeným check-inem."
+                "Účet nelze odstranit, dokud některý z vašich profilů má aktivní incident. "
+                "Nejprve jej bezpečně vyřešte potvrzeným check-inem."
             )
 
         profile_ids = list(CheckInProfile.objects.filter(owner=user).values_list("id", flat=True))
@@ -258,27 +261,40 @@ def delete_account_safely(*, user_id, password: str) -> None:
             payload = dict(event.payload)
             recipients = payload.get("recipient_user_ids")
             if isinstance(recipients, list) and str(user.id) in recipients:
-                payload["recipient_user_ids"] = [
+                remaining_recipient_ids = [
                     recipient for recipient in recipients if recipient != str(user.id)
                 ]
+                payload["recipient_user_ids"] = remaining_recipient_ids
                 event.payload = payload
-                event.save(update_fields=["payload", "updated_at"])
+                update_fields = ["payload", "updated_at"]
+                if not remaining_recipient_ids and event.status != OutboxEvent.Status.PROCESSED:
+                    event.status = OutboxEvent.Status.PROCESSED
+                    event.processed_at = timezone.now()
+                    event.locked_at = None
+                    event.last_error = "No recipient remains after account erasure"
+                    update_fields.extend(["status", "processed_at", "locked_at", "last_error"])
+                event.save(update_fields=update_fields)
         for recipient in recipient_rows:
+            recipient.user = None
             recipient.user_id_snapshot = uuid.uuid4()
-            recipient.save(update_fields=["user_id_snapshot", "updated_at"])
+            recipient.save(update_fields=["user", "user_id_snapshot", "updated_at"])
 
-        # Keep the non-identifying outcome of closed third-party incident delivery
-        # attempts, but sever every value that can link the attempt back to this
-        # account's installation or provider destination. Owned incident attempts
-        # were removed above together with the owned incident graph.
-        DeliveryAttempt.objects.select_for_update().filter(
-            Q(device_id_snapshot__in=device_ids) | Q(device_id__in=device_ids),
-        ).exclude(incident_id__in=incident_ids).update(
-            device=None,
-            device_id_snapshot=None,
-            destination_token_hash="",
-            expo_ticket_id="",
-            response_data={},
+        acknowledgement_rows = list(
+            AlertAcknowledgement.objects.select_for_update().filter(user=user)
+        )
+        for acknowledgement in acknowledgement_rows:
+            acknowledgement.user = None
+            acknowledgement.user_id_snapshot = uuid.uuid4()
+            acknowledgement.save(update_fields=["user", "user_id_snapshot", "updated_at"])
+
+        # Legacy attempts can have no device snapshot. Capture their row IDs while
+        # the live device relation still exists; the final query also discovers any
+        # concurrent modern attempt by its immutable device snapshot.
+        third_party_attempt_ids = list(
+            DeliveryAttempt.objects.select_for_update()
+            .filter(Q(device_id_snapshot__in=device_ids) | Q(device_id__in=device_ids))
+            .exclude(incident_id__in=incident_ids)
+            .values_list("id", flat=True)
         )
 
         for invitation in GuardianInvitation.objects.select_for_update().filter(
@@ -323,3 +339,36 @@ def delete_account_safely(*, user_id, password: str) -> None:
             metadata={"method": "self_service"},
         )
         user.delete()
+
+        # The user deletion removes devices and can serialize behind an in-flight
+        # delivery-attempt insert. Replace every matching row afterwards instead of
+        # updating it in place: a worker holding a stale model instance can no longer
+        # restore a provider ticket or response after this transaction commits.
+        attempts_to_tombstone = list(
+            DeliveryAttempt.objects.select_for_update()
+            .filter(
+                Q(id__in=third_party_attempt_ids)
+                | Q(device_id_snapshot__in=device_ids)
+                | Q(device_id__in=device_ids),
+            )
+            .exclude(incident_id__in=incident_ids)
+        )
+        for attempt in attempts_to_tombstone:
+            original_created_at = attempt.created_at
+            tombstone_values = {
+                "incident_id": attempt.incident_id,
+                "outbox_event_id": attempt.outbox_event_id,
+                "device": None,
+                "device_id_snapshot": None,
+                "destination_token_hash": "",
+                "platform_snapshot": attempt.platform_snapshot,
+                "attempt_number": attempt.attempt_number,
+                "status": attempt.status,
+                "expo_ticket_id": "",
+                "response_data": {},
+                "next_retry_at": None,
+                "account_erasure_tombstone": True,
+            }
+            attempt.delete()
+            tombstone = DeliveryAttempt.objects.create(**tombstone_values)
+            DeliveryAttempt.objects.filter(pk=tombstone.pk).update(created_at=original_created_at)

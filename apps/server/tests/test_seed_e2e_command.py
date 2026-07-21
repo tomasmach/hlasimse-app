@@ -12,7 +12,9 @@ from core.management.commands.seed_e2e import (
     BOUNDARY_GUARDIAN_EMAILS,
     E2E_EMAILS,
     GUARDIAN_EMAIL,
+    INCIDENT_PROFILE_NAME,
     OWNER_EMAIL,
+    OWNER_SAFE_PROFILE_NAME,
     assert_safe_e2e_database,
 )
 from core.models import (
@@ -26,7 +28,7 @@ from core.models import (
     OutboxEvent,
     User,
 )
-from core.services import create_invitation, create_profile
+from core.services import create_invitation, create_profile, perform_check_in
 
 
 @pytest.fixture
@@ -76,6 +78,87 @@ def test_seed_builds_verified_two_account_incident_dataset(capsys, e2e_run_crede
     assert result["outbox_events_created"] == 1
     assert AuditEvent.objects.filter(event_type="incident.opened").exists()
     assert e2e_run_credential not in json.dumps(result)
+
+
+@pytest.mark.django_db
+def test_store_review_seed_keeps_owner_checkin_separate_from_guardian_incident(
+    capsys,
+    e2e_run_credential,
+):
+    result = run_seed(capsys, e2e_run_credential, mode="store-review")
+
+    owner = User.objects.get(email=OWNER_EMAIL)
+    guardian = User.objects.get(email=GUARDIAN_EMAIL)
+    owner_safe_profile = CheckInProfile.objects.get(
+        owner=owner,
+        name=OWNER_SAFE_PROFILE_NAME,
+    )
+    incident_profile = CheckInProfile.objects.get(
+        owner=owner,
+        name=INCIDENT_PROFILE_NAME,
+    )
+    incident = AlertIncident.objects.get(
+        profile=incident_profile,
+        status=AlertIncident.Status.OPEN,
+    )
+
+    perform_check_in(
+        profile=owner_safe_profile,
+        idempotency_key="store-review-owner-walkthrough-check-in",
+    )
+    incident.refresh_from_db()
+
+    assert CheckInProfile.objects.filter(owner=owner, enabled=True).count() == 2
+    assert GuardianMembership.objects.filter(
+        profile=incident_profile,
+        guardian=guardian,
+        status=GuardianMembership.Status.ACTIVE,
+    ).exists()
+    assert incident.status == AlertIncident.Status.OPEN
+    assert incident.resolved_at is None
+    assert result["active_profile_count"] == 2
+    assert result["profile_id"] == str(incident_profile.id)
+    assert result["incident_profile_id"] == str(incident_profile.id)
+    assert result["incident_profile_name"] == INCIDENT_PROFILE_NAME
+    assert result["owner_safe_profile_id"] == str(owner_safe_profile.id)
+    assert result["owner_safe_profile_name"] == OWNER_SAFE_PROFILE_NAME
+
+
+@pytest.mark.django_db
+def test_store_review_seed_rebuilds_the_same_named_postconditions(
+    capsys,
+    e2e_run_credential,
+):
+    first = run_seed(capsys, e2e_run_credential, mode="store-review")
+    first_profile_ids = {
+        first["owner_safe_profile_id"],
+        first["incident_profile_id"],
+    }
+
+    second = run_seed(capsys, e2e_run_credential, mode="store-review")
+
+    owner = User.objects.get(email=OWNER_EMAIL)
+    guardian = User.objects.get(email=GUARDIAN_EMAIL)
+    profiles = CheckInProfile.objects.filter(owner=owner)
+    incident = AlertIncident.objects.get(status=AlertIncident.Status.OPEN)
+    assert not CheckInProfile.objects.filter(pk__in=first_profile_ids).exists()
+    assert set(profiles.values_list("name", flat=True)) == {
+        OWNER_SAFE_PROFILE_NAME,
+        INCIDENT_PROFILE_NAME,
+    }
+    assert incident.profile.name == INCIDENT_PROFILE_NAME
+    assert (
+        GuardianMembership.objects.filter(
+            profile=incident.profile,
+            guardian=guardian,
+            status=GuardianMembership.Status.ACTIVE,
+        ).count()
+        == 1
+    )
+    assert second["active_profile_count"] == 2
+    assert second["incident_status"] == AlertIncident.Status.OPEN
+    assert second["owner_safe_profile_name"] == OWNER_SAFE_PROFILE_NAME
+    assert second["incident_profile_name"] == INCIDENT_PROFILE_NAME
 
 
 @pytest.mark.django_db

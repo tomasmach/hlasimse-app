@@ -3,7 +3,7 @@ import { Pressable, Text, TextInput, View } from "react-native";
 import { Link, router } from "expo-router";
 import Animated, { FadeInDown, ReduceMotion } from "react-native-reanimated";
 import { register } from "@/lib/auth";
-import { AuthButton, AuthInput, AuthScreen } from "@/components/auth";
+import { AuthButton, AuthInput, AuthScreen, LegalConsent } from "@/components/auth";
 
 type Field = "name" | "email" | "password" | "confirmation";
 
@@ -18,6 +18,8 @@ export default function RegisterScreen() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmation, setConfirmation] = useState("");
+  const [termsAccepted, setTermsAccepted] = useState(false);
+  const [termsError, setTermsError] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<{ field?: Field; message: string } | null>(null);
 
@@ -41,11 +43,16 @@ export default function RegisterScreen() {
       refs[invalid.field].current?.focus();
       return;
     }
+    if (!termsAccepted) {
+      setTermsError("Před vytvořením účtu potvrďte podmínky a ochranu soukromí.");
+      return;
+    }
 
     setLoading(true);
     setError(null);
+    setTermsError("");
     try {
-      await register({ email, password, firstName: name });
+      await register({ email, password, firstName: name, termsAccepted: true });
       router.replace({ pathname: "/(auth)/verify-email", params: { email: email.trim() } });
     } catch (cause) {
       setError({
@@ -154,6 +161,16 @@ export default function RegisterScreen() {
       <Text className="mb-6 font-body text-sm leading-5 text-muted">
         Všechny funkce jsou zdarma. Hlásím se není tísňová služba a nekontaktuje 112 ani 155.
       </Text>
+      <LegalConsent
+        checked={termsAccepted}
+        disabled={loading}
+        error={termsError}
+        onChange={(accepted) => {
+          setTermsAccepted(accepted);
+          setTermsError("");
+        }}
+        testIDPrefix="register"
+      />
       <AuthButton
         label="Vytvořit účet zdarma"
         onPress={() => void handleRegister()}

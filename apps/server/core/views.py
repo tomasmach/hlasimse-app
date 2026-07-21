@@ -47,6 +47,7 @@ from .models import (
     GuardianInvitation,
     GuardianMembership,
     PushDevice,
+    User,
 )
 from .openapi import (
     AcceptedResponseSerializer,
@@ -121,6 +122,7 @@ class RegisterView(generics.CreateAPIView):
         register_unverified_user(
             email=values["email"],
             password=values["password"],
+            terms_accepted=values["terms_accepted"],
             first_name=values.get("first_name", ""),
             last_name=values.get("last_name", ""),
         )
@@ -834,11 +836,17 @@ class AlertIncidentViewSet(
                 status=status.HTTP_409_CONFLICT,
             )
         if not can_acknowledge_incident(request.user, incident):
-            raise PermissionDenied("Převzetí může zaznamenat pouze aktivní strážce incidentu.")
+            raise PermissionDenied("Incident může potvrdit pouze jeho aktivní strážce.")
         with transaction.atomic():
+            guardian = User.objects.select_for_update().filter(pk=request.user.pk).first()
+            if guardian is None:
+                raise PermissionDenied("Účet už není aktivní.")
             acknowledgement, _ = AlertAcknowledgement.objects.get_or_create(
                 incident=incident,
-                user=request.user,
-                defaults={"acknowledged_at": timezone.now()},
+                user=guardian,
+                defaults={
+                    "user_id_snapshot": guardian.id,
+                    "acknowledged_at": timezone.now(),
+                },
             )
         return Response(AlertIncidentSerializer(incident, context={"request": request}).data)

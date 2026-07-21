@@ -28,6 +28,8 @@ E2E_JOURNEY_COMPLETED="false"
 unset E2E_RUN_CREDENTIAL || true
 E2E_BACKEND_PID=""
 E2E_METRO_PID=""
+E2E_AT08_PROFILE_ID=""
+E2E_AT08_INCIDENT_ID=""
 
 # Release evidence is valid only when every runtime/release input below comes
 # from the recorded Git tree. Deliberately exclude unrelated root documents so
@@ -396,17 +398,96 @@ e2e_run_flow() {
   return "$maestro_status"
 }
 
+e2e_resolve_at08_profile_id() {
+  (
+    cd "${E2E_ROOT_DIR}/apps/server"
+    uv run python manage.py shell --verbosity 0 -c '
+from core.models import CheckInProfile
+
+profiles = list(
+    CheckInProfile.objects.filter(
+        owner__email="e2e.owner@hlasimse.invalid",
+        archived_at__isnull=True,
+        enabled=True,
+        is_paused=False,
+    ).order_by("created_at", "id")
+)
+assert 2 <= len(profiles) <= 3, (
+    f"AT-08 requires the baseline and selected profile, plus only the optional Android update sentinel; found {len(profiles)}"
+)
+selected = profiles[-1]
+assert selected.interval_seconds == 3600, "AT-08 selected profile is not at the production minimum"
+assert not selected.guardians.exists(), "AT-08 selected profile unexpectedly has a guardian"
+print(selected.id)
+'
+  )
+}
+
+e2e_open_at08_incident() {
+  E2E_AT08_PROFILE_ID="$(e2e_resolve_at08_profile_id)"
+  if [[ ! "${E2E_AT08_PROFILE_ID}" =~ ^[0-9a-fA-F-]{36}$ ]]; then
+    e2e_log "Could not resolve the exact AT-08 profile identity."
+    return 1
+  fi
+  (
+    cd "${E2E_ROOT_DIR}/apps/server"
+    HLASIMSE_E2E_CREDENTIAL="${E2E_RUN_CREDENTIAL}" \
+      uv run python manage.py exercise_e2e_offline_deadline \
+        --confirm-local-e2e \
+        --phase open-incident \
+        --profile-id "${E2E_AT08_PROFILE_ID}"
+  ) | tee "${E2E_ARTIFACT_DIR}/backend/at08-incident-opened.json"
+  E2E_AT08_INCIDENT_ID="$(node -e '
+const fs = require("node:fs");
+const evidence = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+process.stdout.write(String(evidence.incident_id || ""));
+' "${E2E_ARTIFACT_DIR}/backend/at08-incident-opened.json")"
+  if [[ ! "${E2E_AT08_INCIDENT_ID}" =~ ^[0-9a-fA-F-]{36}$ ]]; then
+    e2e_log "AT-08 open evidence did not return an exact incident identity."
+    return 1
+  fi
+}
+
+e2e_verify_at08_resolution() {
+  if [[ ! "${E2E_AT08_PROFILE_ID}" =~ ^[0-9a-fA-F-]{36}$ ]] \
+    || [[ ! "${E2E_AT08_INCIDENT_ID}" =~ ^[0-9a-fA-F-]{36}$ ]]; then
+    e2e_log "AT-08 identities are missing before resolution verification."
+    return 1
+  fi
+  (
+    cd "${E2E_ROOT_DIR}/apps/server"
+    HLASIMSE_E2E_CREDENTIAL="${E2E_RUN_CREDENTIAL}" \
+      uv run python manage.py exercise_e2e_offline_deadline \
+        --confirm-local-e2e \
+        --phase verify-resolution \
+        --profile-id "${E2E_AT08_PROFILE_ID}" \
+        --incident-id "${E2E_AT08_INCIDENT_ID}"
+  ) | tee "${E2E_ARTIFACT_DIR}/backend/at08-incident-resolved.json"
+  node "${E2E_ROOT_DIR}/scripts/e2e/assert-at08-evidence.mjs" \
+    "${E2E_ARTIFACT_DIR}" \
+    "${E2E_ROOT_DIR}/apps/mobile/lib/offlineQueue.ts" \
+    | tee "${E2E_ARTIFACT_DIR}/backend/at08-evidence.json"
+}
+
+e2e_run_at08_offline_deadline() {
+  local device_id="$1"
+  e2e_log "Stopping only the owned backend PID for the deterministic AT-08 API outage."
+  e2e_stop_backend
+  e2e_run_flow "${device_id}" 20_owner_offline_queue
+  e2e_open_at08_incident
+  e2e_run_flow "${device_id}" 25_owner_offline_deadline_pending
+  e2e_start_backend
+  e2e_run_flow "${device_id}" 30_owner_offline_sync
+  e2e_verify_at08_resolution
+}
+
 e2e_run_journey() {
   local device_id="$1"
   e2e_run_flow "$device_id" 00_guardian_clean_install
   e2e_run_flow "$device_id" 10_owner_online_core
   e2e_run_flow "$device_id" 15_owner_profile_create
 
-  e2e_log "Stopping only the owned backend PID for the deterministic API-outage check."
-  e2e_stop_backend
-  e2e_run_flow "$device_id" 20_owner_offline_queue
-  e2e_start_backend
-  e2e_run_flow "$device_id" 30_owner_offline_sync
+  e2e_run_at08_offline_deadline "$device_id"
 
   e2e_run_flow "$device_id" 40_owner_export
   e2e_run_flow "$device_id" 90_owner_delete_account

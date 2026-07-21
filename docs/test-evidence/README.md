@@ -23,7 +23,9 @@ Validate the harness without launching a device:
 
 ```bash
 scripts/e2e/validate.sh
-cd apps/server && uv run pytest tests/test_seed_e2e_command.py -q
+cd apps/server && uv run pytest \
+  tests/test_seed_e2e_command.py \
+  tests/test_e2e_offline_deadline_command.py -q
 ```
 
 Run iOS from one available template simulator by exact UDID:
@@ -100,8 +102,8 @@ store-signing gates below.
 | Guardian/free tier | the selected boundary profile shows exactly 5/5 active guardians and a disabled invitation action |
 | Interval/free tier | the selected boundary profile exposes the server-seeded upper bound of 10,080 minutes (7 days) in profile management |
 | History/statistics | server-confirmed check-in, resolved incident, and metric sections load |
-| Offline semantics | owned API process is stopped; request is labeled pending and deadline unchanged |
-| Recovery | API returns; queued request syncs and appears as later synchronization in history |
+| Offline semantics / AT-08 | the owned API process is stopped; the request is stored through `expo-secure-store`, labeled pending, survives an app-process restart and remains pending while the exact server deadline passes |
+| Recovery / AT-08 | the real scheduler opens an incident and `alert.opened` outbox event; after API restart the queued request receives a later server acceptance, resolves that exact incident, remains in all three audit records and creates `alert.resolved`; UI shows the pending state, later-sync provenance, incident opening and confirmed resolution |
 | Export | server export opens the operating-system share sheet and reports completion |
 | Deletion | owner enters the fixture password, confirms destructive action, and returns to login |
 | Evidence provenance | the full run uses isolated PostgreSQL and records a clean commit/tree, device/runtime, toolchain, app build, and platform artifact identity |
@@ -120,6 +122,30 @@ artifacts after every flow. Treat screenshots and diagnostic trees as sensitive 
 After a completely successful journey, `cleanup-only` removes the remaining boundary fixture and
 its bounded graph. A failed run intentionally leaves its reserved `.invalid` fixture available for
 diagnosis; rerunning the seed or calling its guarded cleanup mode removes it safely.
+
+### AT-08 cross-layer evidence schema
+
+Both full platform runners publish the same credential-free AT-08 evidence set:
+
+- `backend/at08-incident-opened.json` — schema version, exact profile/generation/incident IDs,
+  unchanged 3,600-second production interval, scheduler counts, and exact opened audit/outbox IDs;
+- `maestro/20_owner_offline_queue/report.xml` — the API is down and the app visibly marks one request
+  pending rather than successful;
+- `maestro/25_owner_offline_deadline_pending/report.xml` — after the scheduler transition and an app
+  process restart, the same SecureStore-backed request is still pending with the original deadline;
+- `maestro/30_owner_offline_sync/report.xml` — after API restart, UI shows later synchronization,
+  one resolved incident, the retained incident-opened timeline item and confirmed resolution;
+- `backend/at08-incident-resolved.json` — exact identity continuity, queued check-in provenance and
+  temporal ordering, opened/resolved/check-in audit IDs, and opened/resolved outbox IDs;
+- `backend/at08-evidence.json` — fail-closed schema validation joining the three UI reports, both
+  database phases, and the tested source's exclusive use of `expo-secure-store` rather than a
+  general-purpose plaintext persistence API.
+
+`exercise_e2e_offline_deadline` is disabled outside `DEBUG`, rejects remote or non-E2E databases,
+requires the generated run credential plus explicit profile/incident UUIDs, and authenticates the
+reserved owner. Its open phase changes only that existing profile's deadline timestamp, runs the
+real deadline sweep, and verifies that the production minimum interval remains 3,600 seconds. It
+does not relax model/API validation or create an alternate authentication path.
 
 ## Physical-device release gates
 

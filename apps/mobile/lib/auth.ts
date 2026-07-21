@@ -55,6 +55,7 @@ export async function register(input: {
   password: string;
   firstName: string;
   lastName?: string;
+  termsAccepted: boolean;
 }): Promise<RegistrationResult> {
   return apiRequest<RegistrationResult>("/api/v1/auth/register/", {
     method: "POST",
@@ -64,6 +65,7 @@ export async function register(input: {
       password: input.password,
       first_name: input.firstName.trim(),
       last_name: input.lastName?.trim() || "",
+      terms_accepted: input.termsAccepted,
     },
   });
 }

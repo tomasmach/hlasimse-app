@@ -18,7 +18,7 @@
     <header class="dashboard-mobile-header"><button class="icon-button" type="button" aria-controls="dashboard-navigation" aria-expanded="false" data-dashboard-toggle><span class="sr-only">Otevřít navigaci</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><a class="brand" href="{% url 'core:dashboard' %}"><img class="brand__mark" src="{% static 'core/images/favicon.svg' %}" alt="" width="38" height="38"><span>Hlásím se</span></a></header>
     <main id="hlavni-obsah" class="dashboard-main" tabindex="-1">
       {% block dashboard_content %}{% endblock %}
-      <footer class="dashboard-footer"><p>Hlásím se nenahrazuje tísňovou linku. Push upozornění jsou odesílána v režimu best-effort.</p><a href="mailto:podpora@hlasimse.cz">Potřebujete poradit?</a></footer>
+      <footer class="dashboard-footer"><p>Hlásím se nenahrazuje tísňovou linku. Push upozornění jsou odesílána v režimu best-effort.</p><a href="{% url 'core:support' %}">Potřebujete poradit?</a></footer>
     </main>
   </div>
 </div>

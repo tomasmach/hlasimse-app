@@ -44,6 +44,12 @@ jobs:
       - name: Test public product contract gate
         run: npm run test:public-contract
 
+      - name: Validate native privacy and permission declarations
+        run: npm run check:mobile-native-config
+
+      - name: Test fail-closed release gates
+        run: npm run test:release-gates
+
       - name: Validate Expo project
         working-directory: apps/mobile
         run: npx expo-doctor
@@ -130,6 +136,8 @@ jobs:
           DJANGO_SECRET_KEY: ci-only-secret-key-that-is-not-used-outside-this-deploy-check
           DJANGO_ALLOWED_HOSTS: ci.hlasim.se
           APP_BASE_URL: https://ci.hlasim.se
+          SUPPORT_EMAIL: support@ci.hlasim.se
+          LEGAL_TERMS_VERSION: 2026-07-21-ci
           MOBILE_MIN_IOS_VERSION: 1.0.0
           MOBILE_MIN_IOS_BUILD: "1"
           MOBILE_IOS_STORE_URL: https://apps.apple.com/app/hlasim-se/id1234567890

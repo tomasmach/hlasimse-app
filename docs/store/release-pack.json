@@ -1,0 +1,29 @@
+{
+  "status": "DRAFT",
+  "application": {
+    "version": "1.0.0",
+    "iosBundleIdentifier": "com.anonymous.hlasimse",
+    "iosBuildNumber": "1",
+    "androidApplicationId": "com.anonymous.hlasimse",
+    "androidVersionCode": 1
+  },
+  "legal": {
+    "marketingUrl": "https://<production-domain>/",
+    "supportUrl": "https://<production-domain>/podpora/",
+    "privacyUrl": "https://<production-domain>/ochrana-soukromi/",
+    "termsUrl": "https://<production-domain>/obchodni-podminky/",
+    "accountDeletionUrl": "https://<production-domain>/ucet/smazat/",
+    "supportEmail": "<support-email-on-production-domain>"
+  },
+  "approvals": {
+    "metadata": "DRAFT",
+    "privacyAndDataSafety": "DRAFT",
+    "contentRating": "DRAFT",
+    "reviewNotes": "DRAFT"
+  },
+  "screenshots": {
+    "ios": [],
+    "android": [],
+    "androidFeatureGraphic": "assets/android/feature-graphic.png"
+  }
+}

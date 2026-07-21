@@ -12,6 +12,7 @@ module.exports = {
     '^expo-application$': '<rootDir>/__mocks__/expo-application.js',
     '^expo-crypto$': '<rootDir>/__mocks__/expo-crypto.js',
     '^expo-constants$': '<rootDir>/__mocks__/expo-constants.js',
+    '^expo-web-browser$': '<rootDir>/__mocks__/expo-web-browser.js',
     '^expo/virtual/env$': '<rootDir>/__mocks__/expo-env.js',
   },
 };

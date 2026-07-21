@@ -8,6 +8,11 @@
   "scripts": {
     "check:public-contract": "node scripts/check-public-contract.mjs",
     "test:public-contract": "node --test scripts/check-public-contract.test.mjs",
+    "check:mobile-native-config": "node scripts/ci/validate-mobile-native-config.mjs",
+    "test:release-gates": "node --test scripts/release/*.test.mjs",
+    "check:store-release-pack": "node scripts/release/validate-store-release-pack.mjs",
+    "release:android-candidate": "scripts/release/build-android-candidate.sh",
+    "release:ios-candidate": "scripts/release/generate-ios-candidate.sh",
     "mobile:start": "npm run start --workspace @hlasimse/mobile",
     "mobile:ios": "npm run ios --workspace @hlasimse/mobile",
     "mobile:android": "npm run android --workspace @hlasimse/mobile",

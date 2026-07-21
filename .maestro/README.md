@@ -19,8 +19,11 @@ Every Maestro flow is single-attempt; a failed mutating flow is never replayed a
 
 The runner first seeds two reserved `.invalid` accounts, acknowledges an already-open incident
 as the guardian, resolves it with an owner check-in, tests pause/resume and a second free profile,
-forces a local API outage to prove that an offline request remains visibly unconfirmed, restores
-the API and syncs it, requests an export, and deletes the owner fixture. It then reseeds a bounded
+forces a local API outage to prove that an offline request remains visibly unconfirmed, advances
+the exact selected profile through a scheduler-created incident without changing its one-hour
+production interval, restarts the app while that encrypted SecureStore request is still pending,
+then restores the API and proves that sync resolves that same audited incident while preserving
+both opened/resolved outbox events. It then requests an export and deletes the owner fixture before reseeding a bounded
 six-account fixture to assert the visible 5-profile, 5-guardian, and 7-day free-tier boundaries
 before guarded cleanup.
 

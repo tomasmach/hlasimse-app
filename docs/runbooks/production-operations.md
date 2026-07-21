@@ -40,15 +40,17 @@ the edge proxy to redact these token routes as well and propagate only a valid U
 
 ## Independent safety switches
 
-The deadline scheduler, alert delivery, and e-mail delivery have independent, fail-visible switches:
+The deadline scheduler, alert delivery, e-mail delivery, and guardian location disclosure have
+independent, fail-visible switches:
 
 | Variable | Stops | Deliberately continues |
 | --- | --- | --- |
 | `DEADLINE_SWEEPER_ENABLED=false` | Materializing new due incidents | API check-ins, existing outbox delivery, durable due deadlines |
 | `ALERT_OUTBOX_ENABLED=false` | Claiming and sending alert outbox events | Incident persistence, e-mail delivery, durable pending alert events |
 | `EMAIL_OUTBOX_ENABLED=false` | Claiming and sending e-mail outbox events | Incident and alert delivery, durable pending e-mail events |
+| `GUARDIAN_LOCATION_DISCLOSURE_ENABLED=false` | Returning incident coordinates to guardians in the mobile API and Django web | Check-ins, location capture and retention, incident creation and delivery, owner access to their own location |
 
-Apply a switch through reviewed deployment configuration and restart only the affected worker role.
+Apply a worker switch through reviewed deployment configuration and restart only the affected worker role.
 The disabled process remains alive and records `healthy=false, disabled=true`; delivery health must
 therefore page rather than silently treating an intentional stop as healthy. Never suppress that
 alarm without an active incident owner. The `--queue all` compatibility mode stops if either outbox
@@ -59,6 +61,14 @@ worker heartbeat returns to `healthy=true`, wait for the durable backlog to drai
 `python manage.py reconcile_safety_state --repair --fail-on-gaps`. A disabled scheduler leaves each
 deadline eligible for normal idempotent materialization after restart; a disabled outbox worker
 never claims or mutates its pending events.
+
+The guardian-location switch is process configuration, not a data deletion operation. Apply it
+consistently to every web/API and operational process role, roll the web replicas first, and confirm
+`check_delivery_health` reports `disabled_safety_features=["guardian_location_disclosure"]` while
+`emit_safety_metrics` reports `safety_switches.guardian_location_disclosure_enabled=false`. This
+deliberately keeps delivery health red until an incident owner restores the switch. Owners retain
+access to their own stored incident location; guardians receive no coordinates through either the
+mobile API or Django web. Use the existing owner location-deletion action when erasure is required.
 
 ## Expired session cleanup
 
@@ -88,6 +98,9 @@ Compose file, CI logs, shell history, or repository.
   and 15 s. Override the statement budget per process role only after measuring that role; never
   remove the limits. Lock timeout must not exceed statement timeout.
 - `APP_BASE_URL`: canonical HTTPS web origin.
+- `LEGAL_TERMS_VERSION`: immutable identifier of the exact published terms accepted by new
+  registrations. Change it whenever the approved terms content changes; never reuse a version for
+  different text. The database stores this identifier with the acceptance timestamp.
 - `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS` or
   `EMAIL_USE_SSL`, `DEFAULT_FROM_EMAIL`, `SERVER_EMAIL`.
 - `EXPO_ACCESS_TOKEN`: production Expo access token; enhanced push security must be enabled for the
@@ -162,6 +175,7 @@ Map the snapshot fields to provider-neutral time series and alerts:
 | `incidents.open_count` | Current open incident load; use together with deadline and delivery backlog rather than as an error by itself |
 | `alert_outbox.pending_count` / `alert_outbox.oldest_pending_age_seconds` | Durable alert-delivery backlog and oldest event age |
 | `delivery.dead_letter_count` | Delivery attempts in a terminal dead-letter state; any increase requires investigation |
+| `safety_switches.guardian_location_disclosure_enabled` | Emergency disclosure switch; page whenever false and require a named incident owner until restored |
 | `workers.oldest_heartbeat_age_seconds` / `workers.missing_count` / `workers.stale_count` / `workers.failing_count` | Required worker coverage and freshness; page on any missing, stale, or explicitly failing worker |
 
 Django's separate access JSON is the source for API error and latency telemetry. Select records

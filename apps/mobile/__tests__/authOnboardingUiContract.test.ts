@@ -67,6 +67,25 @@ describe("auth and onboarding UI contract", () => {
     );
   });
 
+  it("requires the reusable accessible legal consent on both registration paths", () => {
+    for (const file of ["app/(auth)/register.tsx", "app/(onboarding)/signup.tsx"]) {
+      const source = read(file);
+      expect(source).toContain("LegalConsent");
+      expect(source).toContain("termsAccepted");
+      expect(source).toContain("termsAccepted: true");
+      expect(source).toContain("Před vytvořením účtu potvrďte podmínky");
+    }
+
+    const consent = read("components/auth/LegalConsent.tsx");
+    expect(consent).toContain('accessibilityRole="checkbox"');
+    expect(consent).toContain('accessibilityRole="link"');
+    expect(consent).toContain("accessibilityState={{ checked, disabled }}");
+    expect(consent).toContain("aria-describedby={error ? errorId : undefined}");
+    expect(consent).toContain("nativeID={errorId}");
+    expect(consent).toContain('className="mt-1 font-body text-sm leading-5 text-[#9E382E]"');
+    expect(consent).toContain("min-h-[48px]");
+  });
+
   it("does not turn password reset into an account enumeration oracle", () => {
     const source = read("app/(auth)/forgot-password.tsx");
 

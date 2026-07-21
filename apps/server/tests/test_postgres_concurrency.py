@@ -1,15 +1,19 @@
 from concurrent.futures import ThreadPoolExecutor
 from datetime import timedelta
-from threading import Barrier
+from threading import Barrier, Event
+from unittest.mock import patch
 
 import pytest
 from django.core.exceptions import ValidationError
-from django.db import close_old_connections, connection, connections
+from django.db import close_old_connections, connection, connections, transaction
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from core.account_data import AccountDeletionBlocked, delete_account_safely
 from core.models import (
+    AlertAcknowledgement,
     AlertIncident,
+    AlertRecipient,
     AuditEvent,
     CheckIn,
     CheckInProfile,
@@ -221,7 +225,11 @@ def test_concurrent_registration_is_non_enumerating_and_idempotent():
         create_barrier.wait(timeout=10)
         return client.post(
             "/api/v1/auth/register/",
-            {"email": email, "password": "Safely-testing-123"},
+            {
+                "email": email,
+                "password": "Safely-testing-123",
+                "terms_accepted": True,
+            },
         ).status_code
 
     statuses = run_two_workers(register)
@@ -230,3 +238,130 @@ def test_concurrent_registration_is_non_enumerating_and_idempotent():
     assert User.objects.filter(email="casesensitive@example.cz").count() == 1
     assert EmailVerificationChallenge.objects.count() == 1
     assert OutboxEvent.objects.filter(event_type="user.email_verification").count() == 1
+
+
+def test_concurrent_owner_and_guardian_deletion_preserves_open_incident():
+    owner = User.objects.create_user(
+        email="delete-owner@example.cz",
+        password="Long-pass-123",
+    )
+    deleting_guardian = User.objects.create_user(
+        email="delete-guardian@example.cz",
+        password="Long-pass-123",
+    )
+    remaining_guardian = User.objects.create_user(
+        email="keep-guardian@example.cz",
+        password="Long-pass-123",
+    )
+    profile = create_profile(owner=owner, name="Deletion race", interval_seconds=3_600)
+    GuardianMembership.objects.create(profile=profile, guardian=deleting_guardian)
+    remaining_membership = GuardianMembership.objects.create(
+        profile=profile,
+        guardian=remaining_guardian,
+    )
+    incident = AlertIncident.objects.create(
+        profile=profile,
+        deadline_generation=profile.deadline_generation,
+        deadline_at=timezone.now() - timedelta(minutes=1),
+    )
+    deleting_recipient = AlertRecipient.objects.create(
+        incident=incident,
+        user=deleting_guardian,
+        user_id_snapshot=deleting_guardian.id,
+    )
+    remaining_recipient = AlertRecipient.objects.create(
+        incident=incident,
+        user=remaining_guardian,
+        user_id_snapshot=remaining_guardian.id,
+    )
+    deleting_acknowledgement = AlertAcknowledgement.objects.create(
+        incident=incident,
+        user=deleting_guardian,
+    )
+    event = OutboxEvent.objects.create(
+        event_type="alert.opened",
+        aggregate_type="alert_incident",
+        aggregate_id=incident.id,
+        deduplication_key=f"concurrent-account-delete:{incident.id}",
+        payload={
+            "recipient_user_ids": [
+                str(deleting_guardian.id),
+                str(remaining_guardian.id),
+            ]
+        },
+    )
+    participant_ids = [owner.id, deleting_guardian.id]
+
+    def delete_participant(number):
+        try:
+            delete_account_safely(
+                user_id=participant_ids[number],
+                password="Long-pass-123",
+            )
+        except AccountDeletionBlocked:
+            return "blocked"
+        return "deleted"
+
+    results = run_two_workers(delete_participant)
+
+    assert results == ["blocked", "deleted"]
+    assert User.objects.filter(pk=owner.pk).exists()
+    assert not User.objects.filter(pk=deleting_guardian.pk).exists()
+    assert User.objects.filter(pk=remaining_guardian.pk).exists()
+    profile.refresh_from_db()
+    assert profile.owner_id == owner.id
+    incident.refresh_from_db()
+    assert incident.status == AlertIncident.Status.OPEN
+    assert incident.resolved_at is None
+    remaining_membership.refresh_from_db()
+    assert remaining_membership.status == GuardianMembership.Status.ACTIVE
+    deleting_recipient.refresh_from_db()
+    assert deleting_recipient.user is None
+    assert deleting_recipient.user_id_snapshot != deleting_guardian.id
+    remaining_recipient.refresh_from_db()
+    assert remaining_recipient.user == remaining_guardian
+    assert remaining_recipient.user_id_snapshot == remaining_guardian.id
+    deleting_acknowledgement.refresh_from_db()
+    assert deleting_acknowledgement.user is None
+    assert deleting_acknowledgement.user_id_snapshot != deleting_guardian.id
+    event.refresh_from_db()
+    assert event.payload["recipient_user_ids"] == [str(remaining_guardian.id)]
+
+
+def test_account_deletion_and_checkin_use_one_postgresql_lock_order():
+    owner = User.objects.create_user(
+        email="delete-checkin-race@example.cz",
+        password="Long-pass-123",
+    )
+    profile = create_profile(owner=owner, name="Deletion check-in race", interval_seconds=3_600)
+    deletion_reached_password_check = Event()
+    checkin_holds_profile_lock = Event()
+    original_check_password = User.check_password
+
+    def synchronized_password_check(user, raw_password):
+        deletion_reached_password_check.set()
+        assert checkin_holds_profile_lock.wait(timeout=10)
+        return original_check_password(user, raw_password)
+
+    def race(number):
+        if number == 0:
+            with patch(
+                "core.account_data.User.check_password",
+                synchronized_password_check,
+            ):
+                delete_account_safely(user_id=owner.id, password="Long-pass-123")
+            return "deleted"
+
+        assert deletion_reached_password_check.wait(timeout=10)
+        with transaction.atomic():
+            locked_profile = CheckInProfile.objects.select_for_update().get(pk=profile.pk)
+            checkin_holds_profile_lock.set()
+            perform_check_in(
+                profile=locked_profile,
+                idempotency_key="delete-checkin-lock-order",
+            )
+        return "checked-in"
+
+    results = run_two_workers(race)
+
+    assert results == ["deleted", "checked-in"]

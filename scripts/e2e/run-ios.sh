@@ -948,6 +948,7 @@ else
     10_owner_online_core
     15_owner_profile_create
     20_owner_offline_queue
+    25_owner_offline_deadline_pending
     30_owner_offline_sync
     40_owner_export
     90_owner_delete_account

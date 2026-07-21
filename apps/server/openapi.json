@@ -2832,11 +2832,16 @@
                     "last_name": {
                         "type": "string",
                         "maxLength": 150
+                    },
+                    "terms_accepted": {
+                        "type": "boolean",
+                        "writeOnly": true
                     }
                 },
                 "required": [
                     "email",
-                    "password"
+                    "password",
+                    "terms_accepted"
                 ]
             },
             "StateEnum": {

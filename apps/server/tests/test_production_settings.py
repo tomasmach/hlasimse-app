@@ -11,6 +11,8 @@ def production_environment() -> dict[str, str]:
         "DJANGO_ALLOWED_HOSTS": "app.example.cz",
         "DATABASE_URL": "postgresql://user:password@database.example.cz/hlasimse",
         "APP_BASE_URL": "https://app.example.cz",
+        "SUPPORT_EMAIL": "support@app.example.cz",
+        "LEGAL_TERMS_VERSION": "2026-07-21-v1",
         "EXPO_ACCESS_TOKEN": "test-expo-access-token",
         "MOBILE_MIN_IOS_VERSION": "1.0.0",
         "MOBILE_MIN_ANDROID_VERSION": "1.0.0",
@@ -61,6 +63,102 @@ def test_production_requires_expo_enhanced_push_security_token():
 
     assert result.returncode != 0
     assert "Expo enhanced push security" in result.stderr
+
+
+def test_production_requires_verified_support_email():
+    for value in (None, "not-an-email", "support@example.invalid"):
+        environment = production_environment()
+        if value is None:
+            environment.pop("SUPPORT_EMAIL")
+        else:
+            environment["SUPPORT_EMAIL"] = value
+
+        result = subprocess.run(
+            [sys.executable, "-c", "import config.settings"],
+            capture_output=True,
+            check=False,
+            env=environment,
+            text=True,
+        )
+
+        assert result.returncode != 0
+        assert "SUPPORT_EMAIL" in result.stderr
+
+
+def test_production_requires_clean_https_app_origin():
+    for value in (
+        "http://app.example.cz",
+        "https://user:secret@app.example.cz",
+        "https://app.example.cz:8443",
+        "https://app.example.cz/api",
+        "https://app.example.cz?source=mobile",
+        "https://app.example.cz#legal",
+    ):
+        environment = production_environment()
+        environment["APP_BASE_URL"] = value
+
+        result = subprocess.run(
+            [sys.executable, "-c", "import config.settings"],
+            capture_output=True,
+            check=False,
+            env=environment,
+            text=True,
+        )
+
+        assert result.returncode != 0, value
+        assert "APP_BASE_URL" in result.stderr
+
+
+def test_production_requires_explicit_finalized_terms_version():
+    for value in (None, "", "latest", "draft-v2", "contains spaces", "x" * 65):
+        environment = production_environment()
+        if value is None:
+            environment.pop("LEGAL_TERMS_VERSION")
+        else:
+            environment["LEGAL_TERMS_VERSION"] = value
+
+        result = subprocess.run(
+            [sys.executable, "-c", "import config.settings"],
+            capture_output=True,
+            check=False,
+            env=environment,
+            text=True,
+        )
+
+        assert result.returncode != 0, value
+        assert "LEGAL_TERMS_VERSION" in result.stderr
+
+
+def test_guardian_location_disclosure_switch_defaults_enabled_and_rejects_invalid_value():
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "from config.settings import GUARDIAN_LOCATION_DISCLOSURE_ENABLED; "
+                "assert GUARDIAN_LOCATION_DISCLOSURE_ENABLED is True"
+            ),
+        ],
+        capture_output=True,
+        check=False,
+        env=production_environment(),
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+
+    invalid_environment = {
+        **production_environment(),
+        "GUARDIAN_LOCATION_DISCLOSURE_ENABLED": "paused",
+    }
+    result = subprocess.run(
+        [sys.executable, "-c", "import config.settings"],
+        capture_output=True,
+        check=False,
+        env=invalid_environment,
+        text=True,
+    )
+    assert result.returncode != 0
+    assert "GUARDIAN_LOCATION_DISCLOSURE_ENABLED" in result.stderr
 
 
 def test_production_requires_explicit_mobile_release_configuration():
