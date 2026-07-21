@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useMemo, useState, type ComponentType } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -24,12 +24,13 @@ import {
   type IconProps,
 } from "phosphor-react-native";
 import { ActionButton, Metric, Notice, PageTitle } from "@/components/product/ProductUI";
+import { ProfileTimelinePicker } from "@/components/product/ProfileTimelinePicker";
 import { useCheckInStore } from "@/stores/checkin";
-import { useProductStore } from "@/stores/product";
+import { productPeriodFilterKey, useProductStore } from "@/stores/product";
 import { COLORS } from "@/constants/design";
 import { visibleAccessibleIncidents } from "@/lib/incidentVisibility";
+import { deliveryStatePresentation } from "@/lib/deliveryPresentation";
 import type {
-  AlertDeliveryState,
   ProfileTimelineEvent,
   ProfileTimelineEventType,
 } from "@/types/product";
@@ -38,14 +39,6 @@ const formatDateTime = (value: string) =>
   new Intl.DateTimeFormat("cs-CZ", { dateStyle: "medium", timeStyle: "short" }).format(
     new Date(value),
   );
-
-const deliveryLabel: Record<AlertDeliveryState, string> = {
-  no_delivery_record: "Bez záznamu o odeslání",
-  pending: "Čeká na pokus o odeslání",
-  sent_to_provider: "Odesláno poskytovateli — doručení nepotvrzeno",
-  accepted_by_push_service: "Přijato službou APNs/FCM — zařízení nepotvrzeno",
-  failed: "Pokus o doručení selhal",
-};
 
 type TimelineTone = "success" | "warning" | "info" | "danger";
 
@@ -156,31 +149,54 @@ const timelineColors: Record<TimelineTone, string> = {
 };
 
 export default function ActivityScreen() {
-  const { profile, pendingItems } = useCheckInStore();
+  const { profile, profiles, pendingItems } = useCheckInStore();
   const product = useProductStore();
   const [refreshing, setRefreshing] = useState(false);
   const [periodDays, setPeriodDays] = useState<30 | 90 | 0>(30);
+  const [selectedTimelineProfileId, setSelectedTimelineProfileId] = useState<string | null>(
+    profile?.id ?? null,
+  );
   const [showDefinitions, setShowDefinitions] = useState(false);
   const [removingLocationId, setRemovingLocationId] = useState<string | null>(null);
   const [locationMutationError, setLocationMutationError] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (!selectedTimelineProfileId && profile?.id) setSelectedTimelineProfileId(profile.id);
+  }, [profile?.id, selectedTimelineProfileId]);
+
+  const selectedActiveProfile = profiles.find((item) => item.id === selectedTimelineProfileId);
+  const selectedArchivedProfile = product.archivedProfiles.find(
+    (item) => item.id === selectedTimelineProfileId,
+  );
+  const selectedProfileName = selectedActiveProfile?.name ?? selectedArchivedProfile?.name ?? null;
+  const selectedIsArchived = Boolean(selectedArchivedProfile);
+
   const filter = useMemo(
     () => ({
-      ...(profile ? { profile: profile.id } : {}),
+      ...(selectedTimelineProfileId ? { profile: selectedTimelineProfileId } : {}),
       ...(periodDays
         ? { from: new Date(Date.now() - periodDays * 86_400_000).toISOString() }
         : {}),
     }),
-    [profile?.id, periodDays],
+    [selectedTimelineProfileId, periodDays],
   );
+  const filterKey = productPeriodFilterKey(filter);
 
   const load = useCallback(async () => {
     await Promise.allSettled([
-      profile ? product.loadTimeline(profile.id) : Promise.resolve(),
-      product.loadStatistics(filter),
+      selectedTimelineProfileId
+        ? product.loadTimeline(selectedTimelineProfileId)
+        : Promise.resolve(),
+      selectedTimelineProfileId ? product.loadStatistics(filter) : Promise.resolve(),
       product.loadAlerts(),
     ]);
-  }, [filter, profile?.id, product.loadTimeline, product.loadStatistics, product.loadAlerts]);
+  }, [
+    filter,
+    selectedTimelineProfileId,
+    product.loadTimeline,
+    product.loadStatistics,
+    product.loadAlerts,
+  ]);
 
   useFocusEffect(
     useCallback(() => {
@@ -188,9 +204,15 @@ export default function ActivityScreen() {
     }, [load]),
   );
 
+  useFocusEffect(
+    useCallback(() => {
+      void product.loadArchivedProfiles();
+    }, [product.loadArchivedProfiles]),
+  );
+
   const refresh = async () => {
     setRefreshing(true);
-    await load();
+    await Promise.allSettled([load(), product.loadArchivedProfiles()]);
     setRefreshing(false);
   };
 
@@ -222,10 +244,15 @@ export default function ActivityScreen() {
     );
   };
   const profileAlerts = visibleAccessibleIncidents(product.alerts);
-  const timeline = product.timelineProfileId === profile?.id ? product.timeline : null;
+  const visiblePendingItems = selectedTimelineProfileId
+    ? pendingItems.filter((item) => item.profileId === selectedTimelineProfileId)
+    : [];
+  const timeline = product.timelineProfileId === selectedTimelineProfileId ? product.timeline : null;
   const timelineLoading = product.resources.timeline.status === "loading";
+  const archivedLoading = product.resources.archivedProfiles.status === "loading";
   const error =
     product.resources.timeline.error ||
+    product.resources.archivedProfiles.error ||
     product.resources.statistics.error ||
     product.resources.alerts.error;
 
@@ -244,11 +271,32 @@ export default function ActivityScreen() {
         <PageTitle
           title="Časová stopa"
           subtitle={
-            profile
-              ? `${profile.name} · časová osa pochází pouze ze serveru`
+            selectedProfileName
+              ? `${selectedProfileName} · časová osa pochází pouze ze serveru`
               : "Pro časovou osu vyberte vlastní profil; incidenty strážce zůstávají níže."
           }
         />
+        <ProfileTimelinePicker
+          activeProfiles={profiles}
+          archivedProfiles={product.archivedProfiles}
+          selectedId={selectedTimelineProfileId}
+          archivedNext={product.archivedProfilesNext}
+          archivedLoading={archivedLoading}
+          onSelect={setSelectedTimelineProfileId}
+          onLoadMoreArchived={() => {
+            void product.loadMoreArchivedProfiles().catch(() => undefined);
+          }}
+        />
+        {selectedIsArchived ? (
+          <View className="mb-7">
+            <Notice title="Pouze historie — profil je archivovaný" tone="info">
+              <Text className="font-body text-[#315C5D] leading-5">
+                Tento profil už nevytváří termíny ani incidenty. Výběr zde nemění provozní profil
+                aplikace a neumožňuje check-in ani úpravy.
+              </Text>
+            </Notice>
+          </View>
+        ) : null}
         <View className="flex-row gap-2 mb-7" accessibilityRole="radiogroup">
           {(
             [
@@ -286,7 +334,9 @@ export default function ActivityScreen() {
 
         <View testID="statistics-section" className="py-8 border-b border-sand">
           <Text className="font-display text-[28px] text-charcoal mb-4">Co potvrzuje server</Text>
-          {product.statistics ? (
+          {selectedTimelineProfileId &&
+          product.statistics &&
+          product.statisticsFilterKey === filterKey ? (
             <View className="flex-row flex-wrap gap-x-5">
               <Metric
                 value={product.statistics.total_check_ins}
@@ -328,12 +378,12 @@ export default function ActivityScreen() {
           ) : null}
         </View>
 
-        {pendingItems.length ? (
+        {visiblePendingItems.length ? (
           <View className="py-7 border-b border-sand">
             <Text className="font-display text-[26px] text-charcoal mb-4">
               Mimo serverovou historii
             </Text>
-            {pendingItems.map((item) => (
+            {visiblePendingItems.map((item) => (
               <View key={item.id} className="py-3 flex-row gap-3">
                 <WarningCircle
                   size={22}
@@ -394,7 +444,7 @@ export default function ActivityScreen() {
                     Otevřen {formatDateTime(alert.opened_at)}
                   </Text>
                   <Text className="font-body text-sm leading-5 text-muted mt-2">
-                    {deliveryLabel[alert.delivery_status.state]}
+                    {deliveryStatePresentation[alert.delivery_status.state].label}
                   </Text>
                 </View>
               </Pressable>
@@ -425,7 +475,7 @@ export default function ActivityScreen() {
             </View>
           ) : null}
 
-          {!profile ? (
+          {!selectedTimelineProfileId ? (
             <Notice title="Časová osa patří vlastníkovi profilu" tone="info">
               <Text className="font-body text-[#315C5D]">
                 Jako strážce uvidíte přístupné incidenty výše, ne kompletní soukromou historii
@@ -534,7 +584,7 @@ export default function ActivityScreen() {
                     label="Načíst starší události"
                     variant="quiet"
                     loading={timelineLoading}
-                    onPress={() => void product.loadMoreTimeline(profile.id)}
+                    onPress={() => void product.loadMoreTimeline(selectedTimelineProfileId)}
                   />
                 </View>
               ) : (

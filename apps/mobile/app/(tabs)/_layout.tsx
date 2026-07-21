@@ -59,6 +59,7 @@ export default function TabLayout() {
         options={{
           title: "Upravit jméno",
           href: null,
+          headerShown: false,
         }}
       />
       <Tabs.Screen

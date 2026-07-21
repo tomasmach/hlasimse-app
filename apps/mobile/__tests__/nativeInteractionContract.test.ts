@@ -30,6 +30,20 @@ it("keeps native press targets stable for critical actions and navigation", () =
 it("keeps the incident acknowledgement above the floating tab bar", () => {
   const source = readFileSync(resolve(mobileRoot, "app/(tabs)/incident/[id].tsx"), "utf8");
   expect(source).toContain('contentContainerClassName="px-5 pb-36"');
+  expect(source).toContain("Koordinace strážců");
+  expect(source).toContain("incident-acknowledgement-");
+  expect(source).toContain("Nepotvrzuje telefonát, zásah, doručení push ani bezpečí člověka");
+  expect(source).not.toContain("{key}: {count}");
+});
+
+it("removes cached incident location before refreshing a resolved push", () => {
+  const rootLayout = readFileSync(resolve(mobileRoot, "app/_layout.tsx"), "utf8");
+  const productStore = readFileSync(resolve(mobileRoot, "stores/product.ts"), "utf8");
+  expect(rootLayout).toContain('data.type !== "alert_resolved"');
+  expect(rootLayout).toContain("invalidateAlert(destination.incidentId)");
+  expect(productStore).toContain("const alertMutationRevisions = new Map<string, number>()");
+  expect(productStore).toContain("last_known_location: null");
+  expect(productStore).not.toContain("let alertMutationRevision = 0");
 });
 
 it("keeps server-confirmed check-in feedback visible until an explicit action", () => {
@@ -110,6 +124,19 @@ it("reloads safety history whenever its tab regains focus", () => {
   expect(source).toContain("void load();");
 });
 
+it("keeps archived history selection separate from the operational check-in profile", () => {
+  const activity = readFileSync(resolve(mobileRoot, "app/(tabs)/activity.tsx"), "utf8");
+  const picker = readFileSync(
+    resolve(mobileRoot, "components/product/ProfileTimelinePicker.tsx"),
+    "utf8",
+  );
+  expect(activity).toContain("selectedTimelineProfileId");
+  expect(activity).toContain("Pouze historie — profil je archivovaný");
+  expect(activity).not.toContain("selectProfile(");
+  expect(picker).toContain("timeline-profile-archived-");
+  expect(picker).not.toContain("useCheckInStore");
+});
+
 it("offers owner-only location deletion without rendering coordinates", () => {
   const source = readFileSync(resolve(mobileRoot, "app/(tabs)/activity.tsx"), "utf8");
   expect(source).toContain("event.details.has_location");
@@ -122,18 +149,39 @@ it("offers indefinite and scheduled pause choices before contacting the server",
   const source = readFileSync(resolve(mobileRoot, "app/(tabs)/index.tsx"), "utf8");
   expect(source).toContain('testID={`pause-duration-${option.value}`}');
   expect(source).toContain('testID="pause-confirm"');
-  expect(source).toContain("pauseRequestForPreset(pauseDuration)");
+  expect(source).toContain("pauseRequestForPreset(pauseDuration, customPauseUntil)");
   expect(source).toContain("Pauza začne až po potvrzení serverem");
+  expect(source).toContain('value: "custom"');
+  expect(source).toContain('testID="pause-custom-summary"');
+  expect(source).toContain("updated.paused_until");
+  expect(source).toContain("maximumDate={pickerMaximumDate}");
+  expect(source).toContain('accessibilityLabel="Vlastní datum a čas konce pauzy"');
+  expect(source).toContain('Časová zóna zařízení: {deviceTimeZone}');
+  expect(source.indexOf("pauseRequestForPreset(pauseDuration, customPauseUntil)")).toBeLessThan(
+    source.indexOf("setIsChangingPause(true)"),
+  );
 });
 
 it("returns settings-only account screens to settings instead of tab history", () => {
   const tabLayout = readFileSync(resolve(mobileRoot, "app/(tabs)/_layout.tsx"), "utf8");
   expect(tabLayout).toContain('backBehavior="history"');
   expect(tabLayout).toMatch(/name="delete-account"[\s\S]*?headerShown: false/);
-  for (const path of ["app/(tabs)/data-export.tsx", "app/(tabs)/delete-account.tsx"]) {
+  expect(tabLayout).toMatch(/name="edit-name"[\s\S]*?headerShown: false/);
+  for (const path of ["app/(tabs)/data-export.tsx", "app/(tabs)/delete-account.tsx", "app/(tabs)/edit-name.tsx"]) {
     const source = readFileSync(resolve(mobileRoot, path), "utf8");
     expect(source).toContain('onBack={() => router.replace("/(tabs)/settings")}');
   }
   const deletion = readFileSync(resolve(mobileRoot, "app/(tabs)/delete-account.tsx"), "utf8");
   expect(deletion).toContain('{ text: "Ano, smazat účet", style: "destructive"');
+});
+
+it("edits the server-confirmed account name while keeping email read-only", () => {
+  const settings = readFileSync(resolve(mobileRoot, "app/(tabs)/settings.tsx"), "utf8");
+  const editor = readFileSync(resolve(mobileRoot, "app/(tabs)/edit-name.tsx"), "utf8");
+  expect(settings).toContain('testID="account-name-open"');
+  expect(editor).toContain("updateAccountName({");
+  expect(editor).toContain("replaceUserIfCurrent(confirmed)");
+  expect(editor).toContain('testID="account-email-readonly"');
+  expect(editor).toContain('accessibilityRole="text"');
+  expect(editor).toContain('testID="account-name-submit"');
 });

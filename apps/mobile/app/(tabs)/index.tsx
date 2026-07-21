@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, Alert, Pressable, ScrollView, Switch, Text, View } from "react-native";
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
+import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
 import Animated, { FadeInDown, useReducedMotion } from "react-native-reanimated";
 import { CaretDown, Check, MapPin, Pause, Play, Plus, ShieldWarning } from "phosphor-react-native";
 import { useAuth } from "@/hooks/useAuth";
@@ -16,9 +17,14 @@ import { ActionButton, Notice, StatusLabel } from "@/components/product/ProductU
 import { COLORS } from "@/constants/design";
 import { getCheckInFeedback } from "@/lib/checkInFeedback";
 import {
+  initialCustomPauseEnd,
+  MAX_CUSTOM_PAUSE_MS,
+  mergeCustomPauseSelection,
   pauseRequestForPreset,
   type PauseDurationPreset,
+  type PauseScheduleRequest,
 } from "@/lib/pauseScheduling";
+import { serverNowMs } from "@/lib/serverClock";
 
 const pauseDurationOptions: Array<{
   value: PauseDurationPreset;
@@ -40,7 +46,14 @@ const pauseDurationOptions: Array<{
     label: "Naplánovat obnovení za 7 dní",
     detail: "Server uloží čas obnovení za 7 dní od potvrzení pauzy.",
   },
+  {
+    value: "custom",
+    label: "Vybrat vlastní datum a čas",
+    detail: "Zvolíte přesný budoucí okamžik v časové zóně tohoto zařízení.",
+  },
 ];
+
+const pauseReferenceNowMs = () => serverNowMs() ?? Date.now();
 
 const formatDateTime = (value: string | null) => value
   ? new Intl.DateTimeFormat("cs-CZ", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
@@ -99,9 +112,25 @@ export default function CheckInScreen() {
   const [isChangingPause, setIsChangingPause] = useState(false);
   const [showPauseOptions, setShowPauseOptions] = useState(false);
   const [pauseDuration, setPauseDuration] = useState<PauseDurationPreset>("indefinite");
+  const [customPauseUntil, setCustomPauseUntil] = useState(initialCustomPauseEnd);
+  const [androidPickerMode, setAndroidPickerMode] = useState<"date" | "time" | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: "success" | "info" | "warning" | "error" }>({ visible: false, message: "", type: "info" });
   const countdown = useCountdown(store.profile?.next_deadline_at ?? null);
+  const pickerReferenceNowMs = pauseReferenceNowMs();
+  const pickerMinimumDate = new Date(pickerReferenceNowMs);
+  const pickerMaximumDate = new Date(pickerReferenceNowMs + MAX_CUSTOM_PAUSE_MS);
+  const deviceTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "místní čas zařízení";
+  const formatPauseEnd = (value: Date | string) => new Intl.DateTimeFormat("cs-CZ", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "longOffset",
+    timeZone: deviceTimeZone === "místní čas zařízení" ? undefined : deviceTimeZone,
+  }).format(typeof value === "string" ? new Date(value) : value);
 
   useEffect(() => {
     if (user?.id && !store.hasFetched) void store.fetchProfile(user.id);
@@ -129,7 +158,19 @@ export default function CheckInScreen() {
     setIncludeLocation(false);
     setShowPauseOptions(false);
     setPauseDuration("indefinite");
+    setCustomPauseUntil(initialCustomPauseEnd());
+    setAndroidPickerMode(null);
   }, [store.profile?.id]);
+
+  const changeCustomPauseUntil = (
+    event: DateTimePickerEvent,
+    selectedDate?: Date,
+    mode: "date" | "time" | "datetime" = "datetime",
+  ) => {
+    if (Platform.OS === "android") setAndroidPickerMode(null);
+    if (event.type !== "set" || !selectedDate) return;
+    setCustomPauseUntil((current) => mergeCustomPauseSelection(current, selectedDate, mode));
+  };
 
   const handleCheckIn = async () => {
     if (isCheckingIn) return;
@@ -159,16 +200,26 @@ export default function CheckInScreen() {
 
   const confirmPause = async () => {
     if (!store.profile || store.profile.is_paused || store.isUsingCachedProfiles) return;
+    let pauseRequest: PauseScheduleRequest;
+    try {
+      pauseRequest = pauseRequestForPreset(pauseDuration, customPauseUntil);
+    } catch (error) {
+      setToast({
+        visible: true,
+        type: "error",
+        message: error instanceof Error ? error.message : "Vyberte budoucí konec pauzy.",
+      });
+      return;
+    }
     setIsChangingPause(true);
     try {
-      const pauseRequest = pauseRequestForPreset(pauseDuration);
-      await store.updateProfile({ is_paused: true, ...pauseRequest });
+      const updated = await store.updateProfile({ is_paused: true, ...pauseRequest });
       setShowPauseOptions(false);
       setToast({
         visible: true,
         type: "success",
-        message: "pause_duration_seconds" in pauseRequest
-          ? "Server potvrdil pauzu s plánovaným obnovením."
+        message: updated.paused_until
+          ? `Server potvrdil pauzu do ${formatPauseEnd(updated.paused_until)}.`
           : "Server potvrdil pauzu bez plánovaného konce.",
       });
     } catch (error) {
@@ -186,6 +237,7 @@ export default function CheckInScreen() {
     if (!store.profile || store.isUsingCachedProfiles) return;
     const pausing = !store.profile.is_paused;
     if (pausing) {
+      setCustomPauseUntil(initialCustomPauseEnd());
       setShowPauseOptions(true);
       return;
     }
@@ -296,7 +348,7 @@ export default function CheckInScreen() {
           <Text className="font-body-medium text-sm text-muted mb-3">Původní serverový termín</Text>
           <Countdown deadline={profile.next_deadline_at} paused={profile.is_paused} enabled={profile.enabled} countdown={countdown} />
           <Text className="font-body text-[15px] text-muted mt-3">{formatDateTime(profile.next_deadline_at)}</Text>
-          {profile.is_paused ? <Text className="font-body text-[15px] leading-6 text-muted mt-2">{profile.paused_until ? `Naplánované obnovení: ${formatDateTime(profile.paused_until)}` : "Pauza nemá nastavený konec. Nezapomeňte profil obnovit."}</Text> : null}
+          {profile.is_paused ? <Text className="font-body text-[15px] leading-6 text-muted mt-2">{profile.paused_until ? `Obnovení potvrzené serverem: ${formatPauseEnd(profile.paused_until)}. Časová zóna zařízení: ${deviceTimeZone}.` : "Pauza nemá nastavený konec. Nezapomeňte profil obnovit."}</Text> : null}
         </Animated.View>
 
         <View className="py-5 border-y border-sand">
@@ -392,6 +444,61 @@ export default function CheckInScreen() {
                 );
               })}
             </View>
+            {pauseDuration === "custom" ? (
+              <View testID="pause-custom-picker" className="mt-3 rounded-[22px] bg-white border border-sand p-4">
+                <Text className="font-body-semibold text-sm text-charcoal">Pauza skončí</Text>
+                <Text testID="pause-custom-summary" className="font-display text-[22px] leading-7 text-charcoal mt-2">
+                  {formatPauseEnd(customPauseUntil)}
+                </Text>
+                <Text className="font-body text-sm leading-5 text-muted mt-2">
+                  Časová zóna zařízení: {deviceTimeZone}. Rozhodující bude čas vrácený serverem po uložení.
+                </Text>
+                {Platform.OS === "ios" ? (
+                  <DateTimePicker
+                    testID="pause-custom-datetime-picker"
+                    value={customPauseUntil}
+                    mode="datetime"
+                    display="spinner"
+                    minimumDate={pickerMinimumDate}
+                    maximumDate={pickerMaximumDate}
+                    locale="cs-CZ"
+                    accessibilityLabel="Vlastní datum a čas konce pauzy"
+                    onChange={(event, date) => changeCustomPauseUntil(event, date)}
+                  />
+                ) : (
+                  <View className="gap-3 mt-4">
+                    <View>
+                      <ActionButton
+                        testID="pause-custom-date-open"
+                        label="Vybrat datum"
+                        variant="quiet"
+                        onPress={() => setAndroidPickerMode("date")}
+                      />
+                    </View>
+                    <View>
+                      <ActionButton
+                        testID="pause-custom-time-open"
+                        label="Vybrat čas"
+                        variant="quiet"
+                        onPress={() => setAndroidPickerMode("time")}
+                      />
+                    </View>
+                  </View>
+                )}
+                {Platform.OS === "android" && androidPickerMode ? (
+                  <DateTimePicker
+                    testID={`pause-custom-${androidPickerMode}-picker`}
+                    value={customPauseUntil}
+                    mode={androidPickerMode}
+                    display="default"
+                    minimumDate={androidPickerMode === "date" ? pickerMinimumDate : undefined}
+                    maximumDate={androidPickerMode === "date" ? pickerMaximumDate : undefined}
+                    accessibilityLabel={androidPickerMode === "date" ? "Datum konce pauzy" : "Čas konce pauzy"}
+                    onChange={(event, date) => changeCustomPauseUntil(event, date, androidPickerMode)}
+                  />
+                ) : null}
+              </View>
+            ) : null}
             <View className="gap-3 mt-4">
               <ActionButton
                 testID="pause-confirm"

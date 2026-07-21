@@ -154,6 +154,7 @@ export interface AlertDeliveryStatus {
 
 export interface AlertAcknowledgement {
   user_id: string;
+  display_name: string;
   acknowledged_at: IsoDateTime;
 }
 
@@ -274,10 +275,23 @@ export interface AccountExport {
   push_devices: PushDevice[];
 }
 
+export interface ArchivedProfileSummary {
+  id: string;
+  name: string;
+  archived_at: IsoDateTime;
+}
+
+export interface ArchivedProfilePage {
+  next: string | null;
+  previous: string | null;
+  results: ArchivedProfileSummary[];
+}
+
 export type ProductResource =
   | "history"
   | "statistics"
   | "timeline"
+  | "archivedProfiles"
   | "alerts"
   | "alertDetail"
   | "alertAcknowledgement"

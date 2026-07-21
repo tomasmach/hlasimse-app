@@ -2,11 +2,11 @@ import * as Application from "expo-application";
 import { Platform } from "react-native";
 
 import {
-  clearTokens,
   clearTokensIfCurrent,
   getTokenSnapshot,
-  getTokens,
+  isTokenSnapshotCurrent,
   saveTokensIfCurrent,
+  type AuthTokenSnapshot,
 } from "@/lib/authStorage";
 import { resolveApiBaseUrl } from "@/lib/apiConfig";
 import { monotonicNowMs, observeServerTimeHeader } from "@/lib/serverClock";
@@ -52,7 +52,11 @@ function apiErrorMessage(body: ApiErrorBody | null): string | null {
   return null;
 }
 
-let refreshPromise: Promise<string | null> | null = null;
+let refreshState: {
+  generation: number;
+  refresh: string;
+  promise: Promise<AuthTokenSnapshot | null>;
+} | null = null;
 let unauthorizedHandler: (() => void | Promise<void>) | null = null;
 let releaseGateHandler: ((gate: ClientGate) => void) | null = null;
 let lastReleaseGate: ClientGate | null = null;
@@ -104,12 +108,21 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = DEFA
   }
 }
 
-async function refreshAccessToken(): Promise<string | null> {
-  if (refreshPromise) return refreshPromise;
-  refreshPromise = (async () => {
-    const snapshot = await getTokenSnapshot();
-    const tokens = snapshot.tokens;
-    if (!tokens?.refresh) return null;
+async function refreshAccessToken(snapshot: AuthTokenSnapshot): Promise<AuthTokenSnapshot | null> {
+  const tokens = snapshot.tokens;
+  if (!tokens?.refresh || !await isTokenSnapshotCurrent(snapshot)) return null;
+  if (
+    refreshState?.generation === snapshot.generation &&
+    refreshState.refresh === tokens.refresh
+  ) {
+    return refreshState.promise;
+  }
+  const state = {
+    generation: snapshot.generation,
+    refresh: tokens.refresh,
+    promise: Promise.resolve<AuthTokenSnapshot | null>(null),
+  };
+  state.promise = (async () => {
     let response: Response;
     const requestStartedAtMs = Date.now();
     const requestStartedMonotonicMs = monotonicNowMs();
@@ -153,11 +166,16 @@ async function refreshAccessToken(): Promise<string | null> {
       return null;
     }
     const next: AuthTokens = { access: tokenBody.access, refresh: tokenBody.refresh || tokens.refresh };
-    return await saveTokensIfCurrent(next, snapshot) ? next.access : null;
+    if (!await saveTokensIfCurrent(next, snapshot)) return null;
+    const refreshed = await getTokenSnapshot();
+    return refreshed.tokens?.access === next.access && refreshed.tokens.refresh === next.refresh
+      ? refreshed
+      : null;
   })().finally(() => {
-    refreshPromise = null;
+    if (refreshState === state) refreshState = null;
   });
-  return refreshPromise;
+  refreshState = state;
+  return state.promise;
 }
 
 export interface ApiRequestOptions extends Omit<RequestInit, "body"> {
@@ -165,18 +183,38 @@ export interface ApiRequestOptions extends Omit<RequestInit, "body"> {
   auth?: boolean;
   retryAuth?: boolean;
   timeoutMs?: number;
+  authSnapshot?: AuthTokenSnapshot;
+  bodyForAuthSnapshot?: (snapshot: AuthTokenSnapshot) => unknown;
+  onAuthSnapshotSelected?: (snapshot: AuthTokenSnapshot) => void;
+  onAuthenticatedSnapshot?: (snapshot: AuthTokenSnapshot) => void;
 }
 
 export async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
-  const { body, auth = true, retryAuth = true, timeoutMs = DEFAULT_TIMEOUT_MS, headers: suppliedHeaders, ...requestInit } = options;
+  const {
+    body,
+    auth = true,
+    retryAuth = true,
+    timeoutMs = DEFAULT_TIMEOUT_MS,
+    authSnapshot: suppliedAuthSnapshot,
+    bodyForAuthSnapshot,
+    onAuthSnapshotSelected,
+    onAuthenticatedSnapshot,
+    headers: suppliedHeaders,
+    ...requestInit
+  } = options;
+  const authSnapshot = auth ? suppliedAuthSnapshot ?? await getTokenSnapshot() : null;
+  if (suppliedAuthSnapshot && !await isTokenSnapshotCurrent(suppliedAuthSnapshot)) {
+    throw new ApiError(401, null, "Přihlášený účet se během požadavku změnil.");
+  }
+  if (authSnapshot) onAuthSnapshotSelected?.(authSnapshot);
+  const effectiveBody = authSnapshot && bodyForAuthSnapshot
+    ? bodyForAuthSnapshot(authSnapshot)
+    : body;
   const headers = new Headers(suppliedHeaders);
   headers.set("Accept", "application/json");
   for (const [name, value] of Object.entries(clientHeaders())) headers.set(name, value);
-  if (body !== undefined) headers.set("Content-Type", "application/json");
-  if (auth) {
-    const tokens = await getTokens();
-    if (tokens?.access) headers.set("Authorization", `Bearer ${tokens.access}`);
-  }
+  if (effectiveBody !== undefined) headers.set("Content-Type", "application/json");
+  if (authSnapshot?.tokens?.access) headers.set("Authorization", `Bearer ${authSnapshot.tokens.access}`);
 
   let response: Response;
   const requestStartedAtMs = Date.now();
@@ -185,7 +223,7 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
     response = await fetchWithTimeout(`${API_BASE_URL}${path}`, {
       ...requestInit,
       headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
+      body: effectiveBody === undefined ? undefined : JSON.stringify(effectiveBody),
     }, timeoutMs);
   } catch (error) {
     throw new NetworkError(error);
@@ -201,21 +239,40 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
       : undefined,
   );
 
+  if (authSnapshot && !await isTokenSnapshotCurrent(authSnapshot)) {
+    throw new ApiError(401, null, "Přihlášený účet se během požadavku změnil.");
+  }
+
   if (response.status === 401 && auth && retryAuth) {
-    const access = await refreshAccessToken();
-    if (!access) throw new ApiError(401, null, "Přihlášení vypršelo.");
-    return apiRequest<T>(path, { ...options, retryAuth: false });
+    if (!authSnapshot) throw new ApiError(401, null, "Přihlášení vypršelo.");
+    const refreshedSnapshot = await refreshAccessToken(authSnapshot);
+    if (!refreshedSnapshot) {
+      throw new ApiError(401, null, "Přihlášení vypršelo nebo se změnil přihlášený účet.");
+    }
+    return apiRequest<T>(path, {
+      ...options,
+      retryAuth: false,
+      authSnapshot: refreshedSnapshot,
+    });
   }
 
   if (response.status === 401 && auth && !retryAuth) {
-    await clearTokens();
-    await unauthorizedHandler?.();
+    if (authSnapshot && await clearTokensIfCurrent(authSnapshot)) await unauthorizedHandler?.();
   }
 
   const parsed = await parseBody(response);
+  if (authSnapshot && !await isTokenSnapshotCurrent(authSnapshot)) {
+    throw new ApiError(401, null, "Přihlášený účet se během zpracování odpovědi změnil.");
+  }
   captureReleaseGate(response.status, parsed);
   if (!response.ok) {
     throw new ApiError(response.status, typeof parsed === "object" ? (parsed as ApiErrorBody) : null);
+  }
+  if (authSnapshot) {
+    if (!await isTokenSnapshotCurrent(authSnapshot)) {
+      throw new ApiError(401, null, "Přihlášený účet se před použitím odpovědi změnil.");
+    }
+    onAuthenticatedSnapshot?.(authSnapshot);
   }
   return parsed as T;
 }

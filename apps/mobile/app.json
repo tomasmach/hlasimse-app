@@ -114,7 +114,8 @@
           "locationWhenInUsePermission": "Poloha je při ohlášení volitelná. Pokud ji připojíte, vaši strážci ji uvidí pouze během otevřeného incidentu."
         }
       ],
-      "expo-sharing"
+      "expo-sharing",
+      "@react-native-community/datetimepicker"
     ],
     "experiments": {
       "typedRoutes": true

@@ -8,6 +8,7 @@ import {
   DownloadSimple,
   FileText,
   GearSix,
+  IdentificationCard,
   Lifebuoy,
   LockKey,
   ShieldWarning,
@@ -90,6 +91,7 @@ export default function SettingsScreen() {
       <ScrollView contentContainerClassName="px-5 pt-5 pb-36">
         <PageTitle title="Nastavení důvěry" subtitle="Oprávnění a zařízení jsou součástí bezpečnostního stavu, ne jednorázový dialog." />
         <View className="bg-charcoal rounded-[28px] p-5 mb-7 overflow-hidden"><View className="absolute w-40 h-40 rounded-full bg-coral/20 -right-16 -top-20" /><Text className="font-body text-white/60 text-sm">Přihlášený účet</Text><Text className="font-display text-[25px] text-white mt-2">{user?.first_name || "Uživatel"} {user?.last_name || ""}</Text><Text className="font-body text-white/70 mt-1">{user?.email}</Text><Text className="font-body text-white/60 text-sm mt-4">Vybraný profil: {profile?.name || "bez profilu"}</Text></View>
+        <Row testID="account-name-open" label="Upravit jméno účtu" detail="Jméno zobrazované strážcům; přihlašovací e-mail zůstává beze změny" icon={IdentificationCard} onPress={() => router.push("/(tabs)/edit-name")} />
         <Row label={profile ? "Spravovat vybraný profil" : "Vytvořit vlastní profil"} detail={profile ? "Název, interval a bezpečná archivace" : "Účet může pouze hlídat, vlastní profil není povinný"} icon={UserCircle} onPress={() => router.push(profile ? "/(tabs)/profile-detail" : "/(tabs)/profile-setup?mode=add")} />
         <Row testID="notification-diagnostics-open" label="Diagnostika upozornění a polohy" detail="OS oprávnění, lokální připomínky a registrace zařízení" icon={Bell} onPress={() => router.push("/(tabs)/diagnostics")} />
         <Row testID="account-export-open" label="Exportovat moje data" detail="Server připraví aktuální JSON export; obsah může zahrnovat citlivé údaje" icon={DownloadSimple} onPress={() => router.push("/(tabs)/data-export")} />

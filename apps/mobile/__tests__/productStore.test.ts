@@ -6,6 +6,7 @@ import { getInstallationId } from "@/lib/installation";
 import { useProductStore } from "@/stores/product";
 import type {
   AccountExport,
+  ArchivedProfilePage,
   AlertIncident,
   CheckInHistoryPage,
   ProfileTimelinePage,
@@ -93,6 +94,38 @@ it("loads paginated server-confirmed history and exact statistics filters", asyn
   );
   expect(useProductStore.getState().history?.results[0].server_confirmed).toBe(true);
   expect(useProductStore.getState().resources.history.status).toBe("ready");
+});
+
+it("hides statistics as soon as a different profile or period starts loading", async () => {
+  const first = {
+    period: { from: null, to: null },
+    total_check_ins: 4,
+    on_time_check_ins: 3,
+    incident_count: 1,
+    definitions: {
+      total_check_ins: "Potvrzené",
+      on_time_check_ins: "Včas",
+      incident_count: "Incidenty",
+    },
+  };
+  request.mockResolvedValueOnce(first);
+  await useProductStore.getState().loadStatistics({ profile: "profile-1" });
+  expect(useProductStore.getState().statistics).toBe(first);
+
+  let finishSecond: ((value: typeof first) => void) | undefined;
+  request.mockReturnValueOnce(new Promise<typeof first>((resolve) => (finishSecond = resolve)));
+  const secondLoad = useProductStore.getState().loadStatistics({
+    profile: "profile-2",
+    from: "2026-07-01T00:00:00Z",
+  });
+
+  expect(useProductStore.getState().statistics).toBeNull();
+  expect(useProductStore.getState().statisticsFilterKey).toBe(
+    "?profile=profile-2&from=2026-07-01T00%3A00%3A00Z",
+  );
+  finishSecond?.({ ...first, total_check_ins: 2 });
+  await secondLoad;
+  expect(useProductStore.getState().statistics?.total_check_ins).toBe(2);
 });
 
 it("loads the owner-authorized combined safety timeline", async () => {
@@ -316,6 +349,59 @@ it("does not mix a late timeline response into the newly selected profile", asyn
   ]);
 });
 
+it("loads and appends archived profiles without mixing them into the operational store", async () => {
+  const first: ArchivedProfilePage = {
+    previous: null,
+    next: "https://api.example.test/api/v1/profiles/archived/?cursor=older&page_size=50",
+    results: [
+      { id: "archived-1", name: "Stará cesta", archived_at: "2026-07-19T10:00:00Z" },
+    ],
+  };
+  const second: ArchivedProfilePage = {
+    previous: "https://api.example.test/api/v1/profiles/archived/?cursor=newer",
+    next: null,
+    results: [
+      first.results[0],
+      { id: "archived-2", name: "Starší profil", archived_at: "2026-06-01T10:00:00Z" },
+    ],
+  };
+  request.mockResolvedValueOnce(first).mockResolvedValueOnce(second).mockResolvedValueOnce(first);
+
+  await useProductStore.getState().loadArchivedProfiles();
+  await useProductStore.getState().loadMoreArchivedProfiles();
+
+  expect(request).toHaveBeenNthCalledWith(1, "/api/v1/profiles/archived/?page_size=50");
+  expect(request).toHaveBeenNthCalledWith(
+    2,
+    "/api/v1/profiles/archived/?cursor=older&page_size=50",
+  );
+  expect(useProductStore.getState().archivedProfiles.map((item) => item.id)).toEqual([
+    "archived-1",
+    "archived-2",
+  ]);
+  expect(useProductStore.getState().archivedProfilesNext).toBeNull();
+
+  await useProductStore.getState().loadArchivedProfiles();
+  expect(useProductStore.getState().archivedProfiles.map((item) => item.id)).toEqual([
+    "archived-1",
+    "archived-2",
+  ]);
+});
+
+it("rejects an archived-profile cursor for another endpoint", async () => {
+  request.mockResolvedValueOnce({
+    previous: null,
+    next: "https://api.example.test/api/v1/profiles/profile-1/timeline/?cursor=escape",
+    results: [],
+  } satisfies ArchivedProfilePage);
+  await useProductStore.getState().loadArchivedProfiles();
+
+  await expect(useProductStore.getState().loadMoreArchivedProfiles()).rejects.toThrow(
+    "neplatný odkaz",
+  );
+  expect(request).toHaveBeenCalledTimes(1);
+});
+
 it("keeps provider acceptance distinct from delivery and waits for server acknowledgement", async () => {
   request.mockResolvedValueOnce([providerAcceptedAlert]);
   await useProductStore.getState().loadAlerts();
@@ -332,7 +418,7 @@ it("keeps provider acceptance distinct from delivery and waits for server acknow
 
   const confirmed = {
     ...providerAcceptedAlert,
-    acknowledgements: [{ user_id: "guardian-1", acknowledged_at: "2026-07-19T10:02:00Z" }],
+    acknowledgements: [{ user_id: "guardian-1", display_name: "E2E Strážce", acknowledged_at: "2026-07-19T10:02:00Z" }],
   };
   finishAcknowledgement?.(confirmed);
   await acknowledgement;
@@ -341,6 +427,64 @@ it("keeps provider acceptance distinct from delivery and waits for server acknow
     method: "POST",
   });
   expect(useProductStore.getState().alerts[0].acknowledgements).toEqual(confirmed.acknowledgements);
+});
+
+it("does not let a late acknowledgement restore coordinates after resolution", async () => {
+  const located = {
+    ...providerAcceptedAlert,
+    last_known_location: {
+      latitude: "50.1",
+      longitude: "14.4",
+      accuracy_meters: "10",
+      recorded_at: "2026-07-19T09:00:00Z",
+      is_live: false as const,
+    },
+  };
+  useProductStore.setState({ alerts: [located], alertDetails: { [located.id]: located } });
+  let finishAcknowledgement: ((alert: AlertIncident) => void) | undefined;
+  request.mockReturnValueOnce(
+    new Promise<AlertIncident>((resolve) => {
+      finishAcknowledgement = resolve;
+    }),
+  );
+  const acknowledgement = useProductStore.getState().acknowledgeAlert(located.id);
+
+  useProductStore.getState().invalidateAlert(located.id);
+  finishAcknowledgement?.({
+    ...located,
+    acknowledgements: [
+      {
+        user_id: "guardian-1",
+        display_name: "E2E Strážce",
+        acknowledged_at: "2026-07-19T10:02:00Z",
+      },
+    ],
+  });
+  await acknowledgement;
+
+  expect(useProductStore.getState().alertDetails[located.id].last_known_location).toBeNull();
+  expect(useProductStore.getState().alertDetails[located.id].acknowledgements).toEqual([]);
+});
+
+it("does not let a late acknowledgement restore revoked profile access", async () => {
+  useProductStore.setState({
+    alerts: [providerAcceptedAlert],
+    alertDetails: { [providerAcceptedAlert.id]: providerAcceptedAlert },
+  });
+  let finishAcknowledgement: ((alert: AlertIncident) => void) | undefined;
+  request.mockReturnValueOnce(
+    new Promise<AlertIncident>((resolve) => {
+      finishAcknowledgement = resolve;
+    }),
+  );
+  const acknowledgement = useProductStore.getState().acknowledgeAlert(providerAcceptedAlert.id);
+
+  useProductStore.getState().evictProfileAccess(providerAcceptedAlert.profile_id);
+  finishAcknowledgement?.(providerAcceptedAlert);
+  await acknowledgement;
+
+  expect(useProductStore.getState().alerts).toEqual([]);
+  expect(useProductStore.getState().alertDetails).toEqual({});
 });
 
 it("returns a sensitive account export without retaining it in the store", async () => {
@@ -434,6 +578,72 @@ it("evicts incident and location data immediately when profile access is revoked
   useProductStore.getState().evictProfileAccess(providerAcceptedAlert.profile_id);
   expect(useProductStore.getState().alerts).toEqual([]);
   expect(useProductStore.getState().alertDetails).toEqual({});
+});
+
+it("removes incident coordinates synchronously and ignores an older refresh after resolution", async () => {
+  const located = {
+    ...providerAcceptedAlert,
+    last_known_location: {
+      latitude: "50.1",
+      longitude: "14.4",
+      accuracy_meters: "10",
+      recorded_at: "2026-07-19T09:00:00Z",
+      is_live: false as const,
+    },
+  };
+  useProductStore.setState({ alerts: [located], alertDetails: { [located.id]: located } });
+  let finishRefresh: ((alert: AlertIncident) => void) | undefined;
+  request.mockReturnValueOnce(
+    new Promise<AlertIncident>((resolve) => {
+      finishRefresh = resolve;
+    }),
+  );
+  const refresh = useProductStore.getState().loadAlert(located.id);
+
+  useProductStore.getState().invalidateAlert(located.id);
+  expect(useProductStore.getState().alertDetails[located.id].last_known_location).toBeNull();
+
+  finishRefresh?.(located);
+  await refresh;
+  expect(useProductStore.getState().alertDetails[located.id].last_known_location).toBeNull();
+});
+
+it("keeps an unrelated incident load when another incident is resolved", async () => {
+  const incidentA = { ...providerAcceptedAlert, id: "alert-a" };
+  const incidentB = { ...providerAcceptedAlert, id: "alert-b", profile_id: "profile-2" };
+  let finishDetail: ((alert: AlertIncident) => void) | undefined;
+  request.mockReturnValueOnce(
+    new Promise<AlertIncident>((resolve) => {
+      finishDetail = resolve;
+    }),
+  );
+  const detailLoad = useProductStore.getState().loadAlert(incidentB.id);
+
+  useProductStore.setState({ alerts: [incidentA], alertDetails: { [incidentA.id]: incidentA } });
+  useProductStore.getState().invalidateAlert(incidentA.id);
+  finishDetail?.(incidentB);
+  await detailLoad;
+
+  expect(useProductStore.getState().alertDetails[incidentB.id]).toEqual(incidentB);
+});
+
+it("merges an unrelated active incident from a list started before resolution", async () => {
+  const incidentA = { ...providerAcceptedAlert, id: "alert-a" };
+  const incidentB = { ...providerAcceptedAlert, id: "alert-b", profile_id: "profile-2" };
+  let finishList: ((alerts: AlertIncident[]) => void) | undefined;
+  request.mockReturnValueOnce(
+    new Promise<AlertIncident[]>((resolve) => {
+      finishList = resolve;
+    }),
+  );
+  const listLoad = useProductStore.getState().loadAlerts();
+
+  useProductStore.getState().invalidateAlert(incidentA.id);
+  finishList?.([incidentA, incidentB]);
+  await listLoad;
+
+  expect(useProductStore.getState().alerts.map((item) => item.id)).toEqual([incidentB.id]);
+  expect(useProductStore.getState().alertDetails[incidentB.id]).toEqual(incidentB);
 });
 
 it("does not render a cached incident after the server revokes access", async () => {

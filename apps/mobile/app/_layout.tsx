@@ -27,6 +27,7 @@ import { AccessGateScreen } from "@/components/AccessGateScreen";
 import { checkClientRelease, supportsMobileReleaseGate } from "@/lib/clientGate";
 import { ApiError, clearReleaseGate, isNetworkError, setReleaseGateHandler } from "@/lib/api";
 import type { ClientGate } from "@/lib/clientRelease";
+import { useProductStore } from "@/stores/product";
 
 function useProtectedRoute(
   user: any,
@@ -94,7 +95,9 @@ export default function RootLayout() {
     isLoading: isOnboardingLoading,
     checkOnboardingStatus,
   } = useOnboardingStore();
-  const { registerToken, expoPushToken, setNotificationResponseHandler } = useNotifications();
+  const { notification, registerToken, expoPushToken, setNotificationResponseHandler } = useNotifications();
+  const invalidateAlert = useProductStore((state) => state.invalidateAlert);
+  const loadAlert = useProductStore((state) => state.loadAlert);
   const router = useRouter();
 
   useEffect(() => {
@@ -187,19 +190,31 @@ export default function RootLayout() {
     return () => subscription.remove();
   }, [user?.id, expoPushToken]);
 
+  useEffect(() => {
+    if (!user || !notification) return;
+    const data = notification.request.content.data as Record<string, unknown>;
+    const destination = notificationDestination(data);
+    if (data.type !== "alert_resolved" || destination?.kind !== "incident") return;
+    invalidateAlert(destination.incidentId);
+    void loadAlert(destination.incidentId).catch(() => {
+      // The synchronous invalidation already removed coordinates from memory.
+    });
+  }, [notification, user?.id, invalidateAlert, loadAlert]);
+
   // Consume notification responses only after account restoration and navigation are ready.
   useEffect(() => {
     if (isAuthLoading || !user) return;
     setNotificationResponseHandler((data) => {
       const destination = notificationDestination(data);
       if (destination?.kind === "incident") {
+        if (data.type === "alert_resolved") invalidateAlert(destination.incidentId);
         router.push({ pathname: "/(tabs)/incident/[id]", params: { id: destination.incidentId } });
       } else if (destination?.kind === "reminder") {
         router.push("/(tabs)");
       }
     });
     return () => setNotificationResponseHandler(null);
-  }, [router, user?.id, isAuthLoading, setNotificationResponseHandler]);
+  }, [router, user?.id, isAuthLoading, setNotificationResponseHandler, invalidateAlert]);
 
   useProtectedRoute(user, isAuthLoading, hasSeenOnboarding, isOnboardingLoading);
 

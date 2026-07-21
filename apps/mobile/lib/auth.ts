@@ -2,12 +2,14 @@ import { apiRequest, isNetworkError, isReleaseGateError } from "@/lib/api";
 import {
   clearStoredUserId,
   clearTokens,
+  clearTokensIfCurrent,
+  bindSessionUserIfCurrent,
+  commitBoundSessionAndAccountIfCurrent,
+  getTokenSnapshot,
   getStoredUserId,
-  getStoredUser,
-  getTokens,
   saveTokens,
-  setStoredUserId,
-  setStoredUser,
+  restoreBoundUserIfCurrent,
+  setStoredUserIfBound,
 } from "@/lib/authStorage";
 import { clearQueue } from "@/lib/offlineQueue";
 import { getInstallationId } from "@/lib/installation";
@@ -24,32 +26,104 @@ import type {
   RegistrationResult,
 } from "@/types/api";
 
-async function bindAccount(user: AuthUser): Promise<void> {
-  const previousUserId = await getStoredUserId();
-  if (previousUserId && previousUserId !== user.id) {
-    // Queues are encrypted and scoped by account + installation. Preserve the
-    // previous account's unconfirmed safety events so they can be recovered
-    // after signing back in, but remove its private reminder content.
-    await cancelAllReminders();
+let loginAttemptGeneration = 0;
+
+class AsyncMutex {
+  private tail: Promise<void> = Promise.resolve();
+
+  async withLock<T>(operation: () => Promise<T>): Promise<T> {
+    const previous = this.tail;
+    let release!: () => void;
+    this.tail = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+    }
   }
-  await setStoredUserId(user.id);
-  await setStoredUser(user);
+}
+
+const loginCommitMutex = new AsyncMutex();
+
+export async function updateAccountName(input: {
+  expectedUserId: string;
+  firstName: string;
+  lastName: string;
+}): Promise<AuthUser> {
+  const initialSnapshot = await getTokenSnapshot();
+  if (initialSnapshot.state !== "bound" || initialSnapshot.user?.id !== input.expectedUserId) {
+    throw new Error("Přihlášený účet se mezitím změnil. Zkuste to znovu.");
+  }
+  let confirmedSnapshot = initialSnapshot;
+  const user = await apiRequest<AuthUser>("/api/v1/auth/me/", {
+    method: "PATCH",
+    authSnapshot: initialSnapshot,
+    onAuthSnapshotSelected: (snapshot) => { confirmedSnapshot = snapshot; },
+    onAuthenticatedSnapshot: (snapshot) => { confirmedSnapshot = snapshot; },
+    body: {
+      first_name: input.firstName.trim(),
+      last_name: input.lastName.trim(),
+    },
+  });
+  if (user.id !== input.expectedUserId) {
+    throw new Error("Server vrátil jiný účet. Změna se v aplikaci nepoužila.");
+  }
+  if (!await bindSessionUserIfCurrent(user, confirmedSnapshot)) {
+    throw new Error("Přihlášený účet se mezitím změnil. Ověřte jméno po novém přihlášení.");
+  }
+  if (!await setStoredUserIfBound(user, input.expectedUserId)) {
+    throw new Error("Přihlášený účet se mezitím změnil. Ověřte jméno po novém přihlášení.");
+  }
+  return user;
 }
 
 export async function login(email: string, password: string): Promise<AuthUser> {
+  const loginAttempt = await loginCommitMutex.withLock(async () => ++loginAttemptGeneration);
   const tokens = await apiRequest<AuthTokens>("/api/v1/auth/token/", {
     method: "POST",
     body: { email: email.trim().toLowerCase(), password },
     auth: false,
   });
-  await saveTokens(tokens);
+  const pendingSnapshot = await loginCommitMutex.withLock(async () => {
+    if (loginAttempt !== loginAttemptGeneration) return null;
+    await saveTokens(tokens);
+    return getTokenSnapshot();
+  });
+  if (!pendingSnapshot) throw new Error("Tento pokus o přihlášení nahradil novější pokus.");
+  let ownedSnapshot = pendingSnapshot;
   try {
-    const user = await apiRequest<AuthUser>("/api/v1/auth/me/");
-    await bindAccount(user);
+    let confirmedSnapshot = pendingSnapshot;
+    const user = await apiRequest<AuthUser>("/api/v1/auth/me/", {
+      authSnapshot: pendingSnapshot,
+      onAuthSnapshotSelected: (snapshot) => {
+        ownedSnapshot = snapshot;
+        confirmedSnapshot = snapshot;
+      },
+      onAuthenticatedSnapshot: (snapshot) => {
+        ownedSnapshot = snapshot;
+        confirmedSnapshot = snapshot;
+      },
+    });
+    const committedSnapshot = await loginCommitMutex.withLock(async () => {
+      if (loginAttempt !== loginAttemptGeneration) return null;
+      const previousUserId = await getStoredUserId();
+      if (previousUserId && previousUserId !== user.id) await cancelAllReminders();
+      if (loginAttempt !== loginAttemptGeneration) return null;
+      return commitBoundSessionAndAccountIfCurrent(user, confirmedSnapshot);
+    });
+    if (!committedSnapshot) {
+      throw new Error(loginAttempt !== loginAttemptGeneration
+        ? "Tento pokus o přihlášení nahradil novější pokus."
+        : "Přihlášení se během potvrzení účtu změnilo.");
+    }
+    // This exact snapshot came from A's atomic commit. Never adopt an
+    // arbitrary current snapshot, which may already belong to a newer B login.
+    ownedSnapshot = committedSnapshot;
     resumePushDeviceRegistration();
     return user;
   } catch (error) {
-    await clearTokens();
+    await clearTokensIfCurrent(ownedSnapshot);
     throw error;
   }
 }
@@ -91,17 +165,47 @@ export async function confirmEmailVerification(token: string): Promise<EmailVeri
 }
 
 export async function restoreUser(): Promise<AuthUser | null> {
-  if (!(await getTokens())) return null;
-  const cachedUser = await getStoredUser();
+  const restoreStart = await loginCommitMutex.withLock(async () => ({
+    loginGeneration: loginAttemptGeneration,
+    snapshot: await getTokenSnapshot(),
+  }));
+  const restoreLoginGeneration = restoreStart.loginGeneration;
+  const initialSnapshot = restoreStart.snapshot;
+  if (!initialSnapshot.tokens) return null;
+  const cachedUser = initialSnapshot.state === "bound" ? initialSnapshot.user : null;
+  let ownedSnapshot = initialSnapshot;
   try {
-    const user = await apiRequest<AuthUser>("/api/v1/auth/me/");
-    await bindAccount(user);
+    let confirmedSnapshot = initialSnapshot;
+    const user = await apiRequest<AuthUser>("/api/v1/auth/me/", {
+      authSnapshot: initialSnapshot,
+      onAuthSnapshotSelected: (snapshot) => {
+        ownedSnapshot = snapshot;
+        confirmedSnapshot = snapshot;
+      },
+      onAuthenticatedSnapshot: (snapshot) => {
+        ownedSnapshot = snapshot;
+        confirmedSnapshot = snapshot;
+      },
+    });
+    const committedSnapshot = await loginCommitMutex.withLock(async () => {
+      if (restoreLoginGeneration !== loginAttemptGeneration) return null;
+      const previousUserId = await getStoredUserId();
+      if (previousUserId && previousUserId !== user.id) await cancelAllReminders();
+      if (restoreLoginGeneration !== loginAttemptGeneration) return null;
+      return commitBoundSessionAndAccountIfCurrent(user, confirmedSnapshot);
+    });
+    if (!committedSnapshot) return null;
+    ownedSnapshot = committedSnapshot;
     resumePushDeviceRegistration();
     return user;
   } catch (error) {
-    if (isNetworkError(error) && cachedUser) return cachedUser;
-    if (isReleaseGateError(error)) return cachedUser;
-    await clearTokens();
+    if (isNetworkError(error) || isReleaseGateError(error)) {
+      return loginCommitMutex.withLock(async () => {
+        if (restoreLoginGeneration !== loginAttemptGeneration || !cachedUser) return null;
+        return restoreBoundUserIfCurrent(cachedUser, ownedSnapshot);
+      });
+    }
+    await clearTokensIfCurrent(ownedSnapshot);
     return null;
   }
 }
@@ -122,15 +226,17 @@ export async function clearLocalSession(options: {
 }
 
 export async function logout(): Promise<void> {
-  const tokens = await getTokens();
-  if (tokens?.refresh) {
+  const initialSnapshot = await getTokenSnapshot();
+  if (initialSnapshot.tokens?.refresh) {
     try {
       const installationId = await beginPushDeviceLogout();
-      const currentTokens = await getTokens();
-      if (!currentTokens?.refresh) throw new Error("Session already cleared");
       await apiRequest<void>("/api/v1/auth/logout/", {
         method: "POST",
-        body: { refresh: currentTokens.refresh, installation_id: installationId },
+        authSnapshot: initialSnapshot,
+        bodyForAuthSnapshot: (snapshot) => ({
+          refresh: snapshot.tokens?.refresh,
+          installation_id: installationId,
+        }),
       });
     } catch (error) {
       resumePushDeviceRegistration();
