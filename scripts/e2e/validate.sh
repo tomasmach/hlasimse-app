@@ -588,7 +588,7 @@ ruby -e '
     %q{retryTapIfNoChange: true},
     %q{Archivované profily},
     %q{id: "timeline-profile-archived-.*"},
-    %q{E2E archiv historie},
+    %q{Historie profilu: E2E archiv historie},
     %q{Pouze historie — profil je archivovaný},
     %q{id: "checkin-submit"},
     %q{id: "profile-pause"},
@@ -611,7 +611,7 @@ ruby -e '
     %q{Archivované profily},
     archived_id,
     %q{Pouze historie — profil je archivovaný},
-    %q{E2E archiv historie},
+    %q{Historie profilu: E2E archiv historie},
     %q{Profil archivován},
     %q{Vybraný profil E2E bezpečnostní profil},
   ]

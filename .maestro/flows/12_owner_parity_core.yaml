@@ -62,7 +62,7 @@ tags:
 - extendedWaitUntil:
     visible: "Pouze historie — profil je archivovaný"
     timeout: 15000
-- assertVisible: "E2E archiv historie"
+- assertVisible: "Historie profilu: E2E archiv historie"
 - scrollUntilVisible:
     element: "Profil archivován"
     direction: DOWN
