@@ -23,10 +23,10 @@ tags:
     centerElement: true
 - assertVisible: "Synchronizováno později z offline fronty.*Vyřešil 1 aktivní incident.*"
 - scrollUntilVisible:
-    element: "Incident vyřešen potvrzeným check-inem"
+    element: "Incident vyřešen potvrzeným check-inem.*"
     direction: DOWN
     centerElement: true
 - scrollUntilVisible:
-    element: "Server otevřel incident"
+    element: "Server otevřel incident.*"
     direction: DOWN
     centerElement: true
