@@ -1363,6 +1363,55 @@
                 }
             }
         },
+        "/api/v1/profiles/{id}/invitations/{invitation_id}/": {
+            "delete": {
+                "operationId": "profiles_invitations_destroy",
+                "parameters": [
+                    {
+                        "in": "path",
+                        "name": "id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "description": "A UUID string identifying this check in profile.",
+                        "required": true
+                    },
+                    {
+                        "in": "path",
+                        "name": "invitation_id",
+                        "schema": {
+                            "type": "string",
+                            "format": "uuid"
+                        },
+                        "required": true
+                    }
+                ],
+                "tags": [
+                    "profiles"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    }
+                ],
+                "responses": {
+                    "204": {
+                        "description": "No response body"
+                    },
+                    "409": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/DetailResponse"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
         "/api/v1/profiles/{id}/timeline/": {
             "get": {
                 "operationId": "profiles_timeline_retrieve",
@@ -2207,9 +2256,15 @@
                         "type": "string",
                         "writeOnly": true,
                         "minLength": 1
+                    },
+                    "installation_id": {
+                        "type": "string",
+                        "format": "uuid",
+                        "writeOnly": true
                     }
                 },
                 "required": [
+                    "installation_id",
                     "refresh"
                 ]
             },

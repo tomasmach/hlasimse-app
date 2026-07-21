@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 import Constants from "expo-constants";
 import { registerPushDevice } from "@/lib/pushDevices";
 import { createResponseOnceDispatcher } from "@/lib/notificationRouting";
@@ -20,6 +20,8 @@ export interface UseNotificationsResult {
   expoPushToken: string | null;
   permissionStatus: Notifications.PermissionStatus | null;
   notification: Notifications.Notification | null;
+  tokenStatus: "unavailable" | "loading" | "ready" | "error";
+  registrationStatus: "idle" | "registering" | "ready" | "error";
   requestPermissions: () => Promise<boolean>;
   registerToken: (userId: string) => Promise<void>;
   setNotificationResponseHandler: (
@@ -33,22 +35,29 @@ export function useNotifications(): UseNotificationsResult {
     useState<Notifications.PermissionStatus | null>(null);
   const [notification, setNotification] =
     useState<Notifications.Notification | null>(null);
+  const [tokenStatus, setTokenStatus] = useState<"unavailable" | "loading" | "ready" | "error">("unavailable");
+  const [registrationStatus, setRegistrationStatus] = useState<"idle" | "registering" | "ready" | "error">("idle");
   const notificationListener = useRef<Notifications.EventSubscription | null>(null);
   const responseListener = useRef<Notifications.EventSubscription | null>(null);
   const responseHandlerRef = useRef<((data: Record<string, unknown>) => void) | null>(null);
   const responseDispatcherRef = useRef<ReturnType<typeof createResponseOnceDispatcher> | null>(null);
 
-  const loadExpoPushToken = useCallback(async (): Promise<boolean> => {
-    if (!Device.isDevice) return false;
+  const loadExpoPushToken = useCallback(async (): Promise<string | null> => {
+    if (!Device.isDevice) {
+      setTokenStatus("unavailable");
+      return null;
+    }
+    setTokenStatus("loading");
     const projectId = Constants.expoConfig?.extra?.eas?.projectId;
     if (!projectId) {
-      console.warn("Missing EAS projectId in app config");
-      return false;
+      setTokenStatus("error");
+      throw new Error("Build nemá nakonfigurovaný projekt pro push upozornění.");
     }
     try {
       const tokenData = await Notifications.getExpoPushTokenAsync({ projectId });
-      if (!tokenData?.data) return false;
+      if (!tokenData?.data) throw new Error("Expo push token tohoto zařízení není dostupný.");
       setExpoPushToken(tokenData.data);
+      setTokenStatus("ready");
       if (Platform.OS === "android") {
         for (const channel of [{ id: "alerts", name: "Incidenty" }, { id: "reminders", name: "Připomínky" }]) {
           await Notifications.setNotificationChannelAsync(channel.id, {
@@ -59,19 +68,52 @@ export function useNotifications(): UseNotificationsResult {
           });
         }
       }
-      return true;
+      return tokenData.data;
     } catch (error) {
+      setTokenStatus("error");
       console.error("Failed to get push token:", error);
-      return false;
+      throw error;
     }
   }, []);
 
   useEffect(() => {
-    // Check current permission status on mount
-    Notifications.getPermissionsAsync().then(({ status }) => {
+    let active = true;
+    let tokenRetryTimer: ReturnType<typeof setTimeout> | null = null;
+    let tokenRetryAttempt = 0;
+
+    const refreshPermissionAndToken = async () => {
+      const { status } = await Notifications.getPermissionsAsync();
+      if (!active) return;
       setPermissionStatus(status);
-      // Refresh an existing registration without showing an OS prompt.
-      if (status === "granted") void loadExpoPushToken();
+      if (status !== "granted") {
+        setExpoPushToken(null);
+        setTokenStatus("unavailable");
+        return;
+      }
+      try {
+        await loadExpoPushToken();
+        tokenRetryAttempt = 0;
+      } catch {
+        if (!active) return;
+        const baseDelay = Math.min(30_000, 1_000 * (2 ** Math.min(tokenRetryAttempt, 5)));
+        tokenRetryAttempt += 1;
+        const delay = Math.round(baseDelay * (0.75 + Math.random() * 0.5));
+        tokenRetryTimer = setTimeout(() => {
+          if (active && AppState.currentState === "active") void refreshPermissionAndToken();
+        }, delay);
+      }
+    };
+
+    void refreshPermissionAndToken();
+    const appStateSubscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") {
+        tokenRetryAttempt = 0;
+        if (tokenRetryTimer) clearTimeout(tokenRetryTimer);
+        void refreshPermissionAndToken();
+      }
+    });
+    const pushTokenSubscription = Notifications.addPushTokenListener(() => {
+      if (active) void refreshPermissionAndToken();
     });
 
     // Listen for incoming notifications
@@ -91,6 +133,10 @@ export function useNotifications(): UseNotificationsResult {
     );
 
     return () => {
+      active = false;
+      if (tokenRetryTimer) clearTimeout(tokenRetryTimer);
+      appStateSubscription.remove();
+      pushTokenSubscription.remove();
       if (notificationListener.current) {
         notificationListener.current.remove();
       }
@@ -126,17 +172,17 @@ export function useNotifications(): UseNotificationsResult {
   }, [loadExpoPushToken]);
 
   const registerToken = useCallback(async (_userId: string): Promise<void> => {
-    if (!expoPushToken) {
-      console.warn("No push token available to register");
-      return;
-    }
-
+    setRegistrationStatus("registering");
     try {
-      await registerPushDevice(expoPushToken);
+      const token = expoPushToken || await loadExpoPushToken();
+      if (!token) throw new Error("Push token tohoto zařízení není dostupný.");
+      await registerPushDevice(token);
+      setRegistrationStatus("ready");
     } catch (error) {
-      console.error("Failed to register push token:", error);
+      setRegistrationStatus("error");
+      throw error;
     }
-  }, [expoPushToken]);
+  }, [expoPushToken, loadExpoPushToken]);
 
   const setNotificationResponseHandler = useCallback((
     handler: ((data: Record<string, unknown>) => void) | null
@@ -158,6 +204,8 @@ export function useNotifications(): UseNotificationsResult {
     expoPushToken,
     permissionStatus,
     notification,
+    tokenStatus,
+    registrationStatus,
     requestPermissions,
     registerToken,
     setNotificationResponseHandler,

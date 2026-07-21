@@ -6,8 +6,8 @@ import {
   setReleaseGateHandler,
   setUnauthorizedHandler,
 } from "@/lib/api";
-import { getTokens, saveTokens, setStoredUser } from "@/lib/authStorage";
-import { login, logout, restoreUser } from "@/lib/auth";
+import { getStoredUserId, getTokens, saveTokens, setStoredUser } from "@/lib/authStorage";
+import { clearLocalSession, login, logout, restoreUser } from "@/lib/auth";
 import { setStoredUserId } from "@/lib/authStorage";
 import { getInstallationId } from "@/lib/installation";
 import { addToQueue, getQueue } from "@/lib/offlineQueue";
@@ -67,6 +67,26 @@ it("clears credentials and invokes logout state handling when refresh is rejecte
   expect(unauthorized).toHaveBeenCalledTimes(1);
 });
 
+it("stores a refresh rotation as one versioned token bundle", async () => {
+  const secureStore = SecureStore as unknown as {
+    __values: Map<string, string>;
+    setItemAsync: jest.Mock;
+  };
+  await saveTokens({ access: "rotated-access", refresh: "rotated-refresh" });
+
+  expect(JSON.parse(secureStore.__values.get("hlasimse.auth.tokens.v2") || "null")).toEqual({
+    version: 2,
+    access: "rotated-access",
+    refresh: "rotated-refresh",
+  });
+  expect(secureStore.setItemAsync).toHaveBeenLastCalledWith(
+    "hlasimse.auth.tokens.v2",
+    expect.any(String),
+  );
+  expect(secureStore.__values.has("hlasimse.auth.access.v1")).toBe(false);
+  expect(secureStore.__values.has("hlasimse.auth.refresh.v1")).toBe(false);
+});
+
 it("captures update-required without clearing credentials", async () => {
   const gateHandler = jest.fn();
   setReleaseGateHandler(gateHandler);
@@ -104,7 +124,7 @@ it("captures maintenance returned during token refresh without logging out", asy
   expect(await getTokens()).toEqual({ access: "expired", refresh: "refresh-1" });
 });
 
-it("purges the previous account queue on account switch and the current queue on logout", async () => {
+it("preserves the previous account queue on account switch and purges the current queue on logout", async () => {
   const installationId = await getInstallationId();
   const queued = {
     installationId,
@@ -130,7 +150,7 @@ it("purges the previous account queue on account switch and the current queue on
     return json({}, 404);
   });
   await login("new@example.test", "very-long-password");
-  expect(await getQueue("old-user", installationId)).toHaveLength(0);
+  expect(await getQueue("old-user", installationId)).toHaveLength(1);
   expect(Notifications.cancelScheduledNotificationAsync).toHaveBeenCalledWith(
     "checkin-reminder-old-profile-indefinite-pause",
   );
@@ -158,5 +178,53 @@ it("keeps the local session and queue when server-side logout cleanup cannot be 
 
   await expect(logout()).rejects.toThrow("Bezpečné odhlášení se nepodařilo potvrdit serverem");
   expect(await getTokens()).toEqual({ access: "expired", refresh: "refresh-1" });
+  expect(await getQueue("current-user", installationId)).toHaveLength(1);
+});
+
+it("does not resurrect refreshed credentials after an overlapping session clear", async () => {
+  let resolveRefreshStarted!: () => void;
+  const refreshStarted = new Promise<void>((resolve) => {
+    resolveRefreshStarted = resolve;
+  });
+  let resolveRefresh!: (response: Response) => void;
+  const refreshResponse = new Promise<Response>((resolve) => {
+    resolveRefresh = resolve;
+  });
+  jest.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+    if (String(input).endsWith("/auth/token/refresh/")) {
+      resolveRefreshStarted();
+      return refreshResponse;
+    }
+    return json({ detail: "expired" }, 401);
+  });
+
+  const request = apiRequest("/protected");
+  await refreshStarted;
+  await clearLocalSession({ purgeQueue: false, preserveAccountBinding: true });
+  resolveRefresh(json({ access: "late-access", refresh: "late-refresh" }));
+
+  await expect(request).rejects.toThrow("Přihlášení vypršelo");
+  expect(await getTokens()).toBeNull();
+});
+
+it("preserves the account binding and pending queue after involuntary session expiry", async () => {
+  const installationId = await getInstallationId();
+  await setStoredUserId("current-user");
+  await addToQueue({
+    userId: "current-user",
+    installationId,
+    profileId: "33333333-3333-4333-8333-333333333333",
+    clientRecordedAt: "2026-07-19T12:00:00Z",
+    latitude: null,
+    longitude: null,
+    locationAccuracyMeters: null,
+    status: "pending",
+    error: null,
+  });
+
+  await clearLocalSession({ purgeQueue: false, preserveAccountBinding: true });
+
+  expect(await getTokens()).toBeNull();
+  expect(await getStoredUserId()).toBe("current-user");
   expect(await getQueue("current-user", installationId)).toHaveLength(1);
 });

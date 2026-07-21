@@ -37,24 +37,146 @@ const mutex = new AsyncMutex();
 const scope = (userId: string, installationId: string) => `${userId}.${installationId}`;
 const indexKey = (userId: string, installationId: string) => `hlasimse.queue.${scope(userId, installationId)}.index`;
 const entryKey = (userId: string, installationId: string, id: string) => `hlasimse.queue.${scope(userId, installationId)}.${id}`;
+const journalKey = (userId: string, installationId: string) => `hlasimse.queue.${scope(userId, installationId)}.journal.v1`;
+
+interface QueueJournal {
+  version: 1;
+  desiredIds: string[];
+  upserts: PendingCheckIn[];
+  deletes: string[];
+}
+
+export class OfflineQueueIntegrityError extends Error {
+  constructor() {
+    super("Frontu čekajících hlášení nelze bezpečně ověřit. Hlášení nemažte a kontaktujte podporu.");
+    this.name = "OfflineQueueIntegrityError";
+  }
+}
+
+function parseIds(raw: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      !Array.isArray(parsed) ||
+      !parsed.every((id) => typeof id === "string" && id.length > 0) ||
+      new Set(parsed).size !== parsed.length
+    ) {
+      throw new OfflineQueueIntegrityError();
+    }
+    return parsed;
+  } catch (error) {
+    if (error instanceof OfflineQueueIntegrityError) throw error;
+    throw new OfflineQueueIntegrityError();
+  }
+}
+
+function parseItem(
+  raw: string,
+  userId: string,
+  installationId: string,
+  expectedId?: string,
+): PendingCheckIn {
+  try {
+    const item = JSON.parse(raw) as Partial<PendingCheckIn>;
+    if (
+      typeof item.id !== "string" ||
+      (expectedId !== undefined && item.id !== expectedId) ||
+      item.userId !== userId ||
+      item.installationId !== installationId ||
+      typeof item.profileId !== "string" ||
+      typeof item.clientRecordedAt !== "string" ||
+      typeof item.createdAt !== "string" ||
+      !["pending", "failed"].includes(item.status || "") ||
+      !(item.error === null || typeof item.error === "string")
+    ) {
+      throw new OfflineQueueIntegrityError();
+    }
+    return item as PendingCheckIn;
+  } catch (error) {
+    if (error instanceof OfflineQueueIntegrityError) throw error;
+    throw new OfflineQueueIntegrityError();
+  }
+}
+
+function parseJournal(raw: string, userId: string, installationId: string): QueueJournal {
+  try {
+    const journal = JSON.parse(raw) as Partial<QueueJournal>;
+    if (
+      journal.version !== 1 ||
+      !Array.isArray(journal.desiredIds) ||
+      !Array.isArray(journal.upserts) ||
+      !Array.isArray(journal.deletes)
+    ) {
+      throw new OfflineQueueIntegrityError();
+    }
+    const desiredIds = parseIds(JSON.stringify(journal.desiredIds));
+    const deletes = parseIds(JSON.stringify(journal.deletes));
+    const upserts = journal.upserts.map((item) =>
+      parseItem(JSON.stringify(item), userId, installationId),
+    );
+    if (upserts.some((item) => !desiredIds.includes(item.id))) {
+      throw new OfflineQueueIntegrityError();
+    }
+    return { version: 1, desiredIds, upserts, deletes };
+  } catch (error) {
+    if (error instanceof OfflineQueueIntegrityError) throw error;
+    throw new OfflineQueueIntegrityError();
+  }
+}
+
+async function applyJournal(
+  userId: string,
+  installationId: string,
+  journal: QueueJournal,
+): Promise<void> {
+  for (const item of journal.upserts) {
+    await SecureStore.setItemAsync(
+      entryKey(userId, installationId, item.id),
+      JSON.stringify(item),
+    );
+  }
+  if (journal.desiredIds.length) {
+    await SecureStore.setItemAsync(
+      indexKey(userId, installationId),
+      JSON.stringify(journal.desiredIds),
+    );
+  } else {
+    await SecureStore.deleteItemAsync(indexKey(userId, installationId));
+  }
+  for (const id of journal.deletes) {
+    await SecureStore.deleteItemAsync(entryKey(userId, installationId, id));
+  }
+  await SecureStore.deleteItemAsync(journalKey(userId, installationId));
+}
+
+async function recoverJournal(userId: string, installationId: string): Promise<void> {
+  const raw = await SecureStore.getItemAsync(journalKey(userId, installationId));
+  if (!raw) return;
+  await applyJournal(userId, installationId, parseJournal(raw, userId, installationId));
+}
+
+async function commitJournal(
+  userId: string,
+  installationId: string,
+  journal: QueueJournal,
+): Promise<void> {
+  await SecureStore.setItemAsync(
+    journalKey(userId, installationId),
+    JSON.stringify(journal),
+  );
+  await applyJournal(userId, installationId, journal);
+}
 
 async function readIds(userId: string, installationId: string): Promise<string[]> {
+  await recoverJournal(userId, installationId);
   const raw = await SecureStore.getItemAsync(indexKey(userId, installationId));
   if (!raw) return [];
-  try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.every((id) => typeof id === "string") ? parsed : [];
-  } catch {
-    return [];
-  }
+  return parseIds(raw);
 }
 
 export async function addToQueue(input: Omit<PendingCheckIn, "id" | "createdAt"> & { id?: string }): Promise<PendingCheckIn> {
   return mutex.withLock(async () => {
     const ids = await readIds(input.userId, input.installationId);
-    if (ids.length >= MAX_PENDING_CHECK_INS) {
-      throw new Error("Fronta čekajících hlášení je plná. Připojte se k internetu a zkuste synchronizaci.");
-    }
     const item: PendingCheckIn = {
       ...input,
       id: input.id || createIdempotencyKey(),
@@ -62,8 +184,22 @@ export async function addToQueue(input: Omit<PendingCheckIn, "id" | "createdAt">
       status: input.status || "pending",
       error: input.error || null,
     };
-    await SecureStore.setItemAsync(entryKey(input.userId, input.installationId, item.id), JSON.stringify(item));
-    await SecureStore.setItemAsync(indexKey(input.userId, input.installationId), JSON.stringify([...ids, item.id]));
+    if (ids.includes(item.id)) {
+      const raw = await SecureStore.getItemAsync(
+        entryKey(input.userId, input.installationId, item.id),
+      );
+      if (!raw) throw new OfflineQueueIntegrityError();
+      return parseItem(raw, input.userId, input.installationId, item.id);
+    }
+    if (ids.length >= MAX_PENDING_CHECK_INS) {
+      throw new Error("Fronta čekajících hlášení je plná. Připojte se k internetu a zkuste synchronizaci.");
+    }
+    await commitJournal(input.userId, input.installationId, {
+      version: 1,
+      desiredIds: [...ids, item.id],
+      upserts: [item],
+      deletes: [],
+    });
     return item;
   });
 }
@@ -72,16 +208,9 @@ export async function getQueue(userId: string, installationId: string): Promise<
   return mutex.withLock(async () => {
     const ids = await readIds(userId, installationId);
     const records = await Promise.all(ids.map((id) => SecureStore.getItemAsync(entryKey(userId, installationId, id))));
-    return records.flatMap((raw) => {
-      if (!raw) return [];
-      try {
-        const item = JSON.parse(raw) as PendingCheckIn;
-        return item.userId === userId && item.installationId === installationId
-          ? [{ ...item, status: item.status || "pending", error: item.error || null }]
-          : [];
-      } catch {
-        return [];
-      }
+    return records.map((raw, index) => {
+      if (!raw) throw new OfflineQueueIntegrityError();
+      return parseItem(raw, userId, installationId, ids[index]);
     });
   });
 }
@@ -93,32 +222,44 @@ export async function updateQueueItem(
   values: Pick<PendingCheckIn, "status" | "error">,
 ): Promise<void> {
   await mutex.withLock(async () => {
+    const ids = await readIds(userId, installationId);
+    if (!ids.includes(id)) return;
     const raw = await SecureStore.getItemAsync(entryKey(userId, installationId, id));
-    if (!raw) return;
-    const item = JSON.parse(raw) as PendingCheckIn;
-    if (item.userId !== userId || item.installationId !== installationId) return;
-    await SecureStore.setItemAsync(entryKey(userId, installationId, id), JSON.stringify({ ...item, ...values }));
+    if (!raw) throw new OfflineQueueIntegrityError();
+    const item = parseItem(raw, userId, installationId, id);
+    await commitJournal(userId, installationId, {
+      version: 1,
+      desiredIds: ids,
+      upserts: [{ ...item, ...values }],
+      deletes: [],
+    });
   });
 }
 
 export async function removeFromQueue(userId: string, installationId: string, id: string): Promise<void> {
   await mutex.withLock(async () => {
     const ids = await readIds(userId, installationId);
-    await SecureStore.deleteItemAsync(entryKey(userId, installationId, id));
+    if (!ids.includes(id)) return;
     const remaining = ids.filter((queuedId) => queuedId !== id);
-    if (remaining.length) {
-      await SecureStore.setItemAsync(indexKey(userId, installationId), JSON.stringify(remaining));
-    } else {
-      await SecureStore.deleteItemAsync(indexKey(userId, installationId));
-    }
+    await commitJournal(userId, installationId, {
+      version: 1,
+      desiredIds: remaining,
+      upserts: [],
+      deletes: [id],
+    });
   });
 }
 
 export async function clearQueue(userId: string, installationId: string): Promise<void> {
   await mutex.withLock(async () => {
     const ids = await readIds(userId, installationId);
-    await Promise.all(ids.map((id) => SecureStore.deleteItemAsync(entryKey(userId, installationId, id))));
-    await SecureStore.deleteItemAsync(indexKey(userId, installationId));
+    if (!ids.length) return;
+    await commitJournal(userId, installationId, {
+      version: 1,
+      desiredIds: [],
+      upserts: [],
+      deletes: ids,
+    });
   });
 }
 

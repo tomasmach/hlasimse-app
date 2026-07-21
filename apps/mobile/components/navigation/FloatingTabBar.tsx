@@ -46,10 +46,10 @@ function TabButton({ tab, isActive, onPress }: TabButtonProps) {
         <Icon
           size={24}
           weight={isActive ? "fill" : "light"}
-          color={isActive ? COLORS.coral.default : COLORS.muted}
+          color={isActive ? COLORS.charcoal.default : COLORS.muted}
         />
       </View>
-      <Text className={`text-[11px] font-lora-medium mt-1 ${isActive ? 'text-coral font-lora-semibold' : 'text-muted'}`}>
+      <Text className={`text-[12px] font-body-medium mt-1 ${isActive ? 'text-charcoal font-body-semibold' : 'text-muted'}`}>
         {tab.label}
       </Text>
     </Pressable>

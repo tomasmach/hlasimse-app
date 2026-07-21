@@ -78,6 +78,7 @@ interface GuardiansState {
   fetchSentInvites: (profileId: string) => Promise<void>;
   fetchWatchedProfiles: (userId?: string) => Promise<void>;
   sendInvite: (profileId: string, email: string) => Promise<{ success: boolean; error?: string }>;
+  revokeSentInvite: (profileId: string, inviteId: string) => Promise<boolean>;
   acceptInvite: (inviteId: string) => Promise<boolean>;
   declineInvite: (inviteId: string) => Promise<boolean>;
   removeGuardian: (guardianId: string) => Promise<boolean>;
@@ -148,6 +149,26 @@ export const useGuardiansStore = create<GuardiansState>((set, get) => ({
       const message = error instanceof Error ? error.message : "Nepodařilo se odeslat pozvánku.";
       set({ error: message, isLoading: false });
       return { success: false, error: message };
+    }
+  },
+
+  revokeSentInvite: async (profileId, inviteId) => {
+    set({ isLoading: true, error: null });
+    try {
+      await apiRequest<void>(`/api/v1/profiles/${profileId}/invitations/${inviteId}/`, {
+        method: "DELETE",
+      });
+      set((state) => ({
+        sentInvites: state.sentInvites.filter((invite) => invite.id !== inviteId),
+        isLoading: false,
+      }));
+      return true;
+    } catch (error) {
+      set({
+        error: error instanceof Error ? error.message : "Pozvánku se nepodařilo zrušit.",
+        isLoading: false,
+      });
+      return false;
     }
   },
 

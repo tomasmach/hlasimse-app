@@ -8,6 +8,7 @@
   "scripts": {
     "check:public-contract": "node scripts/check-public-contract.mjs",
     "test:public-contract": "node --test scripts/check-public-contract.test.mjs",
+    "test:web-static": "node apps/server/static/core/tests/template-smoke.mjs",
     "check:mobile-native-config": "node scripts/ci/validate-mobile-native-config.mjs",
     "test:release-gates": "node --test scripts/release/*.test.mjs",
     "check:store-release-pack": "node scripts/release/validate-store-release-pack.mjs",

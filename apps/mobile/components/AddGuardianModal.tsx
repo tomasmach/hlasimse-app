@@ -82,10 +82,10 @@ export function AddGuardianModal({ visible, onClose, onSubmit }: AddGuardianModa
             className="bg-cream w-full rounded-[28px] p-6"
             accessibilityViewIsModal
           >
-            <Text className="text-charcoal text-xl font-semibold mb-2 font-lora-semibold">
+            <Text className="text-charcoal text-xl mb-2 font-display">
               Pozvat strážce
             </Text>
-            <Text className="text-muted mb-4 font-lora">
+            <Text className="text-muted mb-4 font-body">
               Pozvaný člověk musí vztah výslovně přijmout. E-mail neobsahuje informace o check-inech, poloze ani incidentu.
             </Text>
 
@@ -107,7 +107,7 @@ export function AddGuardianModal({ visible, onClose, onSubmit }: AddGuardianModa
             />
 
             {error && (
-              <Text className="text-coral text-sm mb-3 font-lora">{error}</Text>
+              <Text className="text-error text-sm mb-3 font-body">{error}</Text>
             )}
 
             <View className="flex-row gap-3">
@@ -117,19 +117,19 @@ export function AddGuardianModal({ visible, onClose, onSubmit }: AddGuardianModa
                 className="flex-1 min-h-[48px] rounded-xl border border-muted/30 items-center justify-center"
                 accessibilityRole="button"
               >
-                <Text className="text-muted text-center font-medium font-lora-medium">Zrušit</Text>
+                <Text className="text-muted text-center font-body-medium">Zrušit</Text>
               </Pressable>
               <Pressable
                 onPress={handleSubmit}
                 disabled={isLoading}
-                className="flex-1 min-h-[48px] rounded-xl bg-coral items-center justify-center"
+                className="flex-1 min-h-[48px] rounded-xl bg-brand-500 items-center justify-center"
                 accessibilityRole="button"
                 testID="guardian-invite-submit"
               >
                 {isLoading ? (
-                  <ActivityIndicator color={COLORS.white} />
+                  <ActivityIndicator color={COLORS.charcoal.default} />
                 ) : (
-                  <Text className="text-white text-center font-medium font-lora-medium">Pozvat</Text>
+                  <Text className="text-charcoal text-center font-body-semibold">Pozvat</Text>
                 )}
               </Pressable>
             </View>

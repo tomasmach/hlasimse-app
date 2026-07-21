@@ -153,6 +153,7 @@ MIDDLEWARE = [
     "core.request_logging.CorrelationIdMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
+    "core.middleware.ServerTimeHeaderMiddleware",
     "core.middleware.MobileReleaseGateMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",

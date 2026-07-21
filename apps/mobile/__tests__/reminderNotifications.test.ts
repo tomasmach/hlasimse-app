@@ -1,5 +1,6 @@
 import * as Notifications from "expo-notifications";
 import { cancelAllReminders, reconcileReminders, scheduleProfileReminders } from "../lib/reminderNotifications";
+import { calibrateServerClock, resetServerClockForTests } from "../lib/serverClock";
 
 jest.mock("expo-notifications", () => ({
   scheduleNotificationAsync: jest.fn().mockResolvedValue("mock-id"),
@@ -14,7 +15,13 @@ const getAll = Notifications.getAllScheduledNotificationsAsync as jest.Mock;
 const cancel = Notifications.cancelScheduledNotificationAsync as jest.Mock;
 const profile = (id: string, deadline = new Date(Date.now() + 3 * 3600000).toISOString()) => ({ id, name: `Profil ${id}`, enabled: true, is_paused: false, paused_until: null, next_deadline_at: deadline });
 
-beforeEach(() => { jest.clearAllMocks(); getAll.mockResolvedValue([]); });
+beforeEach(() => {
+  jest.clearAllMocks();
+  getAll.mockResolvedValue([]);
+  const now = Date.now();
+  calibrateServerClock(new Date(now).toISOString(), now, now);
+});
+afterEach(() => resetServerClockForTests());
 
 it("uses profile-specific identifiers and schedules every active confirmed profile", async () => {
   await reconcileReminders([profile("a"), profile("b")]);

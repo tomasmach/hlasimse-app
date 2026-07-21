@@ -44,6 +44,9 @@ jobs:
       - name: Test public product contract gate
         run: npm run test:public-contract
 
+      - name: Test Django template UI and accessibility contract
+        run: npm run test:web-static
+
       - name: Validate native privacy and permission declarations
         run: npm run check:mobile-native-config
 

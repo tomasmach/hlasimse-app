@@ -50,8 +50,17 @@ const formatLastCheckIn = (value: string | null) => value
   ? new Intl.DateTimeFormat("cs-CZ", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
   : "Zatím žádné serverem potvrzené ohlášení";
 
-function Countdown({ deadline, paused, enabled }: { deadline: string | null; paused: boolean; enabled: boolean }) {
-  const countdown = useCountdown(deadline);
+function Countdown({
+  deadline,
+  paused,
+  enabled,
+  countdown,
+}: {
+  deadline: string | null;
+  paused: boolean;
+  enabled: boolean;
+  countdown: ReturnType<typeof useCountdown>;
+}) {
   if (!enabled) {
     return <Text className="font-display text-[42px] leading-[46px] tracking-[-1px] text-charcoal">Profil je archivovaný</Text>;
   }
@@ -60,6 +69,9 @@ function Countdown({ deadline, paused, enabled }: { deadline: string | null; pau
   }
   if (!deadline) {
     return <Text className="font-display text-[38px] leading-[43px] tracking-[-1px] text-charcoal">Čekáme na serverový termín</Text>;
+  }
+  if (!countdown.isTimeVerified) {
+    return <Text className="font-display text-[38px] leading-[43px] tracking-[-1px] text-charcoal">Čas čeká na ověření serverem</Text>;
   }
   if (countdown.isExpired) {
     return <Text className="font-display text-[44px] leading-[48px] tracking-[-1px] text-error">Termín vypršel</Text>;
@@ -89,6 +101,7 @@ export default function CheckInScreen() {
   const [pauseDuration, setPauseDuration] = useState<PauseDurationPreset>("indefinite");
   const [showSuccess, setShowSuccess] = useState(false);
   const [toast, setToast] = useState<{ visible: boolean; message: string; type: "success" | "info" | "warning" | "error" }>({ visible: false, message: "", type: "info" });
+  const countdown = useCountdown(store.profile?.next_deadline_at ?? null);
 
   useEffect(() => {
     if (user?.id && !store.hasFetched) void store.fetchProfile(user.id);
@@ -204,9 +217,10 @@ export default function CheckInScreen() {
     if (store.isUsingCachedProfiles) return { label: "Uložený náhled", tone: "warning" as const };
     if (!store.profile.enabled) return { label: "Archivovaný profil", tone: "info" as const };
     if (store.profile.is_paused) return { label: "Pauza potvrzena", tone: "info" as const };
-    if (store.profile.next_deadline_at && new Date(store.profile.next_deadline_at).getTime() <= Date.now()) return { label: "Termín vypršel", tone: "danger" as const };
+    if (store.profile.next_deadline_at && !countdown.isTimeVerified) return { label: "Čas není ověřený", tone: "warning" as const };
+    if (store.profile.next_deadline_at && countdown.isExpired) return { label: "Termín vypršel", tone: "danger" as const };
     return { label: "Serverový termín aktivní", tone: "success" as const };
-  }, [store.profile, store.isUsingCachedProfiles]);
+  }, [store.profile, store.isUsingCachedProfiles, countdown.isExpired, countdown.isTimeVerified]);
 
   if (!user || (!store.hasFetched && !store.profile)) {
     return <SafeAreaView className="flex-1 bg-cream items-center justify-center"><ActivityIndicator size="large" color={COLORS.brand[500]} /></SafeAreaView>;
@@ -280,7 +294,7 @@ export default function CheckInScreen() {
 
         <Animated.View entering={reduceMotion ? undefined : FadeInDown.duration(420)} className="pt-10 pb-8">
           <Text className="font-body-medium text-sm text-muted mb-3">Původní serverový termín</Text>
-          <Countdown deadline={profile.next_deadline_at} paused={profile.is_paused} enabled={profile.enabled} />
+          <Countdown deadline={profile.next_deadline_at} paused={profile.is_paused} enabled={profile.enabled} countdown={countdown} />
           <Text className="font-body text-[15px] text-muted mt-3">{formatDateTime(profile.next_deadline_at)}</Text>
           {profile.is_paused ? <Text className="font-body text-[15px] leading-6 text-muted mt-2">{profile.paused_until ? `Naplánované obnovení: ${formatDateTime(profile.paused_until)}` : "Pauza nemá nastavený konec. Nezapomeňte profil obnovit."}</Text> : null}
         </Animated.View>

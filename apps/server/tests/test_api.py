@@ -265,6 +265,13 @@ def test_push_device_can_be_safely_rebound_with_matching_installation_token(
 
 
 def test_real_jwt_rotation_blacklist_and_logout_subject_check(api_client, user, other_user):
+    installation_id = uuid.uuid4()
+    device = PushDevice.objects.create(
+        user=user,
+        installation_id=installation_id,
+        expo_push_token="ExponentPushToken[logout-atomic]",
+        platform=PushDevice.Platform.IOS,
+    )
     issued = api_client.post(
         "/api/v1/auth/token/",
         {"email": user.email, "password": "Safely-testing-123"},
@@ -282,11 +289,19 @@ def test_real_jwt_rotation_blacklist_and_logout_subject_check(api_client, user, 
         {"email": other_user.email, "password": "Safely-testing-123"},
     ).json()
     api_client.credentials(HTTP_AUTHORIZATION=f"Bearer {rotated.json()['access']}")
-    mismatch = api_client.post("/api/v1/auth/logout/", {"refresh": other_tokens["refresh"]})
-    logout = api_client.post("/api/v1/auth/logout/", {"refresh": rotated.json()["refresh"]})
+    mismatch = api_client.post(
+        "/api/v1/auth/logout/",
+        {"refresh": other_tokens["refresh"], "installation_id": installation_id},
+    )
+    logout = api_client.post(
+        "/api/v1/auth/logout/",
+        {"refresh": rotated.json()["refresh"], "installation_id": installation_id},
+    )
 
     assert mismatch.status_code == 400
     assert logout.status_code == 204
+    device.refresh_from_db()
+    assert device.active is False
     api_client.credentials()
     assert (
         api_client.post(

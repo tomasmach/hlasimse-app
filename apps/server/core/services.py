@@ -690,6 +690,26 @@ def respond_to_invitation(*, invitation_id, user, decision: str):
         return invitation, None
 
 
+def revoke_invitation(*, invitation: GuardianInvitation, actor) -> bool:
+    with transaction.atomic():
+        profile = CheckInProfile.objects.select_for_update().get(pk=invitation.profile_id)
+        if profile.owner_id != actor.id or profile.archived_at is not None:
+            raise PermissionDenied("Pozvánka není dostupná.")
+        locked = GuardianInvitation.objects.select_for_update().get(pk=invitation.pk)
+        if locked.status != GuardianInvitation.Status.PENDING:
+            return False
+        locked.status = GuardianInvitation.Status.REVOKED
+        locked.save(update_fields=["status", "updated_at"])
+        record_audit_event(
+            event_type="guardian.invitation_revoked",
+            aggregate_type="guardian_invitation",
+            aggregate_id=locked.pk,
+            actor=actor,
+            metadata={"profile_id": str(locked.profile_id)},
+        )
+        return True
+
+
 def revoke_guardian_membership(*, membership: GuardianMembership, actor) -> bool:
     with transaction.atomic():
         CheckInProfile.objects.select_for_update().get(pk=membership.profile_id)

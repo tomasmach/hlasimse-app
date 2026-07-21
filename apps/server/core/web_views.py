@@ -39,7 +39,6 @@ from .account_data import (
     build_account_export,
     delete_account_safely,
 )
-from .audit import record_audit_event
 from .email_verification import (
     register_unverified_user,
     resend_verification,
@@ -80,6 +79,7 @@ from .services import (
     perform_check_in,
     respond_to_invitation,
     revoke_guardian_membership,
+    revoke_invitation,
     update_profile,
 )
 from .web_rate_limits import WebAuthRateLimitMixin, web_auth_rate_limit
@@ -423,7 +423,17 @@ def profile_detail_view(request, pk):
     )
     profile.interval_label = _interval_label(profile.interval_seconds)
     session_keys = request.session.get("web_checkin_keys", {})
-    session_keys[str(profile.pk)] = uuid.uuid4().hex
+    profile_key = str(profile.pk)
+    existing_keys = session_keys.get(profile_key, [])
+    if isinstance(existing_keys, str):
+        existing_keys = [existing_keys]
+    if not isinstance(existing_keys, list):
+        existing_keys = []
+    web_checkin_key = uuid.uuid4().hex
+    session_keys[profile_key] = [
+        *[key for key in existing_keys if isinstance(key, str)],
+        web_checkin_key,
+    ][-8:]
     request.session["web_checkin_keys"] = session_keys
     guardians = profile.guardians.filter(status=GuardianMembership.Status.ACTIVE).select_related(
         "guardian"
@@ -442,6 +452,7 @@ def profile_detail_view(request, pk):
             "guardians": guardians,
             "checkins": checkins[:10],
             "stats": {"total_checkins": checkins.count()},
+            "web_checkin_key": web_checkin_key,
         },
     )
 
@@ -463,11 +474,16 @@ def check_in_view(request, pk):
         messages.error(request, "Poloha nebyla platná. Ohlášení nebylo odesláno.")
         return redirect("checkins:profile-detail", pk=profile.pk)
     session_keys = request.session.get("web_checkin_keys", {})
-    idempotency_key = session_keys.get(str(profile.pk))
-    if not idempotency_key:
-        idempotency_key = uuid.uuid4().hex
-        session_keys[str(profile.pk)] = idempotency_key
-        request.session["web_checkin_keys"] = session_keys
+    allowed_keys = session_keys.get(str(profile.pk), [])
+    if isinstance(allowed_keys, str):
+        allowed_keys = [allowed_keys]
+    idempotency_key = form.cleaned_data["idempotency_key"]
+    if not isinstance(allowed_keys, list) or idempotency_key not in allowed_keys:
+        messages.error(
+            request,
+            "Platnost formuláře ohlášení nelze ověřit. Obnovte detail profilu a zkuste to znovu.",
+        )
+        return redirect("checkins:profile-detail", pk=profile.pk)
     try:
         result = perform_check_in(
             profile=profile,
@@ -837,24 +853,23 @@ def guardian_self_revoke_view(request, pk):
 @require_POST
 @login_required(login_url="accounts:login")
 def guardian_invite_revoke_view(request, pk):
-    with transaction.atomic():
-        invitation = get_object_or_404(
-            GuardianInvitation.objects.select_for_update(),
-            pk=pk,
-            profile__owner=request.user,
-            profile__archived_at__isnull=True,
-            status=GuardianInvitation.Status.PENDING,
+    invitation = get_object_or_404(
+        GuardianInvitation,
+        pk=pk,
+        profile__owner=request.user,
+        profile__archived_at__isnull=True,
+        status=GuardianInvitation.Status.PENDING,
+    )
+    if revoke_invitation(invitation=invitation, actor=request.user):
+        messages.success(request, "Čekající pozvánka byla zrušena.")
+    else:
+        messages.warning(
+            request,
+            (
+                "Stav pozvánky se mezitím změnil. Pokud ji strážce přijal, "
+                "odeberte ho ze seznamu aktivních strážců."
+            ),
         )
-        invitation.status = GuardianInvitation.Status.REVOKED
-        invitation.save(update_fields=["status", "updated_at"])
-        record_audit_event(
-            event_type="guardian.invitation_revoked",
-            aggregate_type="guardian_invitation",
-            aggregate_id=invitation.pk,
-            actor=request.user,
-            metadata={"profile_id": str(invitation.profile_id)},
-        )
-    messages.success(request, "Čekající pozvánka byla zrušena.")
     return redirect("guardians:list")
 
 

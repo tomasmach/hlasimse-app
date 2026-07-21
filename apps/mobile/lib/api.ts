@@ -1,8 +1,15 @@
 import * as Application from "expo-application";
 import { Platform } from "react-native";
 
-import { clearTokens, getTokens, saveTokens } from "@/lib/authStorage";
+import {
+  clearTokens,
+  clearTokensIfCurrent,
+  getTokenSnapshot,
+  getTokens,
+  saveTokensIfCurrent,
+} from "@/lib/authStorage";
 import { resolveApiBaseUrl } from "@/lib/apiConfig";
+import { monotonicNowMs, observeServerTimeHeader } from "@/lib/serverClock";
 import { clientHeaders, gateFromError, type ClientGate } from "@/lib/clientRelease";
 import type { ApiErrorBody, AuthTokens } from "@/types/api";
 
@@ -100,9 +107,12 @@ async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs = DEFA
 async function refreshAccessToken(): Promise<string | null> {
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
-    const tokens = await getTokens();
+    const snapshot = await getTokenSnapshot();
+    const tokens = snapshot.tokens;
     if (!tokens?.refresh) return null;
     let response: Response;
+    const requestStartedAtMs = Date.now();
+    const requestStartedMonotonicMs = monotonicNowMs();
     try {
       response = await fetchWithTimeout(`${API_BASE_URL}/api/v1/auth/token/refresh/`, {
         method: "POST",
@@ -116,6 +126,16 @@ async function refreshAccessToken(): Promise<string | null> {
     } catch (error) {
       throw new NetworkError(error);
     }
+    const responseReceivedAtMs = Date.now();
+    const responseReceivedMonotonicMs = monotonicNowMs();
+    observeServerTimeHeader(
+      response,
+      requestStartedAtMs,
+      responseReceivedAtMs,
+      requestStartedMonotonicMs !== null && responseReceivedMonotonicMs !== null
+        ? { requestStartedMonotonicMs, responseReceivedMonotonicMs }
+        : undefined,
+    );
     const body = await parseBody(response);
     if (captureReleaseGate(response.status, body)) {
       throw new ApiError(
@@ -124,19 +144,16 @@ async function refreshAccessToken(): Promise<string | null> {
       );
     }
     if (!response.ok) {
-      await clearTokens();
-      await unauthorizedHandler?.();
+      if (await clearTokensIfCurrent(snapshot)) await unauthorizedHandler?.();
       return null;
     }
     const tokenBody = body as { access?: unknown; refresh?: unknown };
     if (typeof tokenBody?.access !== "string" || (tokenBody.refresh !== undefined && typeof tokenBody.refresh !== "string")) {
-      await clearTokens();
-      await unauthorizedHandler?.();
+      if (await clearTokensIfCurrent(snapshot)) await unauthorizedHandler?.();
       return null;
     }
     const next: AuthTokens = { access: tokenBody.access, refresh: tokenBody.refresh || tokens.refresh };
-    await saveTokens(next);
-    return next.access;
+    return await saveTokensIfCurrent(next, snapshot) ? next.access : null;
   })().finally(() => {
     refreshPromise = null;
   });
@@ -162,6 +179,8 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   }
 
   let response: Response;
+  const requestStartedAtMs = Date.now();
+  const requestStartedMonotonicMs = monotonicNowMs();
   try {
     response = await fetchWithTimeout(`${API_BASE_URL}${path}`, {
       ...requestInit,
@@ -171,6 +190,16 @@ export async function apiRequest<T>(path: string, options: ApiRequestOptions = {
   } catch (error) {
     throw new NetworkError(error);
   }
+  const responseReceivedAtMs = Date.now();
+  const responseReceivedMonotonicMs = monotonicNowMs();
+  observeServerTimeHeader(
+    response,
+    requestStartedAtMs,
+    responseReceivedAtMs,
+    requestStartedMonotonicMs !== null && responseReceivedMonotonicMs !== null
+      ? { requestStartedMonotonicMs, responseReceivedMonotonicMs }
+      : undefined,
+  );
 
   if (response.status === 401 && auth && retryAuth) {
     const access = await refreshAccessToken();

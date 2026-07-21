@@ -16,6 +16,7 @@ class VerificationResultSerializer(serializers.Serializer):
 
 class LogoutRequestSerializer(serializers.Serializer):
     refresh = serializers.CharField(write_only=True)
+    installation_id = serializers.UUIDField(write_only=True)
 
 
 class LastKnownLocationSchemaSerializer(serializers.Serializer):

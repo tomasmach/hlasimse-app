@@ -16,33 +16,48 @@ export function shouldRegisterToken(params: ShouldRegisterTokenParams): boolean 
 }
 
 export interface TokenRegistrationTracker {
-  update(params: { userId: string | null; expoPushToken: string | null }): void;
+  update(params: { userId: string | null; expoPushToken: string | null }): Promise<boolean>;
 }
 
 export function createTokenRegistrationTracker(
-  registerToken: (userId: string) => void
+  registerToken: (userId: string) => void | Promise<void>
 ): TokenRegistrationTracker {
   let lastRegisteredUserId: string | null = null;
   let lastRegisteredToken: string | null = null;
+  let inFlightKey: string | null = null;
+  let inFlight: Promise<boolean> | null = null;
 
   return {
-    update({ userId, expoPushToken }) {
-      if (shouldRegisterToken({
+    async update({ userId, expoPushToken }) {
+      if (!userId) {
+        lastRegisteredUserId = null;
+        lastRegisteredToken = null;
+        inFlightKey = null;
+        inFlight = null;
+        return false;
+      }
+      if (!expoPushToken) return false;
+      if (!shouldRegisterToken({
         currentUserId: userId,
         previousUserId: lastRegisteredUserId,
         expoPushToken,
         previousToken: lastRegisteredToken,
-      })) {
-        registerToken(userId!);
+      })) return true;
+
+      const key = `${userId}\u0000${expoPushToken}`;
+      if (inFlightKey === key && inFlight) return inFlight;
+      inFlightKey = key;
+      inFlight = Promise.resolve(registerToken(userId)).then(() => {
         lastRegisteredUserId = userId;
         lastRegisteredToken = expoPushToken;
-      }
-
-      // Reset tracker when user logs out
-      if (!userId) {
-        lastRegisteredUserId = null;
-        lastRegisteredToken = null;
-      }
+        return true;
+      }).finally(() => {
+        if (inFlightKey === key) {
+          inFlightKey = null;
+          inFlight = null;
+        }
+      });
+      return inFlight;
     },
   };
 }

@@ -92,6 +92,7 @@ from .services import (
     perform_check_in,
     respond_to_invitation,
     revoke_guardian_membership,
+    revoke_invitation,
 )
 from .throttling import TrustedProxySimpleRateThrottle
 
@@ -306,14 +307,24 @@ class AccountDeleteView(APIView):
 class LogoutView(APIView):
     @extend_schema(request=LogoutRequestSerializer, responses={204: None})
     def post(self, request):
-        refresh = request.data.get("refresh")
-        if not refresh:
-            raise ValidationError({"refresh": "Refresh token je povinný."})
+        serializer = LogoutRequestSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
         try:
-            token = RefreshToken(refresh)
-            if str(token.get("user_id")) != str(request.user.pk):
-                raise ValidationError({"refresh": "Refresh token patří jinému účtu."})
-            token.blacklist()
+            with transaction.atomic():
+                token = RefreshToken(serializer.validated_data["refresh"])
+                if str(token.get("user_id")) != str(request.user.pk):
+                    raise ValidationError({"refresh": "Refresh token patří jinému účtu."})
+                device = (
+                    PushDevice.objects.select_for_update()
+                    .filter(
+                        user=request.user,
+                        installation_id=serializer.validated_data["installation_id"],
+                    )
+                    .first()
+                )
+                if device is not None:
+                    deactivate_push_device(device=device, actor=request.user)
+                token.blacklist()
         except TokenError as exc:
             raise ValidationError({"refresh": "Refresh token není platný."}) from exc
         return Response(status=status.HTTP_204_NO_CONTENT)
@@ -440,6 +451,35 @@ class ProfileViewSet(viewsets.ModelViewSet):
         if settings.DEBUG or settings.EMAIL_BACKEND.endswith("locmem.EmailBackend"):
             data["acceptance_token"] = token
         return Response(data, status=status.HTTP_201_CREATED)
+
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("invitation_id", OpenApiTypes.UUID, OpenApiParameter.PATH),
+        ],
+        responses={204: None, 409: DetailResponseSerializer},
+    )
+    @action(
+        detail=True,
+        methods=["delete"],
+        url_path=r"invitations/(?P<invitation_id>[^/.]+)",
+    )
+    def revoke_invitation(self, request, pk=None, invitation_id: uuid.UUID | None = None):
+        invitation = get_object_or_404(
+            self.get_object().invitations,
+            pk=invitation_id,
+            status=GuardianInvitation.Status.PENDING,
+        )
+        if not revoke_invitation(invitation=invitation, actor=request.user):
+            return Response(
+                {
+                    "detail": (
+                        "Stav pozvánky se mezitím změnil. Obnovte seznam; pokud byla přijata, "
+                        "odeberte vzniklého strážce."
+                    )
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     @extend_schema(
         responses={200: ProfileTimelinePageSchemaSerializer},

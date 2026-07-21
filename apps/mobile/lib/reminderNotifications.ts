@@ -1,5 +1,6 @@
 import * as Notifications from "expo-notifications";
 import { Platform } from "react-native";
+import { serverNowMs } from "@/lib/serverClock";
 
 const REMINDER_PREFIX = "checkin-reminder-";
 const INDEFINITE_PAUSE_REMINDER_ID = "indefinite-pause";
@@ -39,9 +40,12 @@ export async function cancelProfileReminders(profileId: string): Promise<void> {
 }
 
 export async function scheduleProfileReminders(profile: ReminderProfile): Promise<void> {
-  await cancelProfileReminders(profile.id);
-  if (!profile.enabled) return;
+  if (!profile.enabled) {
+    await cancelProfileReminders(profile.id);
+    return;
+  }
   if (profile.is_paused) {
+    await cancelProfileReminders(profile.id);
     if (profile.paused_until !== null) return;
     await Notifications.scheduleNotificationAsync({
       identifier: `${reminderPrefixForProfile(profile.id)}${INDEFINITE_PAUSE_REMINDER_ID}`,
@@ -67,7 +71,9 @@ export async function scheduleProfileReminders(profile: ReminderProfile): Promis
   if (!profile.next_deadline_at) return;
   const deadlineMs = new Date(profile.next_deadline_at).getTime();
   if (!Number.isFinite(deadlineMs)) return;
-  const now = Date.now();
+  const now = serverNowMs();
+  if (now === null) return;
+  await cancelProfileReminders(profile.id);
   for (const reminder of REMINDERS) {
     const triggerMs = deadlineMs + reminder.offsetMs;
     if (triggerMs <= now) continue;

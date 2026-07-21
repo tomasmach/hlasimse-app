@@ -1,8 +1,8 @@
 import "../global.css";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Stack, useRouter, useSegments } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { View, ActivityIndicator } from "react-native";
+import { AppState, View, ActivityIndicator } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useFonts } from "expo-font";
 import {
@@ -25,7 +25,7 @@ import { createTokenRegistrationTracker } from "@/utils/pushTokenRegistration";
 import { notificationDestination } from "@/lib/notificationRouting";
 import { AccessGateScreen } from "@/components/AccessGateScreen";
 import { checkClientRelease, supportsMobileReleaseGate } from "@/lib/clientGate";
-import { clearReleaseGate, isNetworkError, setReleaseGateHandler } from "@/lib/api";
+import { ApiError, clearReleaseGate, isNetworkError, setReleaseGateHandler } from "@/lib/api";
 import type { ClientGate } from "@/lib/clientRelease";
 
 function useProtectedRoute(
@@ -72,6 +72,8 @@ export default function RootLayout() {
   const [releaseGate, setReleaseGate] = useState<ClientGate | null>(null);
   const [releaseChecked, setReleaseChecked] = useState(!supportsMobileReleaseGate());
   const [releaseRetrying, setReleaseRetrying] = useState(false);
+  const [pushRegistrationRetry, setPushRegistrationRetry] = useState(0);
+  const pushRegistrationFailures = useRef(0);
   const [fontsLoaded] = useFonts({
     Lora_400Regular,
     Lora_500Medium,
@@ -150,11 +152,40 @@ export default function RootLayout() {
   // Register push token when available and user is logged in
   // The tracker automatically handles logout/login cycles
   useEffect(() => {
-    tokenTracker.update({
+    let active = true;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
+    void tokenTracker.update({
       userId: user?.id ?? null,
       expoPushToken,
+    }).then((registered) => {
+      if (registered) pushRegistrationFailures.current = 0;
+    }).catch((error) => {
+      if (!active) return;
+      const attempt = pushRegistrationFailures.current;
+      const retryable = isNetworkError(error) || (error instanceof ApiError && (error.status === 429 || error.status >= 500));
+      if (!retryable || attempt >= 6) return;
+      pushRegistrationFailures.current += 1;
+      const baseDelay = Math.min(30_000, 1_000 * (2 ** attempt));
+      const delay = Math.round(baseDelay * (0.75 + Math.random() * 0.5));
+      retryTimer = setTimeout(() => {
+        if (active && AppState.currentState === "active") setPushRegistrationRetry((value) => value + 1);
+      }, delay);
     });
-  }, [user, expoPushToken, tokenTracker]);
+    return () => {
+      active = false;
+      if (retryTimer) clearTimeout(retryTimer);
+    };
+  }, [user, expoPushToken, tokenTracker, pushRegistrationRetry]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active" && user?.id && expoPushToken) {
+        pushRegistrationFailures.current = 0;
+        setPushRegistrationRetry((value) => value + 1);
+      }
+    });
+    return () => subscription.remove();
+  }, [user?.id, expoPushToken]);
 
   // Consume notification responses only after account restoration and navigation are ready.
   useEffect(() => {

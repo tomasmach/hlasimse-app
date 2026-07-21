@@ -1,25 +1,40 @@
 import { useState, useEffect, useCallback } from "react";
+import { serverNowMs } from "@/lib/serverClock";
 
 export interface CountdownResult {
   hours: number;
   minutes: number;
   seconds: number;
   isExpired: boolean;
+  isTimeVerified: boolean;
   formatted: string;
 }
 
-function calculateTimeRemaining(deadline: string | null): CountdownResult {
+export function calculateTimeRemaining(
+  deadline: string | null,
+  now: number | null = serverNowMs(),
+): CountdownResult {
   if (!deadline) {
     return {
       hours: 0,
       minutes: 0,
       seconds: 0,
       isExpired: true,
+      isTimeVerified: now !== null,
       formatted: "00:00:00",
     };
   }
 
-  const now = Date.now();
+  if (now === null) {
+    return {
+      hours: 0,
+      minutes: 0,
+      seconds: 0,
+      isExpired: false,
+      isTimeVerified: false,
+      formatted: "--:--:--",
+    };
+  }
   const deadlineTime = new Date(deadline).getTime();
 
   // Validate that deadlineTime is not NaN (malformed date string)
@@ -29,6 +44,7 @@ function calculateTimeRemaining(deadline: string | null): CountdownResult {
       minutes: 0,
       seconds: 0,
       isExpired: true,
+      isTimeVerified: true,
       formatted: "00:00:00",
     };
   }
@@ -41,6 +57,7 @@ function calculateTimeRemaining(deadline: string | null): CountdownResult {
       minutes: 0,
       seconds: 0,
       isExpired: true,
+      isTimeVerified: true,
       formatted: "00:00:00",
     };
   }
@@ -59,6 +76,7 @@ function calculateTimeRemaining(deadline: string | null): CountdownResult {
     minutes,
     seconds,
     isExpired: false,
+    isTimeVerified: true,
     formatted,
   };
 }

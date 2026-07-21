@@ -5,6 +5,7 @@ import { cs } from "date-fns/locale";
 import { WatchedProfile } from "@/types/database";
 import { useCountdown } from "@/hooks/useCountdown";
 import { COLORS } from "@/constants/design";
+import { serverNowMs } from "@/lib/serverClock";
 
 interface WatchedProfileCardProps {
   profile: WatchedProfile;
@@ -19,12 +20,12 @@ export function WatchedProfileCard({ profile, onStopWatching }: WatchedProfileCa
   // Calculate time remaining for color coding
   const parsedDeadline = profile.next_deadline ? new Date(profile.next_deadline) : null;
   const deadline = parsedDeadline && !isNaN(parsedDeadline.getTime()) ? parsedDeadline : null;
-  const now = Date.now();
-  const timeRemaining = deadline ? deadline.getTime() - now : 0;
+  const now = serverNowMs();
+  const timeRemaining = deadline && now !== null ? deadline.getTime() - now : 0;
   const hoursRemaining = timeRemaining / (1000 * 60 * 60);
 
-  const isOverdue = hasAlert || (deadline !== null && timeRemaining < 0);
-  const isApproaching = !isOverdue && deadline !== null && hoursRemaining < 1 && hoursRemaining >= 0;
+  const isOverdue = hasAlert || (deadline !== null && now !== null && timeRemaining < 0);
+  const isApproaching = !isOverdue && deadline !== null && now !== null && hoursRemaining < 1 && hoursRemaining >= 0;
 
   // Status-based styling and content
   type StatusKey = "overdue" | "approaching" | "ok";
@@ -107,7 +108,7 @@ export function WatchedProfileCard({ profile, onStopWatching }: WatchedProfileCa
             </Text>
             {!isOverdue && (
               <Text className="text-muted text-xs font-lora">
-                {countdown.isExpired ? "Čas vypršel" : `Zbývá: ${countdown.formatted}`}
+                {!countdown.isTimeVerified ? "Čas čeká na ověření serverem" : countdown.isExpired ? "Čas vypršel" : `Zbývá: ${countdown.formatted}`}
               </Text>
             )}
           </View>

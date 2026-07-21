@@ -113,6 +113,11 @@ class PauseProfileForm(forms.Form):
 class BrowserCheckInForm(forms.Form):
     """Validate one-shot browser coordinates without ever making them required."""
 
+    idempotency_key = forms.RegexField(
+        regex=r"^[0-9a-f]{32}$",
+        widget=forms.HiddenInput(),
+        error_messages={"invalid": "Ohlášení nemá platný bezpečnostní identifikátor."},
+    )
     location_requested = forms.BooleanField(required=False)
     latitude = forms.DecimalField(
         required=False,

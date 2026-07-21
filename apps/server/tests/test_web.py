@@ -220,8 +220,18 @@ def test_web_posts_require_csrf_and_checkin_is_idempotent(user, profile):
 
     detail = client.get(reverse("checkins:profile-detail", kwargs={"pk": profile.pk}))
     token = detail.cookies["csrftoken"].value
-    first = client.post(endpoint, HTTP_X_CSRFTOKEN=token)
-    repeated = client.post(endpoint, HTTP_X_CSRFTOKEN=token)
+    idempotency_key = detail.context["web_checkin_key"]
+    first = client.post(
+        endpoint,
+        {"idempotency_key": idempotency_key},
+        HTTP_X_CSRFTOKEN=token,
+    )
+    client.get(reverse("checkins:profile-detail", kwargs={"pk": profile.pk}))
+    repeated = client.post(
+        endpoint,
+        {"idempotency_key": idempotency_key},
+        HTTP_X_CSRFTOKEN=token,
+    )
 
     assert first.status_code == 302
     assert repeated.status_code == 302
@@ -674,10 +684,13 @@ def test_owner_can_revoke_pending_invitation_but_another_user_cannot(
 def test_browser_checkin_location_is_one_shot_optional_and_validated(client, user, profile):
     client.force_login(user)
     endpoint = reverse("checkins:check-in", kwargs={"pk": profile.pk})
+    detail_url = reverse("checkins:profile-detail", kwargs={"pk": profile.pk})
+    first_key = client.get(detail_url).context["web_checkin_key"]
 
     with_location = client.post(
         endpoint,
         {
+            "idempotency_key": first_key,
             "location_requested": "on",
             "latitude": "50.075500",
             "longitude": "14.437800",
@@ -689,15 +702,21 @@ def test_browser_checkin_location_is_one_shot_optional_and_validated(client, use
     assert str(first.latitude) == "50.075500"
     assert str(first.longitude) == "14.437800"
 
-    client.get(reverse("checkins:profile-detail", kwargs={"pk": profile.pk}))
-    without_available_location = client.post(endpoint, {"location_requested": "on"})
+    second_key = client.get(detail_url).context["web_checkin_key"]
+    without_available_location = client.post(
+        endpoint,
+        {"idempotency_key": second_key, "location_requested": "on"},
+    )
     assert without_available_location.status_code == 302
     second = CheckIn.objects.filter(profile=profile).latest("accepted_at")
     assert second.pk != first.pk
     assert second.latitude is None
 
-    client.get(reverse("checkins:profile-detail", kwargs={"pk": profile.pk}))
-    malformed = client.post(endpoint, {"latitude": "50.075500"})
+    third_key = client.get(detail_url).context["web_checkin_key"]
+    malformed = client.post(
+        endpoint,
+        {"idempotency_key": third_key, "latitude": "50.075500"},
+    )
     assert malformed.status_code == 302
     assert CheckIn.objects.filter(profile=profile).count() == 2
 

@@ -12,7 +12,10 @@ import {
 import { clearQueue } from "@/lib/offlineQueue";
 import { getInstallationId } from "@/lib/installation";
 import { clearConfirmedProfiles } from "@/lib/profileCache";
-import { deactivateCurrentPushDevice } from "@/lib/pushDevices";
+import {
+  beginPushDeviceLogout,
+  resumePushDeviceRegistration,
+} from "@/lib/pushDevices";
 import { cancelAllReminders } from "@/lib/reminderNotifications";
 import type {
   AuthTokens,
@@ -24,10 +27,10 @@ import type {
 async function bindAccount(user: AuthUser): Promise<void> {
   const previousUserId = await getStoredUserId();
   if (previousUserId && previousUserId !== user.id) {
-    await Promise.all([
-      clearQueue(previousUserId, await getInstallationId()),
-      cancelAllReminders(),
-    ]);
+    // Queues are encrypted and scoped by account + installation. Preserve the
+    // previous account's unconfirmed safety events so they can be recovered
+    // after signing back in, but remove its private reminder content.
+    await cancelAllReminders();
   }
   await setStoredUserId(user.id);
   await setStoredUser(user);
@@ -43,6 +46,7 @@ export async function login(email: string, password: string): Promise<AuthUser> 
   try {
     const user = await apiRequest<AuthUser>("/api/v1/auth/me/");
     await bindAccount(user);
+    resumePushDeviceRegistration();
     return user;
   } catch (error) {
     await clearTokens();
@@ -92,6 +96,7 @@ export async function restoreUser(): Promise<AuthUser | null> {
   try {
     const user = await apiRequest<AuthUser>("/api/v1/auth/me/");
     await bindAccount(user);
+    resumePushDeviceRegistration();
     return user;
   } catch (error) {
     if (isNetworkError(error) && cachedUser) return cachedUser;
@@ -101,27 +106,34 @@ export async function restoreUser(): Promise<AuthUser | null> {
   }
 }
 
-export async function clearLocalSession(options: { purgeQueue: boolean }): Promise<void> {
+export async function clearLocalSession(options: {
+  purgeQueue: boolean;
+  preserveAccountBinding?: boolean;
+}): Promise<void> {
   const userId = await getStoredUserId();
   if (userId) {
     if (options.purgeQueue) await clearQueue(userId, await getInstallationId());
-    await clearConfirmedProfiles(userId);
+    if (!options.preserveAccountBinding) await clearConfirmedProfiles(userId);
   }
-  await Promise.all([clearTokens(), clearStoredUserId()]);
+  await Promise.all([
+    clearTokens(),
+    ...(options.preserveAccountBinding ? [] : [clearStoredUserId()]),
+  ]);
 }
 
 export async function logout(): Promise<void> {
   const tokens = await getTokens();
   if (tokens?.refresh) {
     try {
-      await deactivateCurrentPushDevice();
+      const installationId = await beginPushDeviceLogout();
       const currentTokens = await getTokens();
       if (!currentTokens?.refresh) throw new Error("Session already cleared");
       await apiRequest<void>("/api/v1/auth/logout/", {
         method: "POST",
-        body: { refresh: currentTokens.refresh },
+        body: { refresh: currentTokens.refresh, installation_id: installationId },
       });
     } catch (error) {
+      resumePushDeviceRegistration();
       throw new Error(
         "Bezpečné odhlášení se nepodařilo potvrdit serverem. Zkontrolujte připojení a zkuste to znovu; účet i upozornění na tomto zařízení zatím zůstávají aktivní.",
         { cause: error },

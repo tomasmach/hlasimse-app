@@ -8,12 +8,15 @@ import { useGuardiansStore } from "@/stores/guardians";
 import { useProductStore } from "@/stores/product";
 
 async function clearRuntimeState(purgeQueue: boolean): Promise<void> {
-  await clearLocalSession({ purgeQueue });
-  await cancelAllReminders();
-  useCheckInStore.getState().clearProfile();
-  useGuardiansStore.getState().reset();
-  useProductStore.getState().reset();
-  useAuthStore.getState().setUser(null);
+  try {
+    await clearLocalSession({ purgeQueue });
+    await cancelAllReminders();
+  } finally {
+    useCheckInStore.getState().clearProfile();
+    useGuardiansStore.getState().reset();
+    useProductStore.getState().reset();
+    useAuthStore.getState().setUser(null);
+  }
 }
 
 export function useAuth() {
@@ -21,11 +24,14 @@ export function useAuth() {
 
   const signOut = async () => {
     await logout();
-    await cancelAllReminders();
-    useCheckInStore.getState().clearProfile();
-    useGuardiansStore.getState().reset();
-    useProductStore.getState().reset();
-    setUser(null);
+    try {
+      await cancelAllReminders();
+    } finally {
+      useCheckInStore.getState().clearProfile();
+      useGuardiansStore.getState().reset();
+      useProductStore.getState().reset();
+      setUser(null);
+    }
   };
 
   const finishAccountDeletion = async () => {
@@ -33,7 +39,18 @@ export function useAuth() {
   };
 
   useEffect(() => {
-    setUnauthorizedHandler(() => clearRuntimeState(true));
+    setUnauthorizedHandler(async () => {
+      try {
+        await clearLocalSession({ purgeQueue: false, preserveAccountBinding: true });
+      } finally {
+        // Keep already scheduled safety reminders. They still identify a real
+        // server deadline and direct the user back to re-authenticate.
+        useCheckInStore.getState().clearProfile();
+        useGuardiansStore.getState().reset();
+        useProductStore.getState().reset();
+        useAuthStore.getState().setUser(null);
+      }
+    });
     if (!initialized) {
       restoreUser()
         .then(setUser)

@@ -3,6 +3,7 @@ from collections.abc import Callable
 
 from django.conf import settings
 from django.http import HttpRequest, HttpResponse, JsonResponse
+from django.utils import timezone
 
 from .versioning import InvalidSemVer, parse_semver
 
@@ -10,6 +11,22 @@ MOBILE_CLIENT = "hlasimse-mobile"
 CLIENT_CONFIG_PATH = "/api/v1/client-config/"
 API_PREFIX = "/api/v1/"
 BUILD_PATTERN = re.compile(r"^[1-9]\d*$")
+
+
+class ServerTimeHeaderMiddleware:
+    """Expose an authenticated-origin clock sample without trusting the device clock."""
+
+    def __init__(self, get_response: Callable[[HttpRequest], HttpResponse]) -> None:
+        self.get_response = get_response
+
+    def __call__(self, request: HttpRequest) -> HttpResponse:
+        response = self.get_response(request)
+        response["X-Hlasimse-Server-Time"] = timezone.now().isoformat()
+        if request.path.startswith(API_PREFIX):
+            if "no-store" not in response.get("Cache-Control", ""):
+                response["Cache-Control"] = "no-store, private"
+            response["Pragma"] = "no-cache"
+        return response
 
 
 def _error_response(*, status: int, code: str, detail: str, **extra: object) -> JsonResponse:

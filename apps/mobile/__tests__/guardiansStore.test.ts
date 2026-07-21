@@ -7,7 +7,30 @@ const request = apiRequest as jest.Mock;
 
 beforeEach(() => {
   jest.clearAllMocks();
-  useGuardiansStore.setState({ myGuardians: [], pendingInvites: [], watchedProfiles: [], isLoading: false, error: null, invitesChannel: null });
+  useGuardiansStore.setState({ myGuardians: [], pendingInvites: [], sentInvites: [], watchedProfiles: [], isLoading: false, error: null, invitesChannel: null });
+});
+
+it("revokes an owner's pending invitation through the profile API", async () => {
+  useGuardiansStore.setState({
+    sentInvites: [{
+      id: "invite-1",
+      email: "guardian@example.test",
+      status: "pending",
+      expires_at: "2026-08-01",
+      created_at: "2026-07-19",
+    }],
+  });
+  request.mockResolvedValueOnce(undefined);
+
+  await expect(
+    useGuardiansStore.getState().revokeSentInvite("profile-1", "invite-1"),
+  ).resolves.toBe(true);
+
+  expect(request).toHaveBeenCalledWith(
+    "/api/v1/profiles/profile-1/invitations/invite-1/",
+    { method: "DELETE" },
+  );
+  expect(useGuardiansStore.getState().sentInvites).toHaveLength(0);
 });
 
 it("loads invitation IDs without requiring acceptance tokens", async () => {

@@ -265,7 +265,13 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
   syncPendingCheckIns: async () => {
     const account = await identity();
     if (!account) return { synced: 0, failed: 0 };
-    const queue = await getQueue(account.userId, account.installationId);
+    let queue: PendingCheckIn[];
+    try {
+      queue = await getQueue(account.userId, account.installationId);
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : "Frontu čekajících hlášení nelze bezpečně ověřit." });
+      return { synced: 0, failed: 1 };
+    }
     let synced = 0;
     let failed = 0;
     for (const item of queue.filter((queued) => queued.status === "pending")) {
@@ -297,18 +303,26 @@ export const useCheckInStore = create<CheckInState>((set, get) => ({
     }
     if (synced) await get().fetchProfile();
     await get().refreshPendingCount();
-    set({ lastCheckInWasOffline: (await getQueueCount(account.userId, account.installationId)) > 0 });
+    try {
+      set({ lastCheckInWasOffline: (await getQueueCount(account.userId, account.installationId)) > 0 });
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : "Frontu čekajících hlášení nelze bezpečně ověřit." });
+    }
     return { synced, failed };
   },
 
   refreshPendingCount: async () => {
     const account = await identity();
-    const items = account ? await getQueue(account.userId, account.installationId) : [];
-    set({
-      pendingItems: items,
-      pendingCount: items.filter((item) => item.status === "pending").length,
-      failedPendingCount: items.filter((item) => item.status === "failed").length,
-    });
+    try {
+      const items = account ? await getQueue(account.userId, account.installationId) : [];
+      set({
+        pendingItems: items,
+        pendingCount: items.filter((item) => item.status === "pending").length,
+        failedPendingCount: items.filter((item) => item.status === "failed").length,
+      });
+    } catch (error) {
+      set({ error: error instanceof Error ? error.message : "Frontu čekajících hlášení nelze bezpečně ověřit." });
+    }
   },
 
   retryPendingCheckIn: async (id) => {

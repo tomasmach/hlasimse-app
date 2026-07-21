@@ -1,5 +1,6 @@
 import uuid
 from datetime import timedelta
+from unittest.mock import patch
 from urllib.parse import urlparse
 
 import pytest
@@ -611,6 +612,55 @@ def test_production_invitation_create_never_returns_acceptance_token(
 
     assert response.status_code == 201
     assert "acceptance_token" not in response.json()
+
+
+def test_owner_can_revoke_pending_invitation_through_profile_api(
+    api_client, user, other_user, profile
+):
+    invitation, _ = create_invitation(
+        profile=profile,
+        invited_by=user,
+        email=other_user.email,
+    )
+
+
+def test_invitation_revoke_reports_concurrent_state_change_instead_of_false_success(
+    api_client, user, other_user, profile
+):
+    invitation, _ = create_invitation(
+        profile=profile,
+        invited_by=user,
+        email=other_user.email,
+    )
+    endpoint = f"/api/v1/profiles/{profile.id}/invitations/{invitation.id}/"
+
+    with patch("core.views.revoke_invitation", return_value=False):
+        response = authenticate(api_client, user).delete(endpoint)
+
+    assert response.status_code == 409
+    assert "stav pozvánky" in response.json()["detail"].lower()
+    invitation.refresh_from_db()
+    assert invitation.status == GuardianInvitation.Status.PENDING
+    stranger = User.objects.create_user(
+        email="invitation-revoke-stranger@example.cz",
+        password="Safely-testing-123",
+    )
+    endpoint = f"/api/v1/profiles/{profile.id}/invitations/{invitation.id}/"
+
+    assert authenticate(api_client, stranger).delete(endpoint).status_code == 404
+    assert authenticate(api_client, user).delete(endpoint).status_code == 204
+    assert authenticate(api_client, user).delete(endpoint).status_code == 404
+
+    invitation.refresh_from_db()
+    assert invitation.status == GuardianInvitation.Status.REVOKED
+    assert (
+        AuditEvent.objects.filter(
+            event_type="guardian.invitation_revoked",
+            aggregate_id=invitation.id,
+            actor=user,
+        ).count()
+        == 1
+    )
 
 
 def test_guardian_can_revoke_only_own_membership(api_client, user, other_user, profile):
