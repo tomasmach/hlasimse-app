@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import IntegrityError, connection, transaction
@@ -12,6 +13,7 @@ from django.utils import timezone
 
 from .audit import record_audit_event
 from .models import (
+    AlertAcknowledgement,
     AlertIncident,
     AlertRecipient,
     CheckIn,
@@ -20,6 +22,7 @@ from .models import (
     GuardianMembership,
     OutboxEvent,
     PushDevice,
+    validate_paused_until_horizon,
 )
 
 MAX_PROFILES_PER_USER = 5
@@ -47,6 +50,10 @@ class ProfileArchiveResult:
     profile: CheckInProfile
     archived: bool
     blocking_incident: AlertIncident | None = None
+
+
+class IncidentAcknowledgementClosed(Exception):
+    """Raised when an acknowledgement loses a race with incident resolution."""
 
 
 def delete_check_in_location(*, check_in_id, owner) -> CheckInLocationDeletionResult:
@@ -100,6 +107,7 @@ def create_profile(
         )
     if paused_until is not None and paused_until <= now:
         raise ValidationError({"paused_until": "Čas obnovení musí být v budoucnosti."})
+    validate_paused_until_horizon(paused_until, now=now)
     with transaction.atomic():
         get_user_model().objects.select_for_update().get(pk=owner.pk)
         if (
@@ -275,6 +283,7 @@ def update_profile(*, profile: CheckInProfile, values: dict) -> CheckInProfile:
             )
         if target_paused_until is not None and target_paused_until <= now:
             raise ValidationError({"paused_until": "Čas obnovení musí být v budoucnosti."})
+        validate_paused_until_horizon(target_paused_until, now=now)
 
         for field, value in values.items():
             setattr(locked, field, value)
@@ -825,6 +834,85 @@ def can_acknowledge_incident(user, incident: AlertIncident) -> bool:
             status=GuardianMembership.Status.ACTIVE,
         ).exists()
     )
+
+
+def acknowledge_incident(*, incident: AlertIncident, guardian) -> AlertIncident:
+    """Record an acknowledgement against one freshly locked, still-open incident.
+
+    Check-ins lock the profile before resolving its incidents. Taking the locks in
+    the same order makes the open-state and guardian-membership checks atomic with
+    respect to both resolution and membership revocation.
+    """
+    with transaction.atomic():
+        profile = CheckInProfile.objects.select_for_update().get(pk=incident.profile_id)
+        locked_incident = (
+            AlertIncident.objects.select_for_update()
+            .select_related("profile")
+            .get(pk=incident.pk, profile=profile)
+        )
+        if locked_incident.status != AlertIncident.Status.OPEN:
+            raise IncidentAcknowledgementClosed
+        if not can_acknowledge_incident(guardian, locked_incident):
+            raise PermissionDenied(
+                "Zobrazení incidentu v aplikaci může potvrdit pouze jeho aktivní strážce."
+            )
+        AlertAcknowledgement.objects.get_or_create(
+            incident=locked_incident,
+            user=guardian,
+            defaults={
+                "user_id_snapshot": guardian.id,
+                "acknowledged_at": timezone.now(),
+            },
+        )
+        return locked_incident
+
+
+def visible_incident_last_known_check_in(*, user, incident: AlertIncident) -> CheckIn | None:
+    """Return location only from a freshly locked and authorized open incident.
+
+    The profile-before-incident lock order matches ``perform_check_in``. Therefore
+    a concurrent resolution either happens wholly before this read (and no
+    coordinates are returned) or wholly after it; a stale ORM instance can never
+    disclose coordinates from an already-resolved incident.
+    """
+    # Resolved incidents are immutable and can never reopen, so this safe fast path
+    # avoids write locks for every historical row in an incident-list response.
+    if incident.status != AlertIncident.Status.OPEN:
+        return None
+
+    with transaction.atomic():
+        profile = CheckInProfile.objects.select_for_update().get(pk=incident.profile_id)
+        locked_incident = (
+            AlertIncident.objects.select_for_update()
+            .select_related("profile")
+            .get(pk=incident.pk, profile=profile)
+        )
+        if locked_incident.status != AlertIncident.Status.OPEN:
+            return None
+
+        is_owner = profile.owner_id == user.id
+        if not is_owner:
+            if not settings.GUARDIAN_LOCATION_DISCLOSURE_ENABLED:
+                return None
+            is_active_recipient = locked_incident.recipients.filter(user_id=user.id).exists() and (
+                GuardianMembership.objects.filter(
+                    profile=profile,
+                    guardian=user,
+                    status=GuardianMembership.Status.ACTIVE,
+                ).exists()
+            )
+            if not is_active_recipient:
+                return None
+
+        return (
+            profile.check_ins.filter(
+                accepted_at__lte=locked_incident.opened_at,
+                latitude__isnull=False,
+                longitude__isnull=False,
+            )
+            .order_by("-accepted_at", "-id")
+            .first()
+        )
 
 
 def accessible_incidents(user):

@@ -6,6 +6,7 @@ from django.test import override_settings
 from django.utils import timezone
 
 from core.models import (
+    AlertAcknowledgement,
     AlertIncident,
     AlertRecipient,
     CheckIn,
@@ -126,6 +127,13 @@ def test_alert_detail_and_ack_only_allow_owner_or_active_guardian(
         deadline_at=timezone.now() - timedelta(minutes=1),
     )
     AlertRecipient.objects.create(incident=incident, user=guardian, user_id_snapshot=guardian.id)
+    deleted_guardian_id = uuid.uuid4()
+    AlertAcknowledgement.objects.create(
+        incident=incident,
+        user=None,
+        user_id_snapshot=deleted_guardian_id,
+        acknowledged_at=timezone.now() - timedelta(minutes=1),
+    )
 
     guardian_client = authenticate(api_client, guardian)
     detail = guardian_client.get(f"/api/v1/alerts/{incident.id}/")
@@ -140,7 +148,19 @@ def test_alert_detail_and_ack_only_allow_owner_or_active_guardian(
     assert "latitude" not in serialized
     assert "longitude" not in serialized
     assert "owner_email" not in serialized
-    assert ack.json()["acknowledgements"][0]["user_id"] == str(guardian.id)
+    assert ack.json()["acknowledgements"] == [
+        {
+            "user_id": str(deleted_guardian_id),
+            "display_name": "Smazaný strážce",
+            "acknowledged_at": ack.json()["acknowledgements"][0]["acknowledged_at"],
+        },
+        {
+            "user_id": str(guardian.id),
+            "display_name": "Eva Jiná",
+            "acknowledged_at": ack.json()["acknowledgements"][1]["acknowledged_at"],
+        },
+    ]
+    assert guardian.email not in ack.content.decode()
     assert detail.json()["can_acknowledge"] is True
 
     owner_client = authenticate(api_client, user)
@@ -149,6 +169,15 @@ def test_alert_detail_and_ack_only_allow_owner_or_active_guardian(
     assert owner_detail.json()["can_acknowledge"] is False
     assert owner_ack.status_code == 403
     assert not incident.acknowledgements.filter(user=user).exists()
+
+    incident.status = AlertIncident.Status.RESOLVED
+    incident.resolved_at = timezone.now()
+    incident.save(update_fields=["status", "resolved_at", "updated_at"])
+    closed_ack = guardian_client.post(f"/api/v1/alerts/{incident.id}/acknowledge/")
+    assert closed_ack.status_code == 409
+    assert closed_ack.json() == {
+        "detail": ("U uzavřeného incidentu už nelze zaznamenat, že jej strážce viděl v aplikaci.")
+    }
 
 
 def test_invitation_can_only_be_accepted_by_matching_email(api_client, user, other_user, profile):

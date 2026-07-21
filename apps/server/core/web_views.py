@@ -57,7 +57,6 @@ from .forms import (
     RegisterForm,
 )
 from .models import (
-    AlertAcknowledgement,
     AlertIncident,
     AuditEvent,
     CheckIn,
@@ -65,13 +64,14 @@ from .models import (
     GuardianInvitation,
     GuardianMembership,
     PushDevice,
-    User,
 )
 from .password_reset import revoke_outstanding_refresh_tokens
 from .services import (
     MAX_GUARDIANS_PER_PROFILE,
     MAX_PROFILES_PER_USER,
+    IncidentAcknowledgementClosed,
     accessible_incidents,
+    acknowledge_incident,
     can_acknowledge_incident,
     create_invitation,
     create_profile,
@@ -81,6 +81,7 @@ from .services import (
     revoke_guardian_membership,
     revoke_invitation,
     update_profile,
+    visible_incident_last_known_check_in,
 )
 from .web_rate_limits import WebAuthRateLimitMixin, web_auth_rate_limit
 
@@ -910,17 +911,13 @@ def alert_detail_view(request, pk):
     is_owner = alert.profile.owner_id == request.user.id
     guardian_location_allowed = settings.GUARDIAN_LOCATION_DISCLOSURE_ENABLED
     alert.guardian_location_disclosure_disabled = not is_owner and not guardian_location_allowed
-    if (alert.status == AlertIncident.Status.OPEN or is_owner) and (
-        is_owner or guardian_location_allowed
-    ):
-        alert.last_checkin = alert.profile.check_ins.filter(
-            accepted_at__lte=alert.opened_at,
-            latitude__isnull=False,
-            longitude__isnull=False,
-        ).first()
-    else:
-        alert.last_checkin = None
-    acknowledgements = alert.acknowledgements.select_related("user").order_by("acknowledged_at")
+    alert.last_checkin = visible_incident_last_known_check_in(
+        user=request.user,
+        incident=alert,
+    )
+    acknowledgements = alert.acknowledgements.select_related("user").order_by(
+        "acknowledged_at", "id"
+    )
     for acknowledgement in acknowledgements:
         acknowledgement.user_display_name = _display_name(
             acknowledgement.user,
@@ -968,24 +965,22 @@ def alert_detail_view(request, pk):
 @login_required(login_url="accounts:login")
 def alert_ack_view(request, pk):
     alert = _accessible_alert_or_404(request.user, pk)
-    if alert.status != AlertIncident.Status.OPEN:
-        messages.info(request, "Upozornění už je uzavřené.")
-        return redirect("alerts:detail", pk=alert.pk)
-    if not can_acknowledge_incident(request.user, alert):
-        raise PermissionDenied("Incident může potvrdit pouze jeho aktivní strážce.")
-    with transaction.atomic():
-        guardian = User.objects.select_for_update().filter(pk=request.user.pk).first()
-        if guardian is None:
-            raise PermissionDenied("Účet už není aktivní.")
-        AlertAcknowledgement.objects.get_or_create(
-            incident=alert,
-            user=guardian,
-            defaults={
-                "user_id_snapshot": guardian.id,
-                "acknowledged_at": timezone.now(),
-            },
+    try:
+        acknowledge_incident(incident=alert, guardian=request.user)
+    except IncidentAcknowledgementClosed:
+        messages.info(
+            request,
+            "Upozornění už je uzavřené; zobrazení v aplikaci už nelze potvrdit.",
         )
-    messages.success(request, "Potvrzení strážce bylo zaznamenáno.")
+        return redirect("alerts:detail", pk=alert.pk)
+    messages.success(
+        request,
+        (
+            "Zaznamenali jsme pouze, že jste incident viděli v aplikaci. "
+            "Neznamená to kontakt, zásah, převzetí odpovědnosti, doručení push oznámení "
+            "ani bezpečí."
+        ),
+    )
     return redirect("alerts:detail", pk=alert.pk)
 
 

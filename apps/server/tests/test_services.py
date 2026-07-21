@@ -4,7 +4,14 @@ import pytest
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
-from core.models import AlertIncident, AlertRecipient, GuardianMembership, OutboxEvent, User
+from core.models import (
+    PAUSED_UNTIL_MAX_ERROR,
+    AlertIncident,
+    AlertRecipient,
+    GuardianMembership,
+    OutboxEvent,
+    User,
+)
 from core.services import (
     accept_invitation,
     create_invitation,
@@ -115,6 +122,44 @@ def test_pause_materializes_late_deadline_and_never_resolves_open_incident(profi
     assert resumed.paused_until is None
     assert resumed.next_deadline_at > timezone.now() + timedelta(hours=23)
     assert AlertIncident.objects.get(profile=profile).status == AlertIncident.Status.OPEN
+
+
+def test_custom_pause_horizon_is_enforced_by_model_and_service_without_partial_update(
+    profile,
+    monkeypatch,
+):
+    server_now = timezone.now().replace(microsecond=0)
+    monkeypatch.setattr(timezone, "now", lambda: server_now)
+    boundary = server_now + timedelta(days=366)
+
+    updated = update_profile(
+        profile=profile,
+        values={"is_paused": True, "paused_until": boundary},
+    )
+    assert updated.paused_until == boundary
+    updated.full_clean()
+
+    resumed = update_profile(profile=updated, values={"is_paused": False})
+    original_generation = resumed.deadline_generation
+    original_deadline = resumed.next_deadline_at
+    far_future = server_now + timedelta(days=366, microseconds=1)
+    resumed.is_paused = True
+    resumed.paused_until = far_future
+    with pytest.raises(ValidationError) as model_error:
+        resumed.full_clean()
+    assert model_error.value.message_dict == {"paused_until": [PAUSED_UNTIL_MAX_ERROR]}
+
+    with pytest.raises(ValidationError) as service_error:
+        update_profile(
+            profile=resumed,
+            values={"is_paused": True, "paused_until": far_future},
+        )
+    assert service_error.value.message_dict == {"paused_until": [PAUSED_UNTIL_MAX_ERROR]}
+    resumed.refresh_from_db()
+    assert resumed.is_paused is False
+    assert resumed.paused_until is None
+    assert resumed.deadline_generation == original_generation
+    assert resumed.next_deadline_at == original_deadline
 
 
 def test_sweeper_does_not_starve_fresh_generations_behind_materialized_rows(user, profile):

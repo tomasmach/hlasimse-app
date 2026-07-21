@@ -32,6 +32,9 @@ def test_pause_duration_presets_are_part_of_create_and_patch_contracts():
         pause_field = schemas[component_name]["properties"]["pause_duration_seconds"]
         assert pause_field["allOf"] == [{"$ref": "#/components/schemas/PauseDurationSecondsEnum"}]
         assert pause_field["writeOnly"] is True
+        paused_until = schemas[component_name]["properties"]["paused_until"]
+        assert "nejvýše 366 dní" in paused_until["description"]
+        assert "serverového času" in paused_until["description"]
 
 
 def test_registration_requires_write_only_terms_acceptance():
@@ -80,5 +83,34 @@ def test_safety_custom_actions_have_explicit_machine_contracts():
         "$ref": "#/components/schemas/ProfileTimelinePageSchema"
     }
 
+    archived_operation = paths["/api/v1/profiles/archived/"]["get"]
+    assert archived_operation["parameters"] == [
+        {
+            "in": "query",
+            "name": "page_size",
+            "schema": {"type": "integer"},
+        }
+    ]
+    archived_schema = archived_operation["responses"]["200"]
+    assert archived_schema["content"]["application/json"]["schema"] == {
+        "$ref": "#/components/schemas/ArchivedProfilePage"
+    }
+    archived_page = load_schema()["components"]["schemas"]["ArchivedProfilePage"]
+    assert set(archived_page["properties"]) == {"next", "previous", "results"}
+    assert set(archived_page["required"]) == {"next", "previous", "results"}
+
     delete_location = paths["/api/v1/check-ins/{check_in_id}/location/"]["delete"]
     assert delete_location["responses"] == {"204": {"description": "No response body"}}
+
+
+def test_acknowledgement_contract_exposes_display_name_without_email():
+    schema = load_schema()
+    properties = schema["components"]["schemas"]["Acknowledgement"]["properties"]
+
+    assert set(properties) == {"user_id", "display_name", "acknowledged_at"}
+    description = schema["paths"]["/api/v1/alerts/{id}/acknowledge/"]["post"]["description"]
+    assert description == (
+        "Record only that an active guardian viewed an open incident in the app. "
+        "This does not mean contact, intervention, responsibility, push delivery, or safety."
+    )
+    assert "taken responsibility" not in description

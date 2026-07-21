@@ -8,7 +8,7 @@ from django.core.exceptions import PermissionDenied as DjangoPermissionDenied
 from django.core.exceptions import ValidationError as DjangoValidationError
 from django.core.mail import send_mail
 from django.db import transaction
-from django.db.models import Count, Q
+from django.db.models import Count, Prefetch, Q
 from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.urls import reverse
@@ -47,7 +47,6 @@ from .models import (
     GuardianInvitation,
     GuardianMembership,
     PushDevice,
-    User,
 )
 from .openapi import (
     AcceptedResponseSerializer,
@@ -62,6 +61,7 @@ from .password_reset import revoke_outstanding_refresh_tokens
 from .serializers import (
     AccountDeleteSerializer,
     AlertIncidentSerializer,
+    ArchivedProfilePageSerializer,
     CheckInHistorySerializer,
     CheckInInputSerializer,
     CheckInReceiptSerializer,
@@ -82,10 +82,11 @@ from .serializers import (
     WatchedProfileSerializer,
 )
 from .services import (
+    IncidentAcknowledgementClosed,
     accept_invitation,
     accessible_incidents,
+    acknowledge_incident,
     archive_profile,
-    can_acknowledge_incident,
     create_invitation,
     deactivate_push_device,
     delete_check_in_location,
@@ -340,6 +341,28 @@ class ProfileViewSet(viewsets.ModelViewSet):
             archived_at__isnull=True,
         )
 
+    @extend_schema(
+        parameters=[
+            OpenApiParameter("page_size", OpenApiTypes.INT, OpenApiParameter.QUERY),
+        ],
+        responses={200: ArchivedProfilePageSerializer},
+        description="Owner-only read-only list of archived check-in profiles.",
+    )
+    @action(detail=False, methods=["get"], url_path="archived")
+    def archived(self, request):
+        queryset = CheckInProfile.objects.filter(
+            owner=request.user,
+            archived_at__isnull=False,
+        ).order_by("-archived_at", "-id")
+        paginator = ArchivedProfilePagination()
+        page = paginator.paginate_queryset(queryset, request, view=self)
+        response = paginator.get_paginated_response(
+            ProfileSerializer(page, many=True, context={"request": request}).data
+        )
+        response["Cache-Control"] = "no-store, private"
+        response["Pragma"] = "no-cache"
+        return response
+
     @extend_schema(responses={204: None, 409: ProfileArchiveConflictSchemaSerializer})
     def destroy(self, request, *args, **kwargs):
         result = archive_profile(profile=self.get_object(), actor=request.user)
@@ -531,6 +554,13 @@ class ProfileTimelinePagination(CursorPagination):
     page_size_query_param = "page_size"
     max_page_size = 100
     ordering = ("-occurred_at", "-id")
+
+
+class ArchivedProfilePagination(CursorPagination):
+    page_size = 50
+    page_size_query_param = "page_size"
+    max_page_size = 100
+    ordering = ("-archived_at", "-id")
 
 
 def _serialize_timeline_page(events):
@@ -857,36 +887,43 @@ class AlertIncidentViewSet(
         return response
 
     def get_queryset(self):
-        return accessible_incidents(self.request.user).select_related("profile")
+        acknowledgement_queryset = AlertAcknowledgement.objects.select_related("user").order_by(
+            "acknowledged_at", "id"
+        )
+        return (
+            accessible_incidents(self.request.user)
+            .select_related("profile")
+            .prefetch_related(
+                Prefetch(
+                    "acknowledgements",
+                    queryset=acknowledgement_queryset,
+                    to_attr="ordered_acknowledgements",
+                )
+            )
+        )
 
     @extend_schema(
         request=None,
         responses={200: AlertIncidentSerializer, 409: DetailResponseSerializer},
         description=(
-            "Record that an active guardian has taken responsibility for an open incident. "
-            "This does not prove notification delivery or resolution."
+            "Record only that an active guardian viewed an open incident in the app. "
+            "This does not mean contact, intervention, responsibility, push delivery, or safety."
         ),
     )
     @action(detail=True, methods=["post"])
     def acknowledge(self, request, pk=None):
         incident = self.get_object()
-        if incident.status != AlertIncident.Status.OPEN:
+        try:
+            acknowledge_incident(incident=incident, guardian=request.user)
+        except IncidentAcknowledgementClosed:
             return Response(
-                {"detail": "Uzavřený incident už nelze převzít."},
+                {
+                    "detail": (
+                        "U uzavřeného incidentu už nelze zaznamenat, že jej strážce "
+                        "viděl v aplikaci."
+                    )
+                },
                 status=status.HTTP_409_CONFLICT,
             )
-        if not can_acknowledge_incident(request.user, incident):
-            raise PermissionDenied("Incident může potvrdit pouze jeho aktivní strážce.")
-        with transaction.atomic():
-            guardian = User.objects.select_for_update().filter(pk=request.user.pk).first()
-            if guardian is None:
-                raise PermissionDenied("Účet už není aktivní.")
-            acknowledgement, _ = AlertAcknowledgement.objects.get_or_create(
-                incident=incident,
-                user=guardian,
-                defaults={
-                    "user_id_snapshot": guardian.id,
-                    "acknowledged_at": timezone.now(),
-                },
-            )
+        incident = self.get_queryset().get(pk=incident.pk)
         return Response(AlertIncidentSerializer(incident, context={"request": request}).data)

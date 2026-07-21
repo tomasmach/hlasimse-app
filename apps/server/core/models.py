@@ -1,4 +1,5 @@
 import uuid
+from datetime import timedelta
 
 from django.conf import settings
 from django.contrib.auth.base_user import AbstractBaseUser
@@ -15,11 +16,23 @@ from .managers import UserManager
 
 MIN_INTERVAL_SECONDS = 3_600
 MAX_INTERVAL_SECONDS = 7 * 24 * 60 * 60
+MAX_CUSTOM_PAUSE_HORIZON = timedelta(days=366)
+PAUSED_UNTIL_MAX_ERROR = (
+    "Automatické obnovení lze naplánovat nejvýše 366 dní od aktuálního serverového času."
+)
 
 
 def validate_whole_minutes(value: int) -> None:
     if value % 60:
         raise ValidationError("Interval musí být zadaný v celých minutách.")
+
+
+def validate_paused_until_horizon(paused_until, *, now=None) -> None:
+    if paused_until is None:
+        return
+    server_now = now or timezone.now()
+    if paused_until > server_now + MAX_CUSTOM_PAUSE_HORIZON:
+        raise ValidationError({"paused_until": PAUSED_UNTIL_MAX_ERROR})
 
 
 class UUIDModel(models.Model):
@@ -161,6 +174,10 @@ class CheckInProfile(UUIDModel):
 
     def __str__(self) -> str:
         return f"{self.owner_id}: {self.name}"
+
+    def clean(self):
+        super().clean()
+        validate_paused_until_horizon(self.paused_until)
 
 
 class CheckIn(UUIDModel):

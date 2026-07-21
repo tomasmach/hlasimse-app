@@ -143,6 +143,54 @@ def test_archived_profiles_do_not_consume_limit_and_names_can_be_reused(api_clie
     assert str(profiles[0].id) not in {item["id"] for item in listed}
 
 
+def test_archived_profile_list_is_owner_only_paginated_and_not_cached(
+    api_client, user, other_user, profile
+):
+    older = create_profile(owner=user, name="Starší archiv", interval_seconds=3_600)
+    newer = create_profile(owner=user, name="Novější archiv", interval_seconds=3_600)
+    foreign = create_profile(owner=other_user, name="Cizí archiv", interval_seconds=3_600)
+    assert archive(authenticate(api_client, user), older).status_code == 204
+    assert archive(authenticate(api_client, user), newer).status_code == 204
+    assert archive(authenticate(api_client, other_user), foreign).status_code == 204
+
+    response = authenticate(api_client, user).get(
+        "/api/v1/profiles/archived/",
+        {"page_size": 1},
+    )
+
+    assert response.status_code == 200
+    assert response["Cache-Control"] == "no-store, private"
+    assert response["Pragma"] == "no-cache"
+    assert set(response.json()) == {"next", "previous", "results"}
+    assert response.json()["next"] is not None
+    assert response.json()["previous"] is None
+    assert [item["id"] for item in response.json()["results"]] == [str(newer.id)]
+    assert response.json()["results"][0]["archived_at"] is not None
+    assert str(profile.id) not in response.content.decode()
+    assert str(foreign.id) not in response.content.decode()
+
+    inserted_after_first_page = create_profile(
+        owner=user,
+        name="Vložený po první stránce",
+        interval_seconds=3_600,
+    )
+    assert archive(authenticate(api_client, user), inserted_after_first_page).status_code == 204
+    cursor_query = urlsplit(response.json()["next"]).query
+    second_page = authenticate(api_client, user).get(f"/api/v1/profiles/archived/?{cursor_query}")
+    assert second_page.status_code == 200
+    assert [item["id"] for item in second_page.json()["results"]] == [str(older.id)]
+    paged_ids = {
+        response.json()["results"][0]["id"],
+        second_page.json()["results"][0]["id"],
+    }
+    assert paged_ids == {str(newer.id), str(older.id)}
+    assert str(inserted_after_first_page.id) not in paged_ids
+
+    foreign_response = authenticate(api_client, other_user).get("/api/v1/profiles/archived/")
+    assert foreign_response.status_code == 200
+    assert [item["id"] for item in foreign_response.json()["results"]] == [str(foreign.id)]
+
+
 def test_database_rejects_an_active_archived_profile(user, profile):
     with pytest.raises(IntegrityError), transaction.atomic():
         CheckInProfile.objects.filter(pk=profile.pk).update(archived_at=timezone.now())

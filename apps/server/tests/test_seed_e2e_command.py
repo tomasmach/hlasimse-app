@@ -9,6 +9,7 @@ from django.core.management import call_command
 from django.core.management.base import CommandError
 
 from core.management.commands.seed_e2e import (
+    ARCHIVED_HISTORY_PROFILE_NAME,
     BOUNDARY_GUARDIAN_EMAILS,
     E2E_EMAILS,
     GUARDIAN_EMAIL,
@@ -63,7 +64,12 @@ def test_seed_builds_verified_two_account_incident_dataset(capsys, e2e_run_crede
     assert owner.email_verified_at is not None
     assert guardian.email_verified_at is not None
 
-    profile = CheckInProfile.objects.get(owner=owner)
+    profile = CheckInProfile.objects.get(owner=owner, archived_at__isnull=True)
+    archived_profile = CheckInProfile.objects.get(
+        owner=owner,
+        name=ARCHIVED_HISTORY_PROFILE_NAME,
+        archived_at__isnull=False,
+    )
     membership = GuardianMembership.objects.get(profile=profile, guardian=guardian)
     incident = AlertIncident.objects.get(profile=profile, status=AlertIncident.Status.OPEN)
     assert CheckIn.objects.filter(profile=profile).count() == 1
@@ -76,6 +82,15 @@ def test_seed_builds_verified_two_account_incident_dataset(capsys, e2e_run_crede
     assert result["incident_id"] == str(incident.id)
     assert result["incidents_created"] == 1
     assert result["outbox_events_created"] == 1
+    assert result["archived_profile_id"] == str(archived_profile.id)
+    assert result["archived_profile_name"] == ARCHIVED_HISTORY_PROFILE_NAME
+    assert archived_profile.enabled is False
+    assert archived_profile.is_paused is True
+    assert archived_profile.next_deadline_at is None
+    assert AuditEvent.objects.filter(
+        event_type="profile.archived",
+        aggregate_id=archived_profile.id,
+    ).exists()
     assert AuditEvent.objects.filter(event_type="incident.opened").exists()
     assert e2e_run_credential not in json.dumps(result)
 
@@ -169,6 +184,7 @@ def test_seed_is_idempotent_and_preserves_unrelated_users(capsys, e2e_run_creden
     )
     first = run_seed(capsys, e2e_run_credential)
     old_profile_id = first["profile_id"]
+    old_archived_profile_id = first["archived_profile_id"]
     old_profile = CheckInProfile.objects.get(pk=old_profile_id)
     old_incident = AlertIncident.objects.get(pk=first["incident_id"])
     old_event = OutboxEvent.objects.get(
@@ -205,9 +221,10 @@ def test_seed_is_idempotent_and_preserves_unrelated_users(capsys, e2e_run_creden
     assert CheckInProfile.objects.filter(pk=unrelated_profile.pk).exists()
     assert not unrelated_profile.invitations.filter(pk=reserved_email_invitation.pk).exists()
     assert User.objects.filter(email__in=E2E_EMAILS).count() == 2
-    assert CheckInProfile.objects.filter(owner__email=OWNER_EMAIL).count() == 1
+    assert CheckInProfile.objects.filter(owner__email=OWNER_EMAIL).count() == 2
     assert AlertIncident.objects.filter(profile__owner__email=OWNER_EMAIL).count() == 1
     assert first["profile_id"] != second["profile_id"]
+    assert not CheckInProfile.objects.filter(pk=old_archived_profile_id).exists()
     assert not DeliveryAttempt.objects.filter(outbox_event_id=old_event.id).exists()
     assert not OutboxEvent.objects.filter(aggregate_id__in=old_aggregate_ids).exists()
 

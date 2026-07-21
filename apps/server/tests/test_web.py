@@ -14,6 +14,7 @@ from rest_framework_simplejwt.token_blacklist.models import BlacklistedToken, Ou
 from rest_framework_simplejwt.tokens import RefreshToken
 
 from core.models import (
+    PAUSED_UNTIL_MAX_ERROR,
     AlertAcknowledgement,
     AlertIncident,
     AlertRecipient,
@@ -183,6 +184,52 @@ def test_profile_create_edit_and_pause_keep_scheduled_resume_semantics(client, u
     assert profile.is_paused is False
     assert profile.paused_until is None
     assert profile.next_deadline_at is not None
+
+
+def test_web_custom_pause_horizon_rejects_far_future_unchanged_and_accepts_boundary(
+    client,
+    user,
+    profile,
+    monkeypatch,
+):
+    client.force_login(user)
+    server_now = timezone.now().replace(second=0, microsecond=0)
+    monkeypatch.setattr(timezone, "now", lambda: server_now)
+    endpoint = reverse("checkins:profile-pause", kwargs={"pk": profile.pk})
+    original = {
+        "enabled": profile.enabled,
+        "is_paused": profile.is_paused,
+        "paused_until": profile.paused_until,
+        "next_deadline_at": profile.next_deadline_at,
+        "deadline_generation": profile.deadline_generation,
+    }
+    too_far_local = timezone.localtime(server_now + timedelta(days=366, minutes=1))
+
+    rejected = client.post(
+        endpoint,
+        {"paused_until": too_far_local.strftime("%Y-%m-%dT%H:%M")},
+    )
+
+    assert rejected.status_code == 200
+    assert rejected.context["form"].errors["paused_until"] == [PAUSED_UNTIL_MAX_ERROR]
+    profile.refresh_from_db()
+    assert {
+        "enabled": profile.enabled,
+        "is_paused": profile.is_paused,
+        "paused_until": profile.paused_until,
+        "next_deadline_at": profile.next_deadline_at,
+        "deadline_generation": profile.deadline_generation,
+    } == original
+
+    boundary_local = timezone.localtime(server_now + timedelta(days=366))
+    accepted = client.post(
+        endpoint,
+        {"paused_until": boundary_local.strftime("%Y-%m-%dT%H:%M")},
+    )
+    assert accepted.status_code == 302
+    profile.refresh_from_db()
+    assert profile.is_paused is True
+    assert profile.paused_until == server_now + timedelta(days=366)
 
 
 def test_profile_limit_hides_create_ui_and_rejects_direct_sixth_post(client, user, profile):
@@ -403,6 +450,15 @@ def test_web_location_disclosure_switch_suppresses_guardian_only(client, user, o
     assert owner_detail.context["alert"].last_checkin.pk == check_in.pk
     assert "Otevřít poslední známou polohu" in owner_detail.content.decode()
     assert "Sdílení polohy se strážci je dočasně pozastavené" not in owner_detail.content.decode()
+
+    perform_check_in(profile=profile, idempotency_key="web-location-switch-resolver")
+    incident.refresh_from_db()
+    assert incident.status == AlertIncident.Status.RESOLVED
+
+    resolved_owner_detail = client.get(reverse("alerts:detail", kwargs={"pk": incident.pk}))
+    assert resolved_owner_detail.status_code == 200
+    assert resolved_owner_detail.context["alert"].last_checkin is None
+    assert "Otevřít poslední známou polohu" not in resolved_owner_detail.content.decode()
 
 
 def test_history_filter_cannot_select_another_users_profile(client, user, other_user, profile):
@@ -819,7 +875,12 @@ def test_alert_detail_distinguishes_provider_ticket_and_acknowledgement(
     assert "Odesláno poskytovateli, doručení nepotvrzeno" in content
     assert "Poskytovatel potvrdil doručení" not in content
     assert "Eva Jiná" in content
-    assert "Nepotvrzuje telefonát, pomoc ani bezpečí" in content
+    assert "Incident viděn v aplikaci" in content
+    assert (
+        "Neznamená kontakt, zásah, převzetí odpovědnosti, doručení push oznámení ani bezpečí"
+        in content
+    )
+    assert "taken responsibility" not in content
 
 
 def test_successful_push_receipt_never_claims_device_delivery(client, profile, other_user):

@@ -4,7 +4,7 @@ from threading import Barrier, Event
 from unittest.mock import patch
 
 import pytest
-from django.core.exceptions import ValidationError
+from django.core.exceptions import PermissionDenied, ValidationError
 from django.db import close_old_connections, connection, connections, transaction
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -25,11 +25,14 @@ from core.models import (
 )
 from core.reconciliation import reconcile_domain_state
 from core.services import (
+    IncidentAcknowledgementClosed,
     accept_invitation,
+    acknowledge_incident,
     create_invitation,
     create_profile,
     perform_check_in,
     sweep_expired_deadlines,
+    visible_incident_last_known_check_in,
 )
 
 pytestmark = pytest.mark.django_db(transaction=True)
@@ -365,3 +368,220 @@ def test_account_deletion_and_checkin_use_one_postgresql_lock_order():
     results = run_two_workers(race)
 
     assert results == ["deleted", "checked-in"]
+
+
+def test_acknowledgement_waits_for_overlapping_resolution_and_cannot_write_after_close():
+    owner = User.objects.create_user(
+        email="ack-resolution-owner@example.cz",
+        password="Long-pass-123",
+    )
+    guardian = User.objects.create_user(
+        email="ack-resolution-guardian@example.cz",
+        password="Long-pass-123",
+    )
+    profile = create_profile(owner=owner, name="Ack race", interval_seconds=3_600)
+    GuardianMembership.objects.create(profile=profile, guardian=guardian)
+    incident = AlertIncident.objects.create(
+        profile=profile,
+        deadline_generation=profile.deadline_generation,
+        deadline_at=timezone.now() - timedelta(minutes=1),
+    )
+    AlertRecipient.objects.create(
+        incident=incident,
+        user=guardian,
+        user_id_snapshot=guardian.id,
+    )
+    resolution_holds_profile_lock = Event()
+    allow_resolution = Event()
+    acknowledgement_started = Event()
+
+    from core import services
+
+    original_materialize = services._materialize_due_incident_locked
+
+    def hold_resolution_profile_lock(*args, **kwargs):
+        resolution_holds_profile_lock.set()
+        assert allow_resolution.wait(timeout=10)
+        return original_materialize(*args, **kwargs)
+
+    def resolve():
+        close_old_connections()
+        try:
+            with patch(
+                "core.services._materialize_due_incident_locked",
+                hold_resolution_profile_lock,
+            ):
+                perform_check_in(
+                    profile=CheckInProfile.objects.get(pk=profile.pk),
+                    idempotency_key="ack-resolution-race",
+                )
+        finally:
+            connections.close_all()
+
+    def acknowledge():
+        close_old_connections()
+        try:
+            acknowledgement_started.set()
+            try:
+                acknowledge_incident(
+                    incident=AlertIncident.objects.get(pk=incident.pk),
+                    guardian=User.objects.get(pk=guardian.pk),
+                )
+            except IncidentAcknowledgementClosed:
+                return "closed"
+            return "acknowledged"
+        finally:
+            connections.close_all()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        resolution_future = executor.submit(resolve)
+        assert resolution_holds_profile_lock.wait(timeout=10)
+        acknowledgement_future = executor.submit(acknowledge)
+        assert acknowledgement_started.wait(timeout=10)
+        allow_resolution.set()
+        resolution_future.result(timeout=10)
+        assert acknowledgement_future.result(timeout=10) == "closed"
+
+    incident.refresh_from_db()
+    assert incident.status == AlertIncident.Status.RESOLVED
+    assert not AlertAcknowledgement.objects.filter(incident=incident).exists()
+
+
+def test_acknowledgement_rechecks_membership_after_overlapping_revocation():
+    owner = User.objects.create_user(
+        email="ack-revocation-owner@example.cz",
+        password="Long-pass-123",
+    )
+    guardian = User.objects.create_user(
+        email="ack-revocation-guardian@example.cz",
+        password="Long-pass-123",
+    )
+    profile = create_profile(owner=owner, name="Ack membership race", interval_seconds=3_600)
+    membership = GuardianMembership.objects.create(profile=profile, guardian=guardian)
+    incident = AlertIncident.objects.create(
+        profile=profile,
+        deadline_generation=profile.deadline_generation,
+        deadline_at=timezone.now() - timedelta(minutes=1),
+    )
+    AlertRecipient.objects.create(
+        incident=incident,
+        user=guardian,
+        user_id_snapshot=guardian.id,
+    )
+    revocation_holds_profile_lock = Event()
+    allow_revocation = Event()
+    acknowledgement_started = Event()
+
+    def revoke():
+        close_old_connections()
+        try:
+            with transaction.atomic():
+                CheckInProfile.objects.select_for_update().get(pk=profile.pk)
+                revocation_holds_profile_lock.set()
+                assert allow_revocation.wait(timeout=10)
+                locked_membership = GuardianMembership.objects.select_for_update().get(
+                    pk=membership.pk
+                )
+                locked_membership.status = GuardianMembership.Status.REVOKED
+                locked_membership.save(update_fields=["status", "updated_at"])
+        finally:
+            connections.close_all()
+
+    def acknowledge():
+        close_old_connections()
+        try:
+            acknowledgement_started.set()
+            try:
+                acknowledge_incident(
+                    incident=AlertIncident.objects.get(pk=incident.pk),
+                    guardian=User.objects.get(pk=guardian.pk),
+                )
+            except PermissionDenied:
+                return "forbidden"
+            return "acknowledged"
+        finally:
+            connections.close_all()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        revocation_future = executor.submit(revoke)
+        assert revocation_holds_profile_lock.wait(timeout=10)
+        acknowledgement_future = executor.submit(acknowledge)
+        assert acknowledgement_started.wait(timeout=10)
+        allow_revocation.set()
+        revocation_future.result(timeout=10)
+        assert acknowledgement_future.result(timeout=10) == "forbidden"
+
+    membership.refresh_from_db()
+    assert membership.status == GuardianMembership.Status.REVOKED
+    assert not AlertAcknowledgement.objects.filter(incident=incident).exists()
+
+
+def test_location_read_waits_for_overlapping_resolution_and_returns_no_coordinates():
+    owner = User.objects.create_user(
+        email="location-resolution-owner@example.cz",
+        password="Long-pass-123",
+    )
+    profile = create_profile(owner=owner, name="Location race", interval_seconds=3_600)
+    located_check_in = perform_check_in(
+        profile=profile,
+        idempotency_key="location-before-incident",
+        latitude="50.075500",
+        longitude="14.437800",
+        location_accuracy_meters="8.50",
+    ).check_in
+    incident = AlertIncident.objects.create(
+        profile=profile,
+        deadline_generation=profile.deadline_generation,
+        deadline_at=timezone.now() - timedelta(minutes=1),
+        opened_at=located_check_in.accepted_at + timedelta(seconds=1),
+    )
+    stale_open_incident = AlertIncident.objects.select_related("profile").get(pk=incident.pk)
+    resolution_holds_profile_lock = Event()
+    allow_resolution = Event()
+    location_read_started = Event()
+
+    from core import services
+
+    original_materialize = services._materialize_due_incident_locked
+
+    def hold_resolution_profile_lock(*args, **kwargs):
+        resolution_holds_profile_lock.set()
+        assert allow_resolution.wait(timeout=10)
+        return original_materialize(*args, **kwargs)
+
+    def resolve():
+        close_old_connections()
+        try:
+            with patch(
+                "core.services._materialize_due_incident_locked",
+                hold_resolution_profile_lock,
+            ):
+                perform_check_in(
+                    profile=CheckInProfile.objects.get(pk=profile.pk),
+                    idempotency_key="location-resolution-race",
+                )
+        finally:
+            connections.close_all()
+
+    def read_location():
+        close_old_connections()
+        try:
+            location_read_started.set()
+            return visible_incident_last_known_check_in(
+                user=User.objects.get(pk=owner.pk),
+                incident=stale_open_incident,
+            )
+        finally:
+            connections.close_all()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        resolution_future = executor.submit(resolve)
+        assert resolution_holds_profile_lock.wait(timeout=10)
+        location_future = executor.submit(read_location)
+        assert location_read_started.wait(timeout=10)
+        allow_resolution.set()
+        resolution_future.result(timeout=10)
+        assert location_future.result(timeout=10) is None
+
+    incident.refresh_from_db()
+    assert incident.status == AlertIncident.Status.RESOLVED

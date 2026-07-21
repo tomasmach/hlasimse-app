@@ -22,17 +22,20 @@ from core.models import (
     User,
 )
 from core.services import (
+    _materialize_due_incident_locked,
     accept_invitation,
+    archive_profile,
     create_invitation,
     create_profile,
     perform_check_in,
-    sweep_expired_deadlines,
 )
 
 OWNER_EMAIL = "e2e.owner@hlasimse.invalid"
 GUARDIAN_EMAIL = "e2e.guardian@hlasimse.invalid"
 OWNER_SAFE_PROFILE_NAME = "E2E vlastník – bezpečný check-in"
 INCIDENT_PROFILE_NAME = "E2E strážce – aktivní incident"
+OWNER_ACTIVE_PROFILE_NAME = "E2E bezpečnostní profil"
+ARCHIVED_HISTORY_PROFILE_NAME = "E2E archiv historie"
 BOUNDARY_GUARDIAN_EMAILS = tuple(
     f"e2e.boundary-guardian-{number}@hlasimse.invalid" for number in range(2, 6)
 )
@@ -183,6 +186,7 @@ class Command(BaseCommand):
             removed_aggregate_ids = delete_previous_e2e_dataset()
 
             profile = None
+            archived_profile = None
             owner_safe_profile = None
             invitation = None
             membership = None
@@ -211,6 +215,17 @@ class Command(BaseCommand):
                         for number, email in enumerate(BOUNDARY_GUARDIAN_EMAILS, start=2)
                     ]
             if options["mode"] in {"guardian-open", "store-review"}:
+                if options["mode"] == "guardian-open":
+                    archived_profile = create_profile(
+                        owner=owner,
+                        name=ARCHIVED_HISTORY_PROFILE_NAME,
+                        interval_seconds=3_600,
+                    )
+                    archive_result = archive_profile(profile=archived_profile, actor=owner)
+                    if not archive_result.archived or archive_result.blocking_incident is not None:
+                        raise CommandError(
+                            "The E2E archived-history profile was not archived safely."
+                        )
                 if options["mode"] == "store-review":
                     owner_safe_profile = create_profile(
                         owner=owner,
@@ -227,7 +242,7 @@ class Command(BaseCommand):
                     name=(
                         INCIDENT_PROFILE_NAME
                         if options["mode"] == "store-review"
-                        else "E2E bezpečnostní profil"
+                        else OWNER_ACTIVE_PROFILE_NAME
                     ),
                     interval_seconds=3_600,
                 )
@@ -251,11 +266,15 @@ class Command(BaseCommand):
                 profile.refresh_from_db()
                 profile.next_deadline_at = timezone.now() - timedelta(minutes=5)
                 profile.save(update_fields=["next_deadline_at", "updated_at"])
-                incidents_created, events_created = sweep_expired_deadlines()
-                incident = AlertIncident.objects.get(
-                    profile=profile,
-                    deadline_generation=profile.deadline_generation,
+                locked_profile = CheckInProfile.objects.select_for_update().get(pk=profile.pk)
+                incident, incident_created, event_created = _materialize_due_incident_locked(
+                    profile=locked_profile,
+                    now=timezone.now(),
                 )
+                if incident is None or not incident_created:
+                    raise CommandError("The exact E2E incident was not materialized.")
+                incidents_created = int(incident_created)
+                events_created = int(event_created)
             elif options["mode"] == "free-boundaries":
                 profile = create_profile(
                     owner=owner,
@@ -285,6 +304,8 @@ class Command(BaseCommand):
             "incident_profile_name": profile.name if incident else None,
             "owner_safe_profile_id": (str(owner_safe_profile.id) if owner_safe_profile else None),
             "owner_safe_profile_name": (owner_safe_profile.name if owner_safe_profile else None),
+            "archived_profile_id": str(archived_profile.id) if archived_profile else None,
+            "archived_profile_name": archived_profile.name if archived_profile else None,
             "membership_id": str(membership.id) if membership else None,
             "invitation_id": str(invitation.id) if invitation else None,
             "incident_id": str(incident.id) if incident else None,

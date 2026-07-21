@@ -19,9 +19,15 @@ from .models import (
     GuardianInvitation,
     GuardianMembership,
     PushDevice,
+    validate_paused_until_horizon,
 )
 from .openapi import DeliveryStatusSchemaSerializer, LastKnownLocationSchemaSerializer
-from .services import can_acknowledge_incident, create_profile, update_profile
+from .services import (
+    can_acknowledge_incident,
+    create_profile,
+    update_profile,
+    visible_incident_last_known_check_in,
+)
 
 
 class RegisterSerializer(serializers.ModelSerializer):
@@ -126,6 +132,14 @@ class PasswordResetConfirmSerializer(serializers.Serializer):
 
 
 class ProfileSerializer(serializers.ModelSerializer):
+    paused_until = serializers.DateTimeField(
+        required=False,
+        allow_null=True,
+        help_text=(
+            "Volitelný vlastní čas automatického obnovení, nejvýše 366 dní od aktuálního "
+            "serverového času. Null znamená pauzu do ručního obnovení."
+        ),
+    )
     pause_duration_seconds = serializers.ChoiceField(
         choices=(86_400, 604_800),
         required=False,
@@ -161,6 +175,10 @@ class ProfileSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         attrs = super().validate(attrs)
+        try:
+            validate_paused_until_horizon(attrs.get("paused_until"), now=timezone.now())
+        except DjangoValidationError as exc:
+            raise serializers.ValidationError(exc.message_dict) from exc
         duration = attrs.get("pause_duration_seconds")
         if duration is None:
             return attrs
@@ -199,6 +217,12 @@ class ProfileSerializer(serializers.ModelSerializer):
             return update_profile(profile=instance, values=validated_data)
         except DjangoValidationError as exc:
             raise serializers.ValidationError(exc.message_dict) from exc
+
+
+class ArchivedProfilePageSerializer(serializers.Serializer):
+    next = serializers.URLField(allow_null=True)
+    previous = serializers.URLField(allow_null=True)
+    results = ProfileSerializer(many=True, read_only=True)
 
 
 class CheckInInputSerializer(serializers.Serializer):
@@ -488,16 +512,26 @@ class PushDeviceSerializer(serializers.ModelSerializer):
 
 class AcknowledgementSerializer(serializers.ModelSerializer):
     user_id = serializers.UUIDField(source="user_id_snapshot", read_only=True)
+    display_name = serializers.SerializerMethodField()
 
     class Meta:
         model = AlertAcknowledgement
-        fields = ("user_id", "acknowledged_at")
+        fields = ("user_id", "display_name", "acknowledged_at")
+
+    @extend_schema_field(OpenApiTypes.STR)
+    def get_display_name(self, obj):
+        if obj.user is None:
+            return "Smazaný strážce"
+        return (
+            " ".join(part for part in (obj.user.first_name, obj.user.last_name) if part).strip()
+            or "Strážce"
+        )
 
 
 class AlertIncidentSerializer(serializers.ModelSerializer):
     profile_id = serializers.UUIDField(read_only=True)
     profile_name = serializers.CharField(source="profile.name", read_only=True)
-    acknowledgements = AcknowledgementSerializer(many=True, read_only=True)
+    acknowledgements = serializers.SerializerMethodField()
     last_known_location = serializers.SerializerMethodField()
     delivery_status = serializers.SerializerMethodField()
     can_acknowledge = serializers.SerializerMethodField()
@@ -525,32 +559,23 @@ class AlertIncidentSerializer(serializers.ModelSerializer):
         request = self.context.get("request")
         return bool(request is not None and can_acknowledge_incident(request.user, obj))
 
+    @extend_schema_field(AcknowledgementSerializer(many=True))
+    def get_acknowledgements(self, obj):
+        acknowledgements = getattr(obj, "ordered_acknowledgements", None)
+        if acknowledgements is None:
+            acknowledgements = obj.acknowledgements.select_related("user").order_by(
+                "acknowledged_at", "id"
+            )
+        return AcknowledgementSerializer(acknowledgements, many=True).data
+
     @extend_schema_field(LastKnownLocationSchemaSerializer(allow_null=True))
     def get_last_known_location(self, obj):
         request = self.context.get("request")
-        if request is None or obj.status != AlertIncident.Status.OPEN:
+        if request is None:
             return None
-        user = request.user
-        is_owner = obj.profile.owner_id == user.id
-        if not is_owner and not settings.GUARDIAN_LOCATION_DISCLOSURE_ENABLED:
-            return None
-        is_active_recipient = obj.recipients.filter(user_id=user.id).exists() and (
-            GuardianMembership.objects.filter(
-                profile=obj.profile,
-                guardian=user,
-                status=GuardianMembership.Status.ACTIVE,
-            ).exists()
-        )
-        if not (is_owner or is_active_recipient):
-            return None
-        check_in = (
-            obj.profile.check_ins.filter(
-                accepted_at__lte=obj.opened_at,
-                latitude__isnull=False,
-                longitude__isnull=False,
-            )
-            .order_by("-accepted_at")
-            .first()
+        check_in = visible_incident_last_known_check_in(
+            user=request.user,
+            incident=obj,
         )
         if check_in is None:
             return None

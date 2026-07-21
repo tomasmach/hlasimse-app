@@ -4,8 +4,14 @@ from django.contrib.auth.forms import AuthenticationForm
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.db.models import Count, Q
+from django.utils import timezone
 
-from .models import MAX_INTERVAL_SECONDS, MIN_INTERVAL_SECONDS, CheckInProfile
+from .models import (
+    MAX_INTERVAL_SECONDS,
+    MIN_INTERVAL_SECONDS,
+    CheckInProfile,
+    validate_paused_until_horizon,
+)
 from .services import MAX_GUARDIANS_PER_PROFILE
 
 
@@ -106,8 +112,19 @@ class PauseProfileForm(forms.Form):
         required=False,
         input_formats=("%Y-%m-%dT%H:%M",),
         widget=forms.DateTimeInput(attrs={"type": "datetime-local"}),
-        help_text="Nepovinné. Bez data profil obnovíte později ručně.",
+        help_text=(
+            "Nepovinné. Nejvýše 366 dní od aktuálního serverového času. "
+            "Bez data profil obnovíte později ručně."
+        ),
     )
+
+    def clean_paused_until(self):
+        paused_until = self.cleaned_data["paused_until"]
+        try:
+            validate_paused_until_horizon(paused_until, now=timezone.now())
+        except ValidationError as exc:
+            raise forms.ValidationError(exc.message_dict["paused_until"]) from exc
+        return paused_until
 
 
 class BrowserCheckInForm(forms.Form):

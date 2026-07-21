@@ -130,7 +130,7 @@
         "/api/v1/alerts/{id}/acknowledge/": {
             "post": {
                 "operationId": "alerts_acknowledge_create",
-                "description": "Record that an active guardian has taken responsibility for an open incident. This does not prove notification delivery or resolution.",
+                "description": "Record only that an active guardian viewed an open incident in the app. This does not mean contact, intervention, responsibility, push delivery, or safety.",
                 "parameters": [
                     {
                         "in": "path",
@@ -1450,6 +1450,41 @@
                 }
             }
         },
+        "/api/v1/profiles/archived/": {
+            "get": {
+                "operationId": "profiles_archived_retrieve",
+                "description": "Owner-only read-only list of archived check-in profiles.",
+                "parameters": [
+                    {
+                        "in": "query",
+                        "name": "page_size",
+                        "schema": {
+                            "type": "integer"
+                        }
+                    }
+                ],
+                "tags": [
+                    "profiles"
+                ],
+                "security": [
+                    {
+                        "jwtAuth": []
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "$ref": "#/components/schemas/ArchivedProfilePage"
+                                }
+                            }
+                        },
+                        "description": ""
+                    }
+                }
+            }
+        },
         "/api/v1/push-devices/": {
             "get": {
                 "operationId": "push_devices_list",
@@ -1656,12 +1691,17 @@
                         "format": "uuid",
                         "readOnly": true
                     },
+                    "display_name": {
+                        "type": "string",
+                        "readOnly": true
+                    },
                     "acknowledged_at": {
                         "type": "string",
                         "format": "date-time"
                     }
                 },
                 "required": [
+                    "display_name",
                     "user_id"
                 ]
             },
@@ -1765,6 +1805,37 @@
                 ],
                 "type": "string",
                 "description": "* `open` - Open\n* `resolved` - Resolved"
+            },
+            "ArchivedProfilePage": {
+                "type": "object",
+                "properties": {
+                    "next": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "uri"
+                    },
+                    "previous": {
+                        "type": [
+                            "string",
+                            "null"
+                        ],
+                        "format": "uri"
+                    },
+                    "results": {
+                        "type": "array",
+                        "items": {
+                            "$ref": "#/components/schemas/Profile"
+                        },
+                        "readOnly": true
+                    }
+                },
+                "required": [
+                    "next",
+                    "previous",
+                    "results"
+                ]
             },
             "CheckInHistory": {
                 "type": "object",
@@ -2419,7 +2490,8 @@
                             "string",
                             "null"
                         ],
-                        "format": "date-time"
+                        "format": "date-time",
+                        "description": "Volitelný vlastní čas automatického obnovení, nejvýše 366 dní od aktuálního serverového času. Null znamená pauzu do ručního obnovení."
                     },
                     "pause_duration_seconds": {
                         "allOf": [
@@ -2488,7 +2560,8 @@
                             "string",
                             "null"
                         ],
-                        "format": "date-time"
+                        "format": "date-time",
+                        "description": "Volitelný vlastní čas automatického obnovení, nejvýše 366 dní od aktuálního serverového času. Null znamená pauzu do ručního obnovení."
                     },
                     "last_checked_in_at": {
                         "type": [
@@ -2584,7 +2657,8 @@
                             "string",
                             "null"
                         ],
-                        "format": "date-time"
+                        "format": "date-time",
+                        "description": "Volitelný vlastní čas automatického obnovení, nejvýše 366 dní od aktuálního serverového času. Null znamená pauzu do ručního obnovení."
                     },
                     "pause_duration_seconds": {
                         "allOf": [
