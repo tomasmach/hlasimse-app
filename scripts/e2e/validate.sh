@@ -638,12 +638,12 @@ ruby -e '
     %q{hideKeyboard},
     %q{id: "account-name-submit"},
     %q{id: "account-name-open"},
-    %q{assertVisible: E2E Potvrzeno\s*},
+    %q{assertVisible: "E2E Potvrzeno"},
     %q{stopApp},
     %q{launchApp},
     %q{id: "tab-settings"},
     %q{id: "account-name-open"},
-    %q{assertVisible: E2E Potvrzeno\s*},
+    %q{assertVisible: "E2E Potvrzeno"},
   ]
   ios_name_cursor = -1
   ios_name_journey.each do |fragment|
@@ -659,8 +659,22 @@ ruby -e '
   missing_android_focus = required_android_name.reject { |fragment| android_focus.include?(fragment) }
   abort("Android account-name focus contract is incomplete: #{missing_android_focus.join(", ")}") unless missing_android_focus.empty?
   abort("Android name focus flow must leave text injection to adb") if android_focus.include?("inputText") || android_focus.include?("pasteText")
-  abort("Android account-name save flow omits the server submit") unless android_save.include?(%q{id: "account-name-submit"})
-  abort("Android account-name save flow omits restart verification") unless android_save.include?("stopApp") && android_save.scan("launchApp").length >= 1 && android_save.scan("E2E Potvrzeno").length >= 2
+  android_name_journey = [
+    %q{assertVisible: "E2E Potvrzeno"},
+    %q{id: "account-name-submit"},
+    %q{id: "account-name-open"},
+    %q{assertVisible: "E2E Potvrzeno"},
+    %q{stopApp},
+    %q{launchApp},
+    %q{id: "tab-settings"},
+    %q{id: "account-name-open"},
+    %q{assertVisible: "E2E Potvrzeno"},
+  ]
+  android_name_cursor = -1
+  android_name_journey.each do |fragment|
+    android_name_cursor = android_save.index(fragment, android_name_cursor + 1)
+    abort("Android account-name journey must save before restart and reassert exact persistence") unless android_name_cursor
+  end
 
   required_offline_sync = [
     %q{id: "tab-activity"},

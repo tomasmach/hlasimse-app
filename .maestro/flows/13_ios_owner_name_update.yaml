@@ -50,7 +50,7 @@ tags:
     visible:
       id: "account-name-open"
     timeout: 15000
-- assertVisible: E2E Potvrzeno\s*
+- assertVisible: "E2E Potvrzeno"
 - stopApp
 - launchApp
 - extendedWaitUntil:
@@ -63,7 +63,7 @@ tags:
     visible:
       id: "account-name-open"
     timeout: 15000
-- assertVisible: E2E Potvrzeno\s*
+- assertVisible: "E2E Potvrzeno"
 - tapOn:
     id: "tab-index"
 - extendedWaitUntil:

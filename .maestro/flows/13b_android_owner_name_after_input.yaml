@@ -7,8 +7,10 @@ tags: [android, owner, parity]
 - tapOn:
     id: "account-name-submit"
 - extendedWaitUntil:
-    visible: "E2E Potvrzeno"
+    visible:
+      id: "account-name-open"
     timeout: 15000
+- assertVisible: "E2E Potvrzeno"
 - stopApp
 - launchApp
 - extendedWaitUntil:
@@ -17,6 +19,10 @@ tags: [android, owner, parity]
     timeout: 20000
 - tapOn:
     id: "tab-settings"
+- extendedWaitUntil:
+    visible:
+      id: "account-name-open"
+    timeout: 15000
 - assertVisible: "E2E Potvrzeno"
 - tapOn:
     id: "tab-index"
