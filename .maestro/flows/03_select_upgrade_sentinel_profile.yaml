@@ -35,7 +35,11 @@ tags:
       - tapOn:
           id: "profile-create-name-input"
       - inputText: "E2E update sentinel"
-      - hideKeyboard
+      - runFlow:
+          when:
+            platform: Android
+          commands:
+            - hideKeyboard
       - scrollUntilVisible:
           element: "1 hodina"
           direction: DOWN
