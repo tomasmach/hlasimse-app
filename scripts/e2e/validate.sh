@@ -579,6 +579,7 @@ ruby -e '
   ios_name = File.read(File.join(root, ".maestro/flows/13_ios_owner_name_update.yaml"))
   android_focus = File.read(File.join(root, ".maestro/flows/13a_android_owner_name_focus.yaml"))
   android_save = File.read(File.join(root, ".maestro/flows/13b_android_owner_name_after_input.yaml"))
+  offline_sync = File.read(File.join(root, ".maestro/flows/30_owner_offline_sync.yaml"))
 
   required_parity = [
     %q{Potvrzení znamená jen to, že strážce otevřel incident v aplikaci},
@@ -659,6 +660,29 @@ ruby -e '
   abort("Android name focus flow must leave text injection to adb") if android_focus.include?("inputText") || android_focus.include?("pasteText")
   abort("Android account-name save flow omits the server submit") unless android_save.include?(%q{id: "account-name-submit"})
   abort("Android account-name save flow omits restart verification") unless android_save.include?("stopApp") && android_save.scan("launchApp").length >= 1 && android_save.scan("E2E Potvrzeno").length >= 2
+
+  required_offline_sync = [
+    %q{id: "tab-activity"},
+    %q{id: "timeline-profile-picker"},
+    %q{direction: UP},
+    %q{retryTapIfNoChange: true},
+    %q{Aktivní profily},
+    %q{E2E druhý profil},
+    %q{Historie profilu: E2E druhý profil},
+    %q{E2E Druhy profil},
+    %q{Historie profilu: E2E Druhy profil},
+    %q{Synchronizováno později z offline fronty},
+    %q{Incident vyřešen potvrzeným check-inem},
+    %q{Server otevřel incident},
+  ]
+  missing_offline_sync = required_offline_sync.reject { |fragment| offline_sync.include?(fragment) }
+  abort("Offline sync journey does not select the active AT-08 profile: #{missing_offline_sync.join(", ")}") unless missing_offline_sync.empty?
+  abort("Offline sync journey must not retry mutating evidence steps") if offline_sync.include?("retry:")
+  offline_sync_cursor = -1
+  required_offline_sync.each do |fragment|
+    offline_sync_cursor = offline_sync.index(fragment, offline_sync_cursor + 1)
+    abort("Offline sync journey must select its active profile before asserting AT-08 events") unless offline_sync_cursor
+  end
 ' "${ROOT_DIR}"
 
 ruby -e '
