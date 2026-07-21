@@ -2,9 +2,9 @@
   "status": "DRAFT",
   "application": {
     "version": "1.0.0",
-    "iosBundleIdentifier": "com.anonymous.hlasimse",
+    "iosBundleIdentifier": "cz.tomasmach.hlasimse",
     "iosBuildNumber": "1",
-    "androidApplicationId": "com.anonymous.hlasimse",
+    "androidApplicationId": "cz.tomasmach.hlasimse",
     "androidVersionCode": 1
   },
   "legal": {

@@ -148,7 +148,7 @@ Strukturované logy používají correlation ID, ale neobsahují e-mail, push to
 
 Před produkčním zpracováním je povinná DPIA zaměřená na bezpečnostní monitoring, polohu, zranitelné osoby, automatické vyhodnocení deadline a dopad nedoručení. Musí existovat aktuální záznam činností zpracování, právní titul, retenční plán, DPA se všemi zpracovateli, proces incident response a proces žádostí subjektů údajů.
 
-Účet musí podporovat export, opravu a odstranění. Mazání nesmí tiše zničit aktivní bezpečnostní vztah: uživatel obdrží varování, strážci oznámení o ukončení vztahu a aktivní incident se uzavře auditovaným způsobem. Retence check-inů, incidentů, auditů a záloh musí být právně schválená a technicky vynucená.
+Účet musí podporovat export, opravu a odstranění. Mazání nesmí tiše zničit aktivní bezpečnostní vztah: pokud některý profil vlastněný účtem má otevřený incident, výmaz se zablokuje, dokud jej potvrzený check-in bezpečně nevyřeší. Uživatel dostane srozumitelné vysvětlení dopadu; při následném výmazu skončí jeho profily a guardian vztahy, zatímco identita smazaného příjemce u incidentů jiných vlastníků se anonymizuje bez změny jejich bezpečnostního stavu. Retence check-inů, incidentů, auditů a záloh musí být právně schválená a technicky vynucená.
 
 ## Nasazení a rollback
 
@@ -157,4 +157,3 @@ Před produkčním zpracováním je povinná DPIA zaměřená na bezpečnostní 
 - Release je postupný, s canary prostředím a syntetickým profilem s krátkým testovacím termínem mimo produkční uživatelská data.
 - Rollback aplikace nesmí vrátit databázi destruktivní migrací. Před aktivací nového deadline evaluatoru musí být ověřen jediný aktivní vlastník plánování.
 - Postup migrace ze Supabase je v [migration/supabase-cutover.md](migration/supabase-cutover.md), provozní reakce v [runbooks/alert-delivery.md](runbooks/alert-delivery.md).
-

@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}{% if document == "privacy" %}Ochrana soukromí{% else %}Podmínky používání{% endif %} — Hlásím se{% endblock %}
+{% block title %}{% if document == "privacy" %}Ochrana soukromí{% elif document == "terms" %}Podmínky používání{% else %}Registrace není dostupná{% endif %} — Hlásím se{% endblock %}
 {% block meta_description %}Tato právní stránka čeká na doplnění ověřených údajů provozovatele služby Hlásím se.{% endblock %}
 {% block content %}
 <section class="legal-blocker container" aria-labelledby="legal-title">
   <div class="legal-blocker__copy">
     <p class="eyebrow">Služba ještě není připravená k veřejnému provozu</p>
-    <h1 id="legal-title">{% if document == "privacy" %}Zásady ochrany soukromí{% else %}Podmínky používání{% endif %} nelze poctivě zveřejnit bez údajů provozovatele.</h1>
+    <h1 id="legal-title">{% if document == "privacy" %}Zásady ochrany soukromí{% elif document == "terms" %}Podmínky používání{% else %}Registrace je do zveřejnění právních dokumentů vypnutá.{% endif %}{% if document %} nelze poctivě zveřejnit bez údajů provozovatele.{% endif %}</h1>
     <p>Před vydáním musí provozovatel doplnit a právně ověřit svou identitu, kontaktní údaje, účely a dobu zpracování, dodavatele i přesné provozní podmínky. Hlásím se zde nebude zobrazovat smyšlené nebo zastaralé údaje.</p>
     <div class="warning-note" role="status">
       <strong>Blokuje veřejné vydání</strong>

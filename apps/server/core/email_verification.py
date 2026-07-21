@@ -10,6 +10,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from .audit import record_audit_event
+from .legal_documents import require_configured_legal_documents
 from .models import EmailVerificationChallenge, OutboxEvent, User
 
 SIGNING_SALT = "hlasimse.email-verification.v1"
@@ -111,6 +112,7 @@ def register_unverified_user(
     last_name: str = "",
 ) -> tuple[User, bool]:
     """Create an unverified user or safely replay registration without enumeration."""
+    legal_documents = require_configured_legal_documents()
     if terms_accepted is not True:
         raise ValueError("Registration requires explicit acceptance of the current terms.")
     normalized = normalize_email(email)
@@ -127,7 +129,7 @@ def register_unverified_user(
                         last_name=last_name.strip(),
                         email_verified_at=None,
                         terms_accepted_at=timezone.now(),
-                        terms_version=settings.LEGAL_TERMS_VERSION,
+                        terms_version=legal_documents.terms.version,
                     )
                     created = True
             except IntegrityError:

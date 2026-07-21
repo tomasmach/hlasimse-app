@@ -28,6 +28,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils import timezone
 from django.utils.encoding import force_bytes
+from django.utils.html import escape
 from django.utils.http import urlsafe_base64_encode
 from django.views.decorators.http import require_POST
 from django.views.generic import TemplateView
@@ -56,6 +57,7 @@ from .forms import (
     PauseProfileForm,
     RegisterForm,
 )
+from .legal_documents import configured_legal_documents
 from .models import (
     AlertIncident,
     AuditEvent,
@@ -90,9 +92,58 @@ class LandingView(TemplateView):
     template_name = "core/landing.html"
 
 
+def _public_url(route):
+    return f"{settings.APP_BASE_URL}{reverse(route)}"
+
+
+def robots_view(_request):
+    sitemap = _public_url("core:sitemap")
+    response = HttpResponse(
+        "User-agent: *\n"
+        "Allow: /\n"
+        "Allow: /ucet/smazat/\n"
+        "Disallow: /prehled/\n"
+        "Disallow: /ucet/\n"
+        "Disallow: /strazci/\n"
+        "Disallow: /upozorneni/\n"
+        f"Sitemap: {sitemap}\n",
+        content_type="text/plain; charset=utf-8",
+    )
+    response["Cache-Control"] = "public, max-age=3600"
+    return response
+
+
+def sitemap_view(_request):
+    routes = ("core:landing", "core:privacy", "core:terms", "core:support", "accounts:delete")
+    locations = [escape(_public_url(route)) for route in routes]
+    body = (
+        '<?xml version="1.0" encoding="UTF-8"?>\n'
+        '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n'
+        + "".join(f"  <url><loc>{location}</loc></url>\n" for location in locations)
+        + "</urlset>\n"
+    )
+    response = HttpResponse(body, content_type="application/xml; charset=utf-8")
+    response["Cache-Control"] = "public, max-age=3600"
+    return response
+
+
 def legal_release_blocker_view(request, document):
     if document not in {"privacy", "terms"}:
         raise Http404
+    documents = configured_legal_documents()
+    if documents is not None:
+        response = render(
+            request,
+            "core/legal_document.html",
+            {"document": getattr(documents, document)},
+        )
+        response["Cache-Control"] = "public, max-age=300, must-revalidate"
+        response["X-Content-Type-Options"] = "nosniff"
+        return response
+    return _legal_unavailable_response(request, document=document)
+
+
+def _legal_unavailable_response(request, *, document=None):
     response = render(
         request,
         "core/legal_release_blocker.html",
@@ -147,7 +198,7 @@ class SecurePasswordResetView(WebAuthRateLimitMixin, PasswordResetView):
                 "accounts:password_reset_confirm",
                 kwargs={"uidb64": uid, "token": token},
             )
-            reset_url = self.request.build_absolute_uri(reset_path)
+            reset_url = f"{settings.APP_BASE_URL}{reset_path}"
             send_mail(
                 "Obnova hesla pro Hlásím se",
                 (
@@ -188,6 +239,8 @@ class SecurePasswordResetCompleteView(PasswordResetCompleteView):
 def register_view(request):
     if request.user.is_authenticated:
         return redirect("core:dashboard")
+    if configured_legal_documents() is None:
+        return _legal_unavailable_response(request)
     form = RegisterForm(request.POST if request.method == "POST" else None)
     if request.method == "POST" and form.is_valid():
         register_unverified_user(

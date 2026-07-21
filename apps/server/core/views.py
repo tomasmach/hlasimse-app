@@ -38,6 +38,7 @@ from .email_verification import (
     resend_verification,
     verify_signed_token,
 )
+from .legal_documents import configured_legal_documents
 from .models import (
     AlertAcknowledgement,
     AlertIncident,
@@ -118,6 +119,21 @@ class RegisterView(generics.CreateAPIView):
         responses={202: AcceptedResponseSerializer},
     )
     def create(self, request, *args, **kwargs):
+        if configured_legal_documents() is None:
+            return Response(
+                {
+                    "error": {
+                        "status": status.HTTP_503_SERVICE_UNAVAILABLE,
+                        "code": "legal_documents_unavailable",
+                        "details": (
+                            "Registrace je dočasně nedostupná, protože aktuální právní "
+                            "dokumenty nejsou zveřejněné."
+                        ),
+                    }
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+                headers={"Retry-After": "86400"},
+            )
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         values = serializer.validated_data

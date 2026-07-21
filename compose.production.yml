@@ -5,6 +5,9 @@ x-app-environment: &app-environment
   DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY:?DJANGO_SECRET_KEY is required}
   DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:?DJANGO_ALLOWED_HOSTS is required}
   DJANGO_SECURE_SSL_REDIRECT: ${DJANGO_SECURE_SSL_REDIRECT:-true}
+  DJANGO_HSTS_SECONDS: ${DJANGO_HSTS_SECONDS:-300}
+  DJANGO_HSTS_INCLUDE_SUBDOMAINS: ${DJANGO_HSTS_INCLUDE_SUBDOMAINS:-false}
+  DJANGO_HSTS_PRELOAD: ${DJANGO_HSTS_PRELOAD:-false}
   DJANGO_STATIC_MANIFEST: "true"
   DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required}
   DATABASE_ALLOW_INSECURE_LOCAL_COMPOSE: "true"
@@ -14,8 +17,12 @@ x-app-environment: &app-environment
   DATABASE_IDLE_TRANSACTION_TIMEOUT_MS: ${DATABASE_IDLE_TRANSACTION_TIMEOUT_MS:-15000}
   APP_BASE_URL: ${APP_BASE_URL:?APP_BASE_URL is required}
   SUPPORT_EMAIL: ${SUPPORT_EMAIL:?SUPPORT_EMAIL is required}
+  LEGAL_PRIVACY_VERSION: ${LEGAL_PRIVACY_VERSION:?LEGAL_PRIVACY_VERSION is required}
+  LEGAL_PRIVACY_DOCUMENT_PATH: /run/legal/privacy.json
+  LEGAL_PRIVACY_DOCUMENT_SHA256: ${LEGAL_PRIVACY_DOCUMENT_SHA256:?LEGAL_PRIVACY_DOCUMENT_SHA256 is required}
   LEGAL_TERMS_VERSION: ${LEGAL_TERMS_VERSION:?LEGAL_TERMS_VERSION is required}
-  EXPO_ACCESS_TOKEN: ${EXPO_ACCESS_TOKEN:?EXPO_ACCESS_TOKEN is required}
+  LEGAL_TERMS_DOCUMENT_PATH: /run/legal/terms.json
+  LEGAL_TERMS_DOCUMENT_SHA256: ${LEGAL_TERMS_DOCUMENT_SHA256:?LEGAL_TERMS_DOCUMENT_SHA256 is required}
   MOBILE_MIN_IOS_VERSION: ${MOBILE_MIN_IOS_VERSION:?MOBILE_MIN_IOS_VERSION is required}
   MOBILE_MIN_ANDROID_VERSION: ${MOBILE_MIN_ANDROID_VERSION:?MOBILE_MIN_ANDROID_VERSION is required}
   MOBILE_MIN_IOS_BUILD: ${MOBILE_MIN_IOS_BUILD:?MOBILE_MIN_IOS_BUILD is required}
@@ -28,37 +35,41 @@ x-app-environment: &app-environment
   DEADLINE_SWEEPER_ENABLED: ${DEADLINE_SWEEPER_ENABLED:-true}
   ALERT_OUTBOX_ENABLED: ${ALERT_OUTBOX_ENABLED:-true}
   EMAIL_OUTBOX_ENABLED: ${EMAIL_OUTBOX_ENABLED:-true}
+  GUNICORN_WORKERS: ${GUNICORN_WORKERS:-2}
+  GUNICORN_THREADS: ${GUNICORN_THREADS:-4}
+  GUNICORN_FORWARDED_ALLOW_IPS: ${GUNICORN_FORWARDED_ALLOW_IPS:-127.0.0.1}
+  WEB_TRUSTED_PROXY_CIDRS: ${WEB_TRUSTED_PROXY_CIDRS:-}
+
+x-smtp-environment: &smtp-environment
   DJANGO_EMAIL_BACKEND: django.core.mail.backends.smtp.EmailBackend
   EMAIL_HOST: mailpit
   EMAIL_PORT: "1025"
   EMAIL_HOST_USER: local-compose
-  EMAIL_HOST_PASSWORD: local-compose
+  EMAIL_HOST_PASSWORD: ${EMAIL_HOST_PASSWORD:-local-compose}
   EMAIL_USE_TLS: "false"
   EMAIL_USE_SSL: "false"
   EMAIL_ALLOW_INSECURE_LOCAL_COMPOSE: "true"
   EMAIL_TIMEOUT: "10"
   DEFAULT_FROM_EMAIL: ${DEFAULT_FROM_EMAIL:?DEFAULT_FROM_EMAIL is required}
   SERVER_EMAIL: ${SERVER_EMAIL:?SERVER_EMAIL is required}
-  GUNICORN_WORKERS: ${GUNICORN_WORKERS:-2}
-  GUNICORN_THREADS: ${GUNICORN_THREADS:-4}
-  GUNICORN_FORWARDED_ALLOW_IPS: ${GUNICORN_FORWARDED_ALLOW_IPS:-127.0.0.1}
-  WEB_TRUSTED_PROXY_CIDRS: ${WEB_TRUSTED_PROXY_CIDRS:-}
+
+x-expo-environment: &expo-environment
+  EXPO_ACCESS_TOKEN: ${EXPO_ACCESS_TOKEN:?EXPO_ACCESS_TOKEN is required}
 
 x-app: &app
   image: hlasimse-server:${IMAGE_TAG:-local}
   build:
     context: ./apps/server
     dockerfile: Dockerfile
-  environment: *app-environment
   depends_on:
     postgres:
       condition: service_healthy
-    mailpit:
-      condition: service_started
   networks:
     - backend
   init: true
   read_only: true
+  volumes:
+    - ${LEGAL_DOCUMENT_HOST_DIR:?LEGAL_DOCUMENT_HOST_DIR is required}:/run/legal:ro
   tmpfs:
     - /tmp:size=64m,mode=1777
   cap_drop:
@@ -109,6 +120,9 @@ services:
 
   migrate:
     <<: *app
+    environment:
+      <<: *app-environment
+      HLASIMSE_PROCESS_ROLE: migration
     command:
       [
         "/bin/sh",
@@ -118,8 +132,30 @@ services:
     profiles: ["ops"]
     restart: "no"
 
+  preflight:
+    <<: *app
+    environment:
+      <<: [*app-environment, *smtp-environment, *expo-environment]
+      HLASIMSE_PROCESS_ROLE: preflight
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    command: ["python", "manage.py", "check", "--deploy"]
+    profiles: ["ops"]
+    restart: "no"
+
   web:
     <<: *app
+    environment:
+      <<: [*app-environment, *smtp-environment]
+      HLASIMSE_PROCESS_ROLE: web
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
     ports:
       - "127.0.0.1:8000:8000"
     healthcheck:
@@ -137,6 +173,9 @@ services:
 
   sweep:
     <<: *app
+    environment:
+      <<: *app-environment
+      HLASIMSE_PROCESS_ROLE: deadline-sweeper
     command: ["python", "manage.py", "sweep_deadlines", "--watch", "--poll-interval", "15"]
     healthcheck: &worker-healthcheck
       test:
@@ -155,6 +194,9 @@ services:
 
   outbox-alerts:
     <<: *app
+    environment:
+      <<: [*app-environment, *expo-environment]
+      HLASIMSE_PROCESS_ROLE: alert-outbox
     command:
       [
         "python",
@@ -170,6 +212,14 @@ services:
 
   outbox-email:
     <<: *app
+    environment:
+      <<: [*app-environment, *smtp-environment]
+      HLASIMSE_PROCESS_ROLE: email-outbox
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
     command:
       [
         "python",
@@ -185,6 +235,9 @@ services:
 
   receipts:
     <<: *app
+    environment:
+      <<: [*app-environment, *expo-environment]
+      HLASIMSE_PROCESS_ROLE: push-receipts
     command:
       [
         "python",
@@ -200,6 +253,9 @@ services:
 
   reconciliation:
     <<: *app
+    environment:
+      <<: *app-environment
+      HLASIMSE_PROCESS_ROLE: safety-reconciliation
     command:
       [
         "python",
@@ -215,6 +271,9 @@ services:
 
   safety-metrics:
     <<: *app
+    environment:
+      <<: *app-environment
+      HLASIMSE_PROCESS_ROLE: safety-metrics
     command:
       [
         "python",
@@ -231,6 +290,9 @@ services:
 
   session-cleanup:
     <<: *app
+    environment:
+      <<: *app-environment
+      HLASIMSE_PROCESS_ROLE: session-cleanup
     command:
       [
         "python",
@@ -247,12 +309,18 @@ services:
 
   delivery-health:
     <<: *app
+    environment:
+      <<: *app-environment
+      HLASIMSE_PROCESS_ROLE: delivery-monitor
     command: ["python", "manage.py", "check_delivery_health"]
     profiles: ["ops"]
     restart: "no"
 
   delivery-monitor:
     <<: *app
+    environment:
+      <<: *app-environment
+      HLASIMSE_PROCESS_ROLE: delivery-monitor
     command:
       [
         "python",

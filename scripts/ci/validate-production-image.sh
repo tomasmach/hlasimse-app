@@ -17,6 +17,7 @@ worker_names=(
   "hlasimse-container-gate-monitor-${run_id}"
 )
 postgres_image="postgres:18.4-bookworm@sha256:1961f96e6029a02c3812d7cb329a3b03a3ac2bb067058dec17b0f5596aca9296"
+legal_fixture_dir="$(cd apps/server/tests/fixtures/legal && pwd)"
 
 cleanup() {
   docker rm --force "${web_name}" "${worker_names[@]}" "${postgres_name}" >/dev/null 2>&1 || true
@@ -51,19 +52,29 @@ export DJANGO_SECRET_KEY
 DJANGO_SECRET_KEY="$(printf 'container-gate-not-a-secret-%s-' 1 2 3)"
 export DJANGO_ALLOWED_HOSTS=ci.hlasim.se
 export DJANGO_SECURE_SSL_REDIRECT=true
+export DJANGO_HSTS_SECONDS=3600
+export DJANGO_HSTS_INCLUDE_SUBDOMAINS=false
+export DJANGO_HSTS_PRELOAD=false
 export DJANGO_STATIC_MANIFEST=true
 export DATABASE_URL=postgresql://hlasimse@postgres:5432/hlasimse_container_gate
 export DATABASE_ALLOW_INSECURE_LOCAL_COMPOSE=true
 export APP_BASE_URL=https://ci.hlasim.se
 export SUPPORT_EMAIL=support@ci.hlasim.se
-export LEGAL_TERMS_VERSION=2026-07-21-container-gate
+export LEGAL_PRIVACY_VERSION=test-privacy-v1
+export LEGAL_PRIVACY_DOCUMENT_PATH=/run/legal/privacy.json
+export LEGAL_PRIVACY_DOCUMENT_SHA256
+LEGAL_PRIVACY_DOCUMENT_SHA256="$(shasum -a 256 "${legal_fixture_dir}/privacy.json" | awk '{print $1}')"
+export LEGAL_TERMS_VERSION=test-terms-v1
+export LEGAL_TERMS_DOCUMENT_PATH=/run/legal/terms.json
+export LEGAL_TERMS_DOCUMENT_SHA256
+LEGAL_TERMS_DOCUMENT_SHA256="$(shasum -a 256 "${legal_fixture_dir}/terms.json" | awk '{print $1}')"
 export EXPO_ACCESS_TOKEN=container-gate-only-no-provider-requests
 export MOBILE_MIN_IOS_VERSION=1.0.0
 export MOBILE_MIN_IOS_BUILD=1
 export MOBILE_IOS_STORE_URL=https://apps.apple.com/app/hlasim-se/id1234567890
 export MOBILE_MIN_ANDROID_VERSION=1.0.0
 export MOBILE_MIN_ANDROID_BUILD=1
-export MOBILE_ANDROID_STORE_URL=https://play.google.com/store/apps/details?id=cz.hlasimse.app
+export MOBILE_ANDROID_STORE_URL=https://play.google.com/store/apps/details?id=cz.tomasmach.hlasimse
 export DJANGO_EMAIL_BACKEND=django.core.mail.backends.smtp.EmailBackend
 export EMAIL_HOST=smtp.ci.invalid
 export EMAIL_PORT=587
@@ -79,19 +90,30 @@ production_env=(
   --env DJANGO_SECRET_KEY
   --env DJANGO_ALLOWED_HOSTS
   --env DJANGO_SECURE_SSL_REDIRECT
+  --env DJANGO_HSTS_SECONDS
+  --env DJANGO_HSTS_INCLUDE_SUBDOMAINS
+  --env DJANGO_HSTS_PRELOAD
   --env DJANGO_STATIC_MANIFEST
   --env DATABASE_URL
   --env DATABASE_ALLOW_INSECURE_LOCAL_COMPOSE
   --env APP_BASE_URL
   --env SUPPORT_EMAIL
+  --env LEGAL_PRIVACY_VERSION
+  --env LEGAL_PRIVACY_DOCUMENT_PATH
+  --env LEGAL_PRIVACY_DOCUMENT_SHA256
   --env LEGAL_TERMS_VERSION
-  --env EXPO_ACCESS_TOKEN
+  --env LEGAL_TERMS_DOCUMENT_PATH
+  --env LEGAL_TERMS_DOCUMENT_SHA256
   --env MOBILE_MIN_IOS_VERSION
   --env MOBILE_MIN_IOS_BUILD
   --env MOBILE_IOS_STORE_URL
   --env MOBILE_MIN_ANDROID_VERSION
   --env MOBILE_MIN_ANDROID_BUILD
   --env MOBILE_ANDROID_STORE_URL
+  --env DEFAULT_FROM_EMAIL
+)
+expo_env=(--env EXPO_ACCESS_TOKEN)
+smtp_env=(
   --env DJANGO_EMAIL_BACKEND
   --env EMAIL_HOST
   --env EMAIL_PORT
@@ -99,31 +121,61 @@ production_env=(
   --env EMAIL_HOST_PASSWORD
   --env EMAIL_USE_TLS
   --env EMAIL_USE_SSL
-  --env DEFAULT_FROM_EMAIL
 )
+role_env=()
 runtime_security=(
   --network "${network_name}"
   --read-only
   --tmpfs /tmp:size=64m,mode=1777
   --tmpfs /run:size=16m,mode=0755
+  --volume "${legal_fixture_dir}:/run/legal:ro"
   --cap-drop ALL
   --security-opt no-new-privileges:true
 )
 
+configure_role_environment() {
+  local role="$1"
+  role_env=(--env "HLASIMSE_PROCESS_ROLE=${role}")
+  case "${role}" in
+    preflight)
+      role_env+=("${smtp_env[@]}" "${expo_env[@]}")
+      ;;
+    web | email-outbox)
+      role_env+=("${smtp_env[@]}")
+      ;;
+    alert-outbox | push-receipts)
+      role_env+=("${expo_env[@]}")
+      ;;
+    deadline-sweeper | safety-reconciliation | safety-metrics | session-cleanup | delivery-monitor | migration)
+      ;;
+    *)
+      echo "Unsupported container-gate process role: ${role}" >&2
+      exit 1
+      ;;
+  esac
+}
+
 run_manage() {
+  local role="$1"
+  shift
+  configure_role_environment "${role}"
   docker run --rm \
     "${runtime_security[@]}" \
     "${production_env[@]}" \
+    "${role_env[@]}" \
     --entrypoint python \
     "${image_ref}" manage.py "$@"
 }
 
 run_worker() {
   local name="$1"
-  shift
+  local role="$2"
+  shift 2
+  configure_role_environment "${role}"
   docker run --detach --name "${name}" \
     "${runtime_security[@]}" \
     "${production_env[@]}" \
+    "${role_env[@]}" \
     --entrypoint python \
     "${image_ref}" manage.py "$@" >/dev/null
 }
@@ -134,16 +186,19 @@ if [[ "${configured_user}" != "10001:10001" ]]; then
   exit 1
 fi
 
-run_manage makemigrations --check --dry-run
-run_manage check --deploy
-run_manage migrate --noinput
-run_manage createcachetable
-run_manage migrate --check
-run_manage collectstatic --noinput --dry-run
+run_manage migration makemigrations --check --dry-run
+run_manage preflight check --deploy
+run_manage migration migrate --noinput
+run_manage migration createcachetable
+run_manage migration migrate --check
+run_manage migration collectstatic --noinput --dry-run
+run_manage session-cleanup purge_expired_sessions --batch-size 1000
 
+configure_role_environment web
 docker run --detach --name "${web_name}" \
   "${runtime_security[@]}" \
   "${production_env[@]}" \
+  "${role_env[@]}" \
   "${image_ref}" >/dev/null
 
 web_ready=false
@@ -162,12 +217,12 @@ if [[ "${web_ready}" != "true" ]]; then
   exit 1
 fi
 
-run_worker "${worker_names[0]}" sweep_deadlines --watch --poll-interval 1
-run_worker "${worker_names[1]}" process_outbox --watch --queue alert --poll-interval 0.25
-run_worker "${worker_names[2]}" process_outbox --watch --queue email --poll-interval 0.25
-run_worker "${worker_names[3]}" fetch_push_receipts --watch --poll-interval 1 --error-backoff 1
-run_worker "${worker_names[4]}" reconcile_safety_state --repair --fail-on-gaps --watch --poll-interval 1
-run_worker "${worker_names[5]}" emit_safety_metrics --watch --poll-interval 1 --heartbeat-max-age-seconds 30
+run_worker "${worker_names[0]}" deadline-sweeper sweep_deadlines --watch --poll-interval 1
+run_worker "${worker_names[1]}" alert-outbox process_outbox --watch --queue alert --poll-interval 0.25
+run_worker "${worker_names[2]}" email-outbox process_outbox --watch --queue email --poll-interval 0.25
+run_worker "${worker_names[3]}" push-receipts fetch_push_receipts --watch --poll-interval 1 --error-backoff 1
+run_worker "${worker_names[4]}" safety-reconciliation reconcile_safety_state --repair --fail-on-gaps --watch --poll-interval 1
+run_worker "${worker_names[5]}" safety-metrics emit_safety_metrics --watch --poll-interval 1 --heartbeat-max-age-seconds 30
 
 workers_healthy=false
 for _ in $(seq 1 30); do
@@ -178,7 +233,7 @@ for _ in $(seq 1 30); do
       docker logs "${name}" >&2
     fi
   done
-  if [[ "${all_running}" == "true" ]] && run_manage check_delivery_health \
+  if [[ "${all_running}" == "true" ]] && run_manage delivery-monitor check_delivery_health \
     --heartbeat-max-age-seconds 30 >/dev/null 2>&1; then
     workers_healthy=true
     break
@@ -186,12 +241,12 @@ for _ in $(seq 1 30); do
   sleep 1
 done
 if [[ "${workers_healthy}" != "true" ]]; then
-  run_manage check_delivery_health --heartbeat-max-age-seconds 30 || true
+  run_manage delivery-monitor check_delivery_health --heartbeat-max-age-seconds 30 || true
   echo "Production worker topology did not reach healthy delivery state" >&2
   exit 1
 fi
 
-run_worker "${worker_names[6]}" check_delivery_health --watch --poll-interval 1 \
+run_worker "${worker_names[6]}" delivery-monitor check_delivery_health --watch --poll-interval 1 \
   --heartbeat-max-age-seconds 30
 sleep 2
 if [[ "$(docker inspect --format '{{.State.Running}}' "${worker_names[6]}")" != "true" ]]; then

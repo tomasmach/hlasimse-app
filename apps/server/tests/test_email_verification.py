@@ -53,7 +53,6 @@ def _challenge(email=REGISTRATION["email"]):
     return EmailVerificationChallenge.objects.get(user__email=email)
 
 
-@override_settings(LEGAL_TERMS_VERSION="2026-07-21-api-v1")
 def test_trusted_manager_is_verified_but_public_registration_is_not(api_client):
     trusted = User.objects.create_user(
         email="fixture@example.cz", password="A-strong-unique-password-123"
@@ -67,7 +66,7 @@ def test_trusted_manager_is_verified_but_public_registration_is_not(api_client):
     assert response.data["verification_required"] is True
     public_user = User.objects.get(email=REGISTRATION["email"])
     assert public_user.email_verified_at is None
-    assert public_user.terms_version == "2026-07-21-api-v1"
+    assert public_user.terms_version == "test-terms-v1"
     assert public_user.terms_accepted_at is not None
     assert public_user.terms_accepted_at >= accepted_after
     assert OutboxEvent.objects.filter(event_type="user.email_verification").count() == 1
@@ -93,7 +92,17 @@ def test_public_registration_requires_explicit_terms_acceptance(api_client, valu
     assert not OutboxEvent.objects.filter(event_type="user.email_verification").exists()
 
 
-@override_settings(LEGAL_TERMS_VERSION="2026-07-21-api-v1")
+@override_settings(LEGAL_DOCUMENTS=None)
+def test_api_registration_is_fail_closed_without_published_legal_documents(api_client):
+    response = _register(api_client)
+
+    assert response.status_code == 503
+    assert response["Retry-After"] == "86400"
+    assert response.data["error"]["code"] == "legal_documents_unavailable"
+    assert not User.objects.filter(email=REGISTRATION["email"]).exists()
+    assert not OutboxEvent.objects.filter(event_type="user.email_verification").exists()
+
+
 def test_registration_replay_is_non_enumerating_and_keeps_valid_challenge(api_client):
     first = _register(api_client)
     challenge = _challenge()
@@ -314,6 +323,18 @@ def test_verification_email_uses_outbox_stable_message_id_and_minimal_content(ap
     assert "/ucet/overeni-emailu/" in message.body
     assert message.extra_headers["Message-ID"] == f"<email-verification-{event.id}@hlasim.se>"
     assert len(message.alternatives) == 1
+
+
+def test_verification_message_id_uses_configured_sender_domain(api_client, settings):
+    settings.EMAIL_MESSAGE_ID_DOMAIN = "mail.hlasimse.cz"
+    _register(api_client)
+    event = OutboxEvent.objects.get(event_type="user.email_verification")
+
+    assert process_one_outbox_event()
+
+    assert mail.outbox[0].extra_headers["Message-ID"] == (
+        f"<email-verification-{event.id}@mail.hlasimse.cz>"
+    )
 
 
 def test_verification_outbox_retries_and_deleted_account_is_terminal(api_client, monkeypatch):

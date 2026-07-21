@@ -1,0 +1,6 @@
+{
+  "kind": "terms",
+  "version": "test-terms-v1",
+  "title": "Testovací podmínky používání",
+  "content": "TENTO DOKUMENT JE POUZE AUTOMATIZOVANÁ TESTOVACÍ FIXTURE A NESMÍ BÝT ZVEŘEJNĚN. Umožňuje testům ověřit, že registrace přijímá právě verzi navázanou na neměnný obsah, že změna jediného bajtu poruší kontrolu SHA-256 a že nevalidní dokument zablokuje registraci. Nejde o právní dokument, nabídku služby ani souhlas pro skutečného uživatele. Produkční prostředí musí použít samostatný právně schválený soubor s přesným SHA-256 digestem."
+}

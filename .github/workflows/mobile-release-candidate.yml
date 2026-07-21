@@ -34,6 +34,9 @@ jobs:
       - name: Reject draft or incomplete store material
         run: npm run check:store-release-pack
 
+      - name: Require complete release evidence
+        run: npm run check:release-readiness
+
   android-candidate:
     name: Android release AAB audit
     runs-on: ubuntu-latest

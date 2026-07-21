@@ -73,6 +73,18 @@ def test_invitation_email_is_sent_to_normalized_recipient_without_secrets(profil
 
 
 @pytest.mark.django_db
+def test_invitation_message_id_uses_configured_sender_domain(profile, settings):
+    settings.EMAIL_MESSAGE_ID_DOMAIN = "mail.hlasimse.cz"
+    _invitation_record, _raw_token, event = _invitation(profile)
+
+    assert process_one_outbox_event()
+
+    assert mail.outbox[0].extra_headers["Message-ID"] == (
+        f"<guardian-invitation-{event.id}@mail.hlasimse.cz>"
+    )
+
+
+@pytest.mark.django_db
 def test_smtp_failure_retries_then_dead_letters_without_escaping_worker(profile, monkeypatch):
     _invitation_record, _raw_token, event = _invitation(profile)
 

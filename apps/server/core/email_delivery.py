@@ -50,7 +50,9 @@ def send_guardian_invitation_email(*, invitation: GuardianInvitation, event: Out
         from_email=settings.DEFAULT_FROM_EMAIL,
         to=[invitation.normalized_email],
         connection=get_connection(fail_silently=False),
-        headers={"Message-ID": f"<guardian-invitation-{event.id}@hlasim.se>"},
+        headers={
+            "Message-ID": (f"<guardian-invitation-{event.id}@{settings.EMAIL_MESSAGE_ID_DOMAIN}>")
+        },
     )
     message.attach_alternative(html_body, "text/html")
     try:
@@ -88,7 +90,9 @@ def send_verification_email(*, challenge: EmailVerificationChallenge, event: Out
         from_email=settings.DEFAULT_FROM_EMAIL,
         to=[challenge.user.email],
         connection=get_connection(fail_silently=False),
-        headers={"Message-ID": f"<email-verification-{event.id}@hlasim.se>"},
+        headers={
+            "Message-ID": (f"<email-verification-{event.id}@{settings.EMAIL_MESSAGE_ID_DOMAIN}>")
+        },
     )
     message.attach_alternative(html_body, "text/html")
     try:

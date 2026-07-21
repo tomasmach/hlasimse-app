@@ -1,6 +1,5 @@
 from datetime import timedelta
 
-from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError as DjangoValidationError
@@ -11,6 +10,7 @@ from drf_spectacular.utils import extend_schema_field
 from rest_framework import serializers
 
 from .audit import record_audit_event
+from .legal_documents import require_configured_legal_documents
 from .models import (
     AlertAcknowledgement,
     AlertIncident,
@@ -55,9 +55,10 @@ class RegisterSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
+        legal_documents = require_configured_legal_documents()
         validated_data.pop("terms_accepted")
         validated_data["terms_accepted_at"] = timezone.now()
-        validated_data["terms_version"] = settings.LEGAL_TERMS_VERSION
+        validated_data["terms_version"] = legal_documents.terms.version
         try:
             with transaction.atomic():
                 return get_user_model().objects.create_user(**validated_data)

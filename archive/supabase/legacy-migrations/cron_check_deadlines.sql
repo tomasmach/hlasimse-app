@@ -1,17 +1,16 @@
--- Migration: Cron job for deadline checking
--- Run this in Supabase SQL Editor after enabling pg_cron extension
+-- RETIRED — DO NOT RUN.
+--
+-- Historical Supabase scheduler evidence only. Executing this file can activate a second
+-- deadline scheduler and cause duplicate or missed safety incidents. Django/PostgreSQL and
+-- deploy/runtime-contract.json define the only supported runtime.
 
--- Enable pg_cron extension (if not already enabled)
+-- Historical migration: cron job for deadline checking.
 CREATE EXTENSION IF NOT EXISTS pg_cron;
-
--- Enable pg_net extension (required for net.http_post)
 CREATE EXTENSION IF NOT EXISTS pg_net;
 
--- Grant usage to postgres user
 GRANT USAGE ON SCHEMA cron TO postgres;
 GRANT USAGE ON SCHEMA net TO postgres;
 
--- Create cron job to call Edge Function every 5 minutes
 SELECT cron.schedule(
   'check-deadlines-job',
   '*/5 * * * *',
@@ -27,8 +26,8 @@ SELECT cron.schedule(
   $$
 );
 
--- To verify the job is scheduled:
+-- Historical verification query:
 -- SELECT * FROM cron.job;
 
--- To unschedule (if needed):
+-- Historical retirement query:
 -- SELECT cron.unschedule('check-deadlines-job');

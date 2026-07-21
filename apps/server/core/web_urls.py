@@ -1,10 +1,23 @@
 from django.urls import include, path
+from django.views.generic import RedirectView
 
 from . import web_views
 
 core_patterns = (
     [
         path("", web_views.LandingView.as_view(), name="landing"),
+        path("robots.txt", web_views.robots_view, name="robots"),
+        path("sitemap.xml", web_views.sitemap_view, name="sitemap"),
+        path(
+            "ochrana-soukromi.html",
+            RedirectView.as_view(pattern_name="core:privacy", permanent=True),
+            name="privacy-legacy",
+        ),
+        path(
+            "obchodni-podminky.html",
+            RedirectView.as_view(pattern_name="core:terms", permanent=True),
+            name="terms-legacy",
+        ),
         path("prehled/", web_views.DashboardView.as_view(), name="dashboard"),
         path(
             "ochrana-soukromi/",

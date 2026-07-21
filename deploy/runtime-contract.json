@@ -1,0 +1,136 @@
+{
+  "schemaVersion": 1,
+  "service": "hlasimse-server",
+  "deploymentModel": "provider-neutral-oci",
+  "configurationContract": "apps/server/.env.example",
+  "processRoleEnvironmentVariable": "HLASIMSE_PROCESS_ROLE",
+  "providerSecretClasses": ["expo-push", "smtp"],
+  "image": {
+    "referencePolicy": "digest-only",
+    "runAsUser": "10001:10001",
+    "readOnlyRootFilesystem": true,
+    "dropCapabilities": ["ALL"],
+    "noNewPrivileges": true,
+    "terminationGraceSeconds": 40
+  },
+  "network": {
+    "publicRoles": ["web"],
+    "applicationPort": 8000,
+    "tlsTerminatedAtTrustedProxy": true,
+    "directPublicApplicationPortForbidden": true
+  },
+  "roles": [
+    {
+      "id": "web",
+      "kind": "service",
+      "processRole": "web",
+      "requiredProviderSecretClasses": ["smtp"],
+      "command": ["gunicorn", "--config", "config/gunicorn.py", "config.wsgi:application"],
+      "replicas": {"minimum": 2},
+      "failureDomains": {"minimum": 2},
+      "databaseCredentialClass": "runtime",
+      "health": {"kind": "http", "path": "/health/ready/"}
+    },
+    {
+      "id": "deadline-sweeper",
+      "kind": "worker",
+      "processRole": "deadline-sweeper",
+      "requiredProviderSecretClasses": [],
+      "command": ["python", "manage.py", "sweep_deadlines", "--watch", "--poll-interval", "15"],
+      "replicas": {"minimum": 1},
+      "databaseCredentialClass": "runtime",
+      "health": {"kind": "database-heartbeat", "workerName": "deadline_sweeper", "maximumAgeSeconds": 90}
+    },
+    {
+      "id": "alert-outbox",
+      "kind": "worker",
+      "processRole": "alert-outbox",
+      "requiredProviderSecretClasses": ["expo-push"],
+      "command": ["python", "manage.py", "process_outbox", "--watch", "--queue", "alert", "--poll-interval", "0.25"],
+      "replicas": {"minimum": 1},
+      "databaseCredentialClass": "runtime",
+      "health": {"kind": "database-heartbeat", "workerName": "outbox_alerts", "maximumAgeSeconds": 90}
+    },
+    {
+      "id": "email-outbox",
+      "kind": "worker",
+      "processRole": "email-outbox",
+      "requiredProviderSecretClasses": ["smtp"],
+      "command": ["python", "manage.py", "process_outbox", "--watch", "--queue", "email", "--poll-interval", "2"],
+      "replicas": {"minimum": 1},
+      "databaseCredentialClass": "runtime",
+      "health": {"kind": "database-heartbeat", "workerName": "outbox_email", "maximumAgeSeconds": 90}
+    },
+    {
+      "id": "push-receipts",
+      "kind": "worker",
+      "processRole": "push-receipts",
+      "requiredProviderSecretClasses": ["expo-push"],
+      "command": ["python", "manage.py", "fetch_push_receipts", "--watch", "--poll-interval", "30", "--error-backoff", "30"],
+      "replicas": {"minimum": 1},
+      "databaseCredentialClass": "runtime",
+      "health": {"kind": "database-heartbeat", "workerName": "push_receipts", "maximumAgeSeconds": 90}
+    },
+    {
+      "id": "safety-reconciliation",
+      "kind": "worker",
+      "processRole": "safety-reconciliation",
+      "requiredProviderSecretClasses": [],
+      "command": ["python", "manage.py", "reconcile_safety_state", "--repair", "--fail-on-gaps", "--watch", "--poll-interval", "60"],
+      "replicas": {"minimum": 1},
+      "databaseCredentialClass": "runtime",
+      "health": {"kind": "database-heartbeat", "workerName": "safety_reconciliation", "maximumAgeSeconds": 90}
+    },
+    {
+      "id": "safety-metrics",
+      "kind": "singleton-worker",
+      "processRole": "safety-metrics",
+      "requiredProviderSecretClasses": [],
+      "command": ["python", "manage.py", "emit_safety_metrics", "--watch", "--poll-interval", "30", "--heartbeat-max-age-seconds", "90"],
+      "replicas": {"exactly": 1},
+      "databaseCredentialClass": "runtime",
+      "health": {"kind": "external-log-alert"}
+    },
+    {
+      "id": "session-cleanup",
+      "kind": "singleton-worker",
+      "processRole": "session-cleanup",
+      "requiredProviderSecretClasses": [],
+      "command": ["python", "manage.py", "purge_expired_sessions", "--watch", "--batch-size", "1000", "--poll-interval", "86400"],
+      "replicas": {"exactly": 1},
+      "databaseCredentialClass": "runtime",
+      "health": {"kind": "process-and-exit-alert"}
+    },
+    {
+      "id": "delivery-monitor",
+      "kind": "monitor",
+      "processRole": "delivery-monitor",
+      "requiredProviderSecretClasses": [],
+      "command": ["python", "manage.py", "check_delivery_health", "--watch", "--poll-interval", "30", "--heartbeat-max-age-seconds", "90"],
+      "replicas": {"minimum": 1},
+      "databaseCredentialClass": "runtime",
+      "health": {"kind": "process-and-exit-alert", "externalPagingRequired": true}
+    },
+    {
+      "id": "migration",
+      "kind": "release-job",
+      "processRole": "migration",
+      "requiredProviderSecretClasses": [],
+      "commands": [
+        ["python", "manage.py", "migrate", "--noinput"],
+        ["python", "manage.py", "createcachetable"]
+      ],
+      "replicas": {"exactly": 1},
+      "runExactlyOncePerRelease": true,
+      "databaseCredentialClass": "migration-owner",
+      "health": {"kind": "successful-completion"}
+    }
+  ],
+  "preflight": {
+    "processRole": "preflight",
+    "command": ["python", "manage.py", "check", "--deploy"],
+    "databaseCredentialClass": "runtime",
+    "requiredProviderSecretClasses": ["expo-push", "smtp"],
+    "runBeforeEveryRelease": true
+  }
+}

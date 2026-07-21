@@ -22,6 +22,18 @@ One immutable image runs ten process roles:
 | Delivery monitor | `python manage.py check_delivery_health` every 30 seconds | At least 1 plus external paging |
 | Migration job | `python manage.py migrate --noinput && python manage.py createcachetable` | Exactly 1 per release |
 
+The authoritative provider-neutral form of this table is
+[`deploy/runtime-contract.json`](../../deploy/runtime-contract.json). Validate it after every role,
+command, health-check, replica, network, database-credential, or shutdown change:
+
+```bash
+node scripts/release/validate-runtime-contract.mjs
+node --test scripts/release/validate-runtime-contract.test.mjs
+```
+
+The contract is not a hosting manifest and contains no provider credentials. A deployment adapter
+must preserve every validated invariant and select the already scanned server image by digest.
+
 The image runs as UID/GID 10001, has no writable application filesystem, drops Linux capabilities,
 and contains pre-collected fingerprinted static assets. Gunicorn and every worker must receive
 `SIGTERM` and at least 40 seconds to stop. Do not run migrations automatically from web or worker
@@ -30,7 +42,7 @@ startup; multiple replicas must never race schema deployment.
 The edge proxy/load balancer must terminate TLS, overwrite (not append) `X-Forwarded-Proto`, and be
 the only network path to port 8000. Set `GUNICORN_FORWARDED_ALLOW_IPS` to the proxy network or exact
 proxy IPs; never use `*` on a publicly reachable container. The application defaults to HTTPS
-redirects, secure cookies, one-year HSTS, and manifest-backed static files when
+redirects, secure cookies, an explicitly staged HSTS policy, and manifest-backed static files when
 `DJANGO_DEBUG=false`.
 
 Gunicorn raw access logs are intentionally disabled because verification and password-reset secrets
@@ -88,6 +100,32 @@ may retain a pseudonymous user identifier even though they can no longer authent
 Inject configuration from the deployment platform's secret manager. Never bake it into the image,
 Compose file, CI logs, shell history, or repository.
 
+Every process with `DJANGO_DEBUG=false` must set `HLASIMSE_PROCESS_ROLE` to one exact value from
+this matrix. Startup fails when a required provider secret is missing and also when an unrelated
+role receives an Expo token or SMTP credentials. `preflight` is the deliberate exception: it
+receives both credential classes so `python manage.py check --deploy` validates the complete
+release configuration before rollout.
+
+| Process role | Provider secrets allowed and required |
+| --- | --- |
+| `web` | SMTP |
+| `email-outbox` | SMTP |
+| `alert-outbox` | `EXPO_ACCESS_TOKEN` |
+| `push-receipts` | `EXPO_ACCESS_TOKEN` |
+| `preflight` | SMTP and `EXPO_ACCESS_TOKEN` |
+| `deadline-sweeper` | None |
+| `safety-reconciliation` | None |
+| `safety-metrics` | None |
+| `session-cleanup` | None |
+| `delivery-monitor` | None |
+| `migration` | None |
+
+The production-like Compose interpolation file contains both provider credential classes because
+Compose resolves the file centrally, but each service's `environment` map exposes only its row in
+the matrix. Run the explicit preflight before migration with
+`docker compose -f compose.production.yml --profile ops run --rm preflight`. Never attach the whole
+interpolation environment directly to a container.
+
 - `DJANGO_SECRET_KEY`: unique, random, at least 50 characters.
 - `DJANGO_ALLOWED_HOSTS`: exact public hostnames.
 - `DATABASE_URL`: PostgreSQL connection with `sslmode=require`, `verify-ca`, or preferably
@@ -98,13 +136,19 @@ Compose file, CI logs, shell history, or repository.
   and 15 s. Override the statement budget per process role only after measuring that role; never
   remove the limits. Lock timeout must not exceed statement timeout.
 - `APP_BASE_URL`: canonical HTTPS web origin.
+- `LEGAL_PRIVACY_VERSION`, `LEGAL_PRIVACY_DOCUMENT_PATH`, and
+  `LEGAL_PRIVACY_DOCUMENT_SHA256`: immutable identifier, readable JSON document path, and exact
+  lowercase SHA-256 of the approved privacy document.
 - `LEGAL_TERMS_VERSION`: immutable identifier of the exact published terms accepted by new
   registrations. Change it whenever the approved terms content changes; never reuse a version for
-  different text. The database stores this identifier with the acceptance timestamp.
+  different text. The database stores this identifier with the acceptance timestamp. Pair it with
+  `LEGAL_TERMS_DOCUMENT_PATH` and `LEGAL_TERMS_DOCUMENT_SHA256` for the approved JSON document.
 - `EMAIL_HOST`, `EMAIL_PORT`, `EMAIL_HOST_USER`, `EMAIL_HOST_PASSWORD`, `EMAIL_USE_TLS` or
-  `EMAIL_USE_SSL`, `DEFAULT_FROM_EMAIL`, `SERVER_EMAIL`.
+  `EMAIL_USE_SSL`, `DEFAULT_FROM_EMAIL`, `SERVER_EMAIL`: inject SMTP credentials only into the
+  three SMTP roles in the matrix.
 - `EXPO_ACCESS_TOKEN`: production Expo access token; enhanced push security must be enabled for the
-  project so unauthenticated submissions are rejected.
+  project so unauthenticated submissions are rejected. Inject it only into the three Expo roles in
+  the matrix.
 - `GUNICORN_FORWARDED_ALLOW_IPS`: trusted proxy addresses/CIDRs supported by Gunicorn.
 - `WEB_TRUSTED_PROXY_CIDRS`: exact internal proxy addresses/CIDRs that may supply
   `X-Forwarded-For` for web authentication rate limits. Leave empty only when Gunicorn receives
@@ -118,6 +162,39 @@ least two failure domains. These are release blockers until a provider and an on
 loopback-only rehearsal topology and are restricted in code to hosts named `postgres` and `mailpit`.
 Never set them on a hosted deployment. The Django admin URL is intentionally absent in production;
 operator actions must use reviewed, audited management procedures rather than a public admin panel.
+
+## Immutable legal documents
+
+Privacy and terms are deployment inputs, not editable database content. Each file must be UTF-8 JSON
+with exactly the intended public text represented by these required fields:
+
+```json
+{
+  "kind": "terms",
+  "version": "2026-07-21-v1",
+  "title": "Podmínky používání",
+  "content": "The complete legally approved plain-text document"
+}
+```
+
+Use `kind: "privacy"` for the privacy file. The configured version must exactly equal the file's
+`version`. Compute the digest from the final bytes without rewriting the file afterwards:
+
+```bash
+shasum -a 256 /absolute/path/to/privacy.json
+shasum -a 256 /absolute/path/to/terms.json
+```
+
+Mount both files read-only into every web, worker, migration, and operational process using the same
+paths and digests. Django startup fails in production if a path, version, digest, JSON field, or
+substantive body is absent or mismatched. In development an invalid configuration keeps both legal
+URLs and web/API registration fail-closed with HTTP 503. Legal text is rendered as escaped plain
+text; do not place HTML, scripts, templates, secrets, or per-environment credentials in these files.
+
+Changing either document requires legal approval, a new immutable version, a new digest, an update
+to the store release pack, and a reviewed deployment. Preserve the exact previous file and digest in
+the restricted release evidence needed to interpret historical acceptance records. Never change a
+file in place while reusing its version.
 
 ## Local production-like rehearsal
 
@@ -218,22 +295,23 @@ the prior compatible image against the forward schema instead of reversing the d
    on-call coverage, and no unresolved incident.
 2. Build the image once, scan it, sign it, and promote the same image digest through environments.
 3. Take and verify a pre-deployment database backup.
-4. Run `python manage.py migrate --plan`, review the plan, then run exactly one
+4. Run the `preflight` role with both provider credential classes and require
+   `python manage.py check --deploy` to pass before any mutation or rollout.
+5. Run `python manage.py migrate --plan`, review the plan, then run exactly one
    `python manage.py migrate --noinput` job using the new image. Run
    `python manage.py createcachetable` in the same job; it is idempotent and creates the shared
    throttle cache table when absent.
-5. Run `python manage.py migrate --check` and `python manage.py check --deploy` with production
-   configuration.
-6. Roll web replicas gradually. Require readiness success before routing traffic and retain old
+6. Run `python manage.py migrate --check` with the `migration` role.
+7. Roll web replicas gradually. Require readiness success before routing traffic and retain old
    healthy replicas until the new cohort is stable.
-7. Roll the alert-outbox worker first, then email-outbox, push-receipt, and safety-reconciliation
+8. Roll the alert-outbox worker first, then email-outbox, push-receipt, and safety-reconciliation
    workers. Confirm all four heartbeats. The alert worker must retain its dedicated queue and
    sub-second idle poll.
-8. Roll the deadline sweeper last. Confirm all five workers and delivery queues with
+9. Roll the deadline sweeper last. Confirm all five workers and delivery queues with
    `python manage.py check_delivery_health` after at least 90 seconds.
-9. Exercise registration, check-in, guardian invitation, incident notification, acknowledgement,
+10. Exercise registration, check-in, guardian invitation, incident notification, acknowledgement,
    resolution, password reset, and account export in the production smoke-test accounts.
-10. Monitor error rate, latency, database saturation, worker heartbeat age, retry queues, dead
+11. Monitor error rate, latency, database saturation, worker heartbeat age, retry queues, dead
     letters, and provider receipts continuously through the rollback window.
 
 Never run `collectstatic` independently on mutable production replicas. It is performed during the
@@ -268,51 +346,44 @@ loss, `DROP`, or irreversible operations during an incident.
 
 The production database provider must supply encrypted automated backups and point-in-time recovery.
 In addition, rehearse a logical PostgreSQL backup at least quarterly and before destructive schema
-work. For the local Compose database:
+work. The repository helper requires `pg_dump` and `age` and encrypts the stream before writing any
+bytes to persistent storage. Create a private output directory, use an approved recipient, and
+prefer a passwordless short-lived database identity or `PGPASSFILE` over a password inside the URL:
 
 ```bash
-mkdir -p backups
-chmod 700 backups
-BACKUP_FILE="backups/hlasimse-$(date -u +%Y%m%dT%H%M%SZ).dump"
-docker compose --env-file apps/server/.env.compose.local -f compose.production.yml exec -T postgres \
-  sh -eu -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_dump --format=custom --compress=9 --no-owner --no-acl --username="$POSTGRES_USER" --dbname="$POSTGRES_DB"' \
-  > "$BACKUP_FILE"
-test -s "$BACKUP_FILE"
-shasum -a 256 "$BACKUP_FILE"
+install -d -m 700 /absolute/restricted/backup-output
+DATABASE_URL='postgresql://backup-role@database.example.cz/hlasimse?sslmode=verify-full' \
+AGE_RECIPIENT='age1...' \
+BACKUP_OUTPUT_DIR=/absolute/restricted/backup-output \
+bash scripts/ops/backup-postgres-encrypted.sh
 ```
 
-Record the filename and SHA-256 checksum in the restricted operations log. Encrypt the backup before
-moving it off the protected operator machine.
+Record both generated paths, the image/schema version, start/end time and recovery point in the
+restricted operations log. The helper never creates a plaintext dump. Copy the encrypted file and
+its checksum through independently access-controlled backup storage and test access-key rotation.
 
-Restore only into a disposable database, never over the live database. Set `BACKUP_FILE` to exactly
-one verified dump first:
-
-```bash
-export BACKUP_FILE=/absolute/path/to/verified.dump
-test -f "$BACKUP_FILE"
-docker compose --env-file apps/server/.env.compose.local -f compose.production.yml exec -T postgres \
-  sh -eu -c 'test "$POSTGRES_DB" != hlasimse_restore_rehearsal; PGPASSWORD="$POSTGRES_PASSWORD" dropdb --if-exists --username="$POSTGRES_USER" hlasimse_restore_rehearsal; PGPASSWORD="$POSTGRES_PASSWORD" createdb --username="$POSTGRES_USER" hlasimse_restore_rehearsal'
-docker compose --env-file apps/server/.env.compose.local -f compose.production.yml exec -T postgres \
-  sh -eu -c 'PGPASSWORD="$POSTGRES_PASSWORD" pg_restore --exit-on-error --no-owner --no-acl --username="$POSTGRES_USER" --dbname=hlasimse_restore_rehearsal' \
-  < "$BACKUP_FILE"
-docker compose --env-file apps/server/.env.compose.local -f compose.production.yml exec -T postgres \
-  sh -eu -c 'PGPASSWORD="$POSTGRES_PASSWORD" psql --no-psqlrc --set=ON_ERROR_STOP=1 --username="$POSTGRES_USER" --dbname=hlasimse_restore_rehearsal --command="SELECT COUNT(*) AS applied_migrations FROM django_migrations;"'
-```
-
-Create a private environment file whose `DATABASE_URL` ends in `/hlasimse_restore_rehearsal`, then
-run application-level validation against the restored copy:
+Restore only into a separately created, empty disposable database whose name ends in
+`_restore_rehearsal`; never grant the script a production database URL. The restore helper verifies
+the encrypted artifact checksum and connected database name before decrypting directly into
+`pg_restore`, then checks migrations, Django deployment settings, PostgreSQL constraint validation,
+and emits aggregate critical-table counts. Run it from a shell that already contains the complete
+production-shaped non-database configuration, including the `preflight` process role, provider
+credentials and immutable legal-document mounts; only the database URL may point to the isolated
+rehearsal target:
 
 ```bash
-docker compose --env-file apps/server/.env.restore.local -f compose.production.yml run --rm web python manage.py migrate --check
-docker compose --env-file apps/server/.env.restore.local -f compose.production.yml run --rm web python manage.py check --deploy
+ENCRYPTED_BACKUP_FILE=/absolute/restricted/hlasimse-UTC.dump.age \
+BACKUP_SHA256_FILE=/absolute/restricted/hlasimse-UTC.dump.age.sha256 \
+AGE_IDENTITY_FILE=/absolute/restricted/restore-identity.txt \
+RESTORE_DATABASE_URL='postgresql://restore-role@database.example.cz/hlasimse_restore_rehearsal?sslmode=verify-full' \
+RESTORE_EXPECTED_DATABASE=hlasimse_restore_rehearsal \
+HLASIMSE_PROCESS_ROLE=preflight \
+bash scripts/ops/restore-and-verify-encrypted-backup.sh
 ```
 
 Verify representative counts and the safety-critical relationships among profiles, guardians,
 incidents, recipients, outbox events, delivery attempts, and worker heartbeats. Measure and record
-backup duration, restore duration, recovery point, integrity results, and whether they meet the
-selected RPO/RTO. Remove only the disposable rehearsal database after review:
-
-```bash
-docker compose --env-file apps/server/.env.compose.local -f compose.production.yml exec -T postgres \
-  sh -eu -c 'test "$POSTGRES_DB" != hlasimse_restore_rehearsal; PGPASSWORD="$POSTGRES_PASSWORD" dropdb --username="$POSTGRES_USER" hlasimse_restore_rehearsal'
-```
+backup duration, restore duration, recovery point, integrity results, time-aware incident
+reconciliation, and whether they meet the selected RPO/RTO. The helper deliberately does not drop
+the rehearsal database; a second operator must review the evidence before an explicit provider-side
+cleanup.

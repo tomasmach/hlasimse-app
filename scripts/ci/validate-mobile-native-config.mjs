@@ -43,12 +43,34 @@ const expectedBlockedPermissions = [
   "android.permission.SYSTEM_ALERT_WINDOW",
   "android.permission.READ_EXTERNAL_STORAGE",
   "android.permission.WRITE_EXTERNAL_STORAGE",
+  "android.permission.USE_BIOMETRIC",
+  "android.permission.USE_FINGERPRINT",
 ];
 assert.deepEqual(
   expo.android.blockedPermissions,
   expectedBlockedPermissions,
   "Android must keep unused overlay and legacy storage permissions blocked",
 );
+
+assert.equal(expo.ios.bundleIdentifier, "cz.tomasmach.hlasimse");
+assert.equal(expo.android.package, "cz.tomasmach.hlasimse");
+
+const secureStorePlugin = expo.plugins.find(
+  (plugin) => Array.isArray(plugin) && plugin[0] === "expo-secure-store",
+);
+assert.equal(
+  secureStorePlugin?.[1]?.faceIDPermission,
+  false,
+  "iOS must not claim unused Face ID access",
+);
+
+const locationPlugin = expo.plugins.find(
+  (plugin) => Array.isArray(plugin) && plugin[0] === "expo-location",
+);
+assert.equal(locationPlugin?.[1]?.locationAlwaysAndWhenInUsePermission, false);
+assert.equal(locationPlugin?.[1]?.locationAlwaysPermission, false);
+assert.equal(locationPlugin?.[1]?.motionUsagePermission, false);
+assert.match(locationPlugin?.[1]?.locationWhenInUsePermission ?? "", /voliteln/);
 
 console.log(
   `Validated ${expectedPrivacyTypes.length} iOS privacy declarations and ${expectedBlockedPermissions.length} Android blocked permissions.`,

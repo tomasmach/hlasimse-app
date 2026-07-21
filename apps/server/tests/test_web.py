@@ -62,7 +62,64 @@ def test_public_pages_render_and_private_page_requires_session(client):
     assert reverse("accounts:login") in response.url
 
 
-@override_settings(LEGAL_TERMS_VERSION="2026-07-21-web-v1")
+@pytest.mark.parametrize(
+    ("legacy_path", "target"),
+    [
+        ("/ochrana-soukromi.html", "core:privacy"),
+        ("/obchodni-podminky.html", "core:terms"),
+    ],
+)
+def test_legacy_legal_urls_redirect_permanently(client, legacy_path, target):
+    response = client.get(legacy_path)
+    assert response.status_code == 301
+    assert response.url == reverse(target)
+
+
+def test_robots_and_sitemap_expose_only_public_contract(client):
+    robots = client.get(reverse("core:robots"))
+    assert robots.status_code == 200
+    assert robots["Content-Type"].startswith("text/plain")
+    assert "Allow: /ucet/smazat/" in robots.content.decode()
+    assert "Disallow: /ucet/" in robots.content.decode()
+    assert "Sitemap: http://localhost:8000/sitemap.xml" in robots.content.decode()
+
+    sitemap = client.get(reverse("core:sitemap"))
+    content = sitemap.content.decode()
+    assert sitemap.status_code == 200
+    assert sitemap["Content-Type"].startswith("application/xml")
+    assert "http://localhost:8000/ochrana-soukromi/" in content
+    assert "http://localhost:8000/obchodni-podminky/" in content
+    assert "http://localhost:8000/ucet/smazat/" in content
+    assert "/prehled/" not in content
+
+
+@override_settings(
+    ALLOWED_HOSTS=["testserver", "alias.example.cz"],
+    APP_BASE_URL="https://app.example.cz",
+)
+def test_public_metadata_uses_canonical_origin_not_request_host(client):
+    landing = client.get(reverse("core:landing"), HTTP_HOST="alias.example.cz")
+    robots = client.get(reverse("core:robots"), HTTP_HOST="alias.example.cz")
+    sitemap = client.get(reverse("core:sitemap"), HTTP_HOST="alias.example.cz")
+
+    assert 'rel="canonical" href="https://app.example.cz/"' in landing.content.decode()
+    assert "Sitemap: https://app.example.cz/sitemap.xml" in robots.content.decode()
+    assert "https://app.example.cz/ochrana-soukromi/" in sitemap.content.decode()
+    assert "alias.example.cz" not in sitemap.content.decode()
+
+
+@override_settings(
+    SECURE_HSTS_SECONDS=3600,
+    SECURE_HSTS_INCLUDE_SUBDOMAINS=False,
+    SECURE_HSTS_PRELOAD=False,
+)
+def test_secure_responses_emit_the_staged_hsts_policy(client):
+    response = client.get(reverse("core:landing"), secure=True)
+
+    assert response.status_code == 200
+    assert response["Strict-Transport-Security"] == "max-age=3600"
+
+
 def test_registration_requires_terms_and_redirects_to_verification(client):
     payload = {
         "email": "new@example.cz",
@@ -82,7 +139,7 @@ def test_registration_requires_terms_and_redirects_to_verification(client):
     assert "_auth_user_id" not in client.session
     created_user = User.objects.get(email="new@example.cz")
     assert created_user.email_verified_at is None
-    assert created_user.terms_version == "2026-07-21-web-v1"
+    assert created_user.terms_version == "test-terms-v1"
     assert created_user.terms_accepted_at is not None
 
 
@@ -108,6 +165,7 @@ def test_password_reset_uses_non_enumerating_flow_and_sends_namespaced_link(clie
     assert unknown.status_code == 302
     assert known.url == unknown.url == reverse("accounts:password_reset_done")
     assert len(mail.outbox) == 1
+    assert django_settings.APP_BASE_URL in mail.outbox[0].body
     assert "/ucet/obnova-hesla/" in mail.outbox[0].body
 
 
@@ -117,7 +175,7 @@ def test_emailed_web_password_reset_revokes_all_refresh_tokens(client, user):
 
     requested = client.post(reverse("accounts:password_reset"), {"email": user.email})
     reset_url = next(word for word in mail.outbox[0].body.split() if word.startswith("http"))
-    reset_path = reset_url.removeprefix("http://testserver")
+    reset_path = reset_url.removeprefix(django_settings.APP_BASE_URL)
     token_redirect = client.get(reset_path)
     confirmed = client.post(
         token_redirect.url,
@@ -916,6 +974,7 @@ def test_successful_push_receipt_never_claims_device_delivery(client, profile, o
     assert "potvrdil doručení" not in content
 
 
+@override_settings(LEGAL_DOCUMENTS=None)
 @pytest.mark.parametrize("route_name", ["core:privacy", "core:terms"])
 def test_legal_placeholders_are_explicit_non_indexable_release_blockers(client, route_name):
     response = client.get(reverse(route_name))
@@ -924,6 +983,45 @@ def test_legal_placeholders_are_explicit_non_indexable_release_blockers(client, 
     assert response["Cache-Control"] == "no-store"
     assert response["X-Robots-Tag"] == "noindex, nofollow"
     assert "Blokuje veřejné vydání" in response.content.decode()
+
+
+@pytest.mark.parametrize(
+    ("route_name", "document_name"),
+    [("core:privacy", "privacy"), ("core:terms", "terms")],
+)
+def test_published_legal_documents_are_served_with_version_and_safe_headers(
+    client, route_name, document_name
+):
+    response = client.get(reverse(route_name))
+
+    assert response.status_code == 200
+    assert response["Cache-Control"] == "public, max-age=300, must-revalidate"
+    assert response["X-Content-Type-Options"] == "nosniff"
+    assert "Cookie" in response["Vary"]
+    document = getattr(django_settings.LEGAL_DOCUMENTS, document_name)
+    content = response.content.decode()
+    assert document.title in content
+    assert document.version in content
+    assert "AUTOMATIZOVANÁ TESTOVACÍ FIXTURE" in content
+
+
+@override_settings(LEGAL_DOCUMENTS=None)
+def test_web_registration_is_fail_closed_without_published_legal_documents(client):
+    response = client.post(
+        reverse("accounts:register"),
+        {
+            "email": "blocked@example.cz",
+            "first_name": "Alena",
+            "password1": "A-strong-unique-password-123",
+            "password2": "A-strong-unique-password-123",
+            "terms": "on",
+        },
+    )
+
+    assert response.status_code == 503
+    assert response["Cache-Control"] == "no-store"
+    assert response["X-Robots-Tag"] == "noindex, nofollow"
+    assert not User.objects.filter(email="blocked@example.cz").exists()
 
 
 def test_account_deletion_instructions_are_public_without_exposing_account_data(client):

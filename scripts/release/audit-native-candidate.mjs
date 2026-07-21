@@ -142,6 +142,9 @@ async function main() {
       privacy.NSPrivacyAccessedAPITypes,
       "NSPrivacyAccessedAPIType",
     );
+    const generatedUsageDescriptions = Object.keys(info)
+      .filter((key) => /^NS.+UsageDescription$/.test(key))
+      .sort();
 
     check(bundleIds.length > 0 && bundleIds.every((value) => value === expo.ios.bundleIdentifier), "Generated Xcode bundle identifier differs from app.json");
     check(buildNumbers.length > 0 && buildNumbers.every((value) => value === expo.ios.buildNumber), "Generated Xcode build number differs from app.json");
@@ -154,6 +157,11 @@ async function main() {
     check(JSON.stringify(accessed) === JSON.stringify([...policy.iosAppTargetAccessedApiAllowlist].sort()), "Generated iOS app-target accessed-API declarations differ from the reviewed allowlist");
     check(info.NSAppTransportSecurity?.NSAllowsArbitraryLoads === false, "Generated iOS config must disable arbitrary network loads");
     check(info.NSAppTransportSecurity?.NSAllowsLocalNetworking === false, "Generated iOS config must disable local networking");
+    check(
+      JSON.stringify(generatedUsageDescriptions) ===
+        JSON.stringify([...policy.iosUsageDescriptionAllowlist].sort()),
+      "Generated iOS usage descriptions differ from the exact reviewed allowlist",
+    );
 
     evidence = {
       platform: "ios",
@@ -167,6 +175,7 @@ async function main() {
         tracking: privacy.NSPrivacyTracking,
         collectedDataTypes: generatedCollected,
         accessedApiTypes: accessed,
+        usageDescriptions: generatedUsageDescriptions,
       },
       signing: args.archive ? "unsigned-archive-config-inspection-only" : "generated-native-config-only",
       candidateGatePassed: errors.length === 0,

@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% block title %}{{ document.title }} — Hlásím se{% endblock %}
+{% block meta_description %}Aktuální {{ document.title|lower }} služby Hlásím se, verze {{ document.version }}.{% endblock %}
+{% block content %}
+<article class="legal-blocker container" aria-labelledby="legal-title">
+  <div class="legal-blocker__copy">
+    <p class="eyebrow">Platná verze {{ document.version }}</p>
+    <h1 id="legal-title">{{ document.title }}</h1>
+    <div class="legal-document__content">{{ document.content|linebreaks }}</div>
+    <a class="button button--dark" href="{% url 'core:landing' %}">Zpět na úvodní stránku</a>
+  </div>
+  <aside class="emergency-card emergency-card--light">
+    <h2>Potřebujete okamžitou pomoc?</h2>
+    <p>Hlásím se není tísňová služba. V bezprostředním ohrožení volejte <a href="tel:112">112</a> nebo <a href="tel:155">155</a>.</p>
+  </aside>
+</article>
+{% endblock %}

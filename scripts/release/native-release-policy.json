@@ -10,8 +10,6 @@
     "android.permission.POST_NOTIFICATIONS",
     "android.permission.READ_APP_BADGE",
     "android.permission.RECEIVE_BOOT_COMPLETED",
-    "android.permission.USE_BIOMETRIC",
-    "android.permission.USE_FINGERPRINT",
     "android.permission.VIBRATE",
     "android.permission.WAKE_LOCK",
     "${applicationId}.DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION",
@@ -33,5 +31,9 @@
     "me.everything.badger.permission.BADGE_COUNT_READ",
     "me.everything.badger.permission.BADGE_COUNT_WRITE"
   ],
-  "iosAppTargetAccessedApiAllowlist": []
+  "iosAppTargetAccessedApiAllowlist": [],
+  "iosUsageDescriptionAllowlist": [
+    "NSLocationWhenInUseUsageDescription",
+    "NSUserNotificationsUsageDescription"
+  ]
 }

@@ -2,6 +2,7 @@ import ipaddress
 import os
 import re
 from datetime import timedelta
+from email.utils import parseaddr
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
 
@@ -9,6 +10,7 @@ import dj_database_url
 from django.core.exceptions import ImproperlyConfigured, ValidationError
 from django.core.validators import validate_email
 
+from core.legal_documents import LegalDocumentConfigurationError, load_legal_document_set
 from core.versioning import InvalidSemVer, parse_semver
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -36,6 +38,36 @@ def env_int(name: str, *, default: int, minimum: int, maximum: int) -> int:
 
 
 DEBUG = env_bool("DJANGO_DEBUG", default=True)
+
+PRODUCTION_PROCESS_ROLES = frozenset(
+    {
+        "web",
+        "email-outbox",
+        "alert-outbox",
+        "push-receipts",
+        "preflight",
+        "deadline-sweeper",
+        "safety-reconciliation",
+        "safety-metrics",
+        "session-cleanup",
+        "delivery-monitor",
+        "migration",
+    }
+)
+SMTP_PROCESS_ROLES = frozenset({"web", "email-outbox", "preflight"})
+EXPO_PROCESS_ROLES = frozenset({"alert-outbox", "push-receipts", "preflight"})
+raw_process_role = os.getenv("HLASIMSE_PROCESS_ROLE")
+HLASIMSE_PROCESS_ROLE = (
+    raw_process_role if raw_process_role is not None else ("development" if DEBUG else "")
+)
+supported_process_roles = PRODUCTION_PROCESS_ROLES | ({"development"} if DEBUG else set())
+if HLASIMSE_PROCESS_ROLE not in supported_process_roles:
+    supported_values = ", ".join(sorted(supported_process_roles))
+    raise ImproperlyConfigured(
+        "HLASIMSE_PROCESS_ROLE must be one exact supported role: " + supported_values
+    )
+PROCESS_REQUIRES_SMTP = HLASIMSE_PROCESS_ROLE in SMTP_PROCESS_ROLES
+PROCESS_REQUIRES_EXPO = HLASIMSE_PROCESS_ROLE in EXPO_PROCESS_ROLES
 
 
 def mobile_release(platform: str) -> dict[str, object]:
@@ -125,9 +157,30 @@ if not DEBUG and (
     )
 
 allowed_hosts_value = os.getenv("DJANGO_ALLOWED_HOSTS", "" if not DEBUG else "localhost,127.0.0.1")
-ALLOWED_HOSTS = [host.strip() for host in allowed_hosts_value.split(",") if host.strip()]
+ALLOWED_HOSTS = [host.strip().lower() for host in allowed_hosts_value.split(",") if host.strip()]
 if not DEBUG and not ALLOWED_HOSTS:
     raise ImproperlyConfigured("Production requires an explicit DJANGO_ALLOWED_HOSTS")
+exact_hostname_pattern = re.compile(
+    r"(?=.{1,253}\Z)[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?"
+    r"(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*"
+)
+invalid_allowed_hosts = []
+for allowed_host in ALLOWED_HOSTS:
+    if allowed_host.startswith("[") and allowed_host.endswith("]"):
+        try:
+            ipaddress.IPv6Address(allowed_host[1:-1])
+        except ValueError:
+            invalid_allowed_hosts.append(allowed_host)
+    else:
+        try:
+            ipaddress.IPv4Address(allowed_host)
+        except ValueError:
+            if exact_hostname_pattern.fullmatch(allowed_host) is None:
+                invalid_allowed_hosts.append(allowed_host)
+if not DEBUG and invalid_allowed_hosts:
+    raise ImproperlyConfigured(
+        "Production DJANGO_ALLOWED_HOSTS must contain only exact valid hostnames or IP addresses"
+    )
 
 ADMIN_ENABLED = env_bool("DJANGO_ADMIN_ENABLED", default=DEBUG)
 if not DEBUG and ADMIN_ENABLED:
@@ -356,9 +409,22 @@ SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 SECURE_SSL_REDIRECT = env_bool("DJANGO_SECURE_SSL_REDIRECT", default=not DEBUG)
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
-SECURE_HSTS_SECONDS = 31_536_000 if not DEBUG else 0
-SECURE_HSTS_INCLUDE_SUBDOMAINS = not DEBUG
-SECURE_HSTS_PRELOAD = not DEBUG
+raw_hsts_seconds = os.getenv("DJANGO_HSTS_SECONDS")
+if not DEBUG and raw_hsts_seconds is None:
+    raise ImproperlyConfigured("Production requires an explicit DJANGO_HSTS_SECONDS")
+SECURE_HSTS_SECONDS = env_int(
+    "DJANGO_HSTS_SECONDS", default=0 if DEBUG else 3600, minimum=0, maximum=63_072_000
+)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = env_bool("DJANGO_HSTS_INCLUDE_SUBDOMAINS", default=False)
+SECURE_HSTS_PRELOAD = env_bool("DJANGO_HSTS_PRELOAD", default=False)
+if not DEBUG and SECURE_HSTS_SECONDS < 300:
+    raise ImproperlyConfigured("Production DJANGO_HSTS_SECONDS must be at least 300")
+if SECURE_HSTS_INCLUDE_SUBDOMAINS and SECURE_HSTS_SECONDS == 0:
+    raise ImproperlyConfigured("HSTS subdomains require a non-zero HSTS duration")
+if SECURE_HSTS_PRELOAD and (SECURE_HSTS_SECONDS < 31_536_000 or not SECURE_HSTS_INCLUDE_SUBDOMAINS):
+    raise ImproperlyConfigured(
+        "HSTS preload requires at least one year and includeSubDomains after a completed domain audit"
+    )
 X_FRAME_OPTIONS = "DENY"
 SECURE_CONTENT_TYPE_NOSNIFF = True
 SECURE_REFERRER_POLICY = "same-origin"
@@ -386,26 +452,64 @@ LOGGING = {
 EXPO_ACCESS_TOKEN = os.getenv("EXPO_ACCESS_TOKEN", "")
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 EXPO_RECEIPTS_URL = "https://exp.host/--/api/v2/push/getReceipts"
-if not DEBUG and not EXPO_ACCESS_TOKEN:
+if not DEBUG and PROCESS_REQUIRES_EXPO and not EXPO_ACCESS_TOKEN:
     raise ImproperlyConfigured(
-        "Production requires EXPO_ACCESS_TOKEN and Expo enhanced push security"
+        f"Production role {HLASIMSE_PROCESS_ROLE} requires EXPO_ACCESS_TOKEN "
+        "and Expo enhanced push security"
+    )
+if not DEBUG and not PROCESS_REQUIRES_EXPO and EXPO_ACCESS_TOKEN:
+    raise ImproperlyConfigured(
+        f"Production role {HLASIMSE_PROCESS_ROLE} must not receive EXPO_ACCESS_TOKEN"
     )
 
-raw_legal_terms_version = os.getenv("LEGAL_TERMS_VERSION")
-LEGAL_TERMS_VERSION = (raw_legal_terms_version or "development-unpublished").strip()
-if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", LEGAL_TERMS_VERSION):
-    raise ImproperlyConfigured(
-        "LEGAL_TERMS_VERSION must be a stable 1-64 character identifier using only "
-        "letters, numbers, dots, underscores, and hyphens"
+
+def legal_version(name: str, *, development_default: str) -> tuple[str | None, str]:
+    raw_value = os.getenv(name)
+    value = (raw_value or development_default).strip()
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,63}", value):
+        raise ImproperlyConfigured(
+            f"{name} must be a stable 1-64 character identifier using only "
+            "letters, numbers, dots, underscores, and hyphens"
+        )
+    if not DEBUG and (
+        not raw_value
+        or any(
+            marker in value.casefold()
+            for marker in ("draft", "placeholder", "unpublished", "development", "latest")
+        )
+    ):
+        raise ImproperlyConfigured(f"Production requires an explicit finalized {name}")
+    return raw_value, value
+
+
+raw_legal_terms_version, LEGAL_TERMS_VERSION = legal_version(
+    "LEGAL_TERMS_VERSION", development_default="development-unpublished"
+)
+raw_legal_privacy_version, LEGAL_PRIVACY_VERSION = legal_version(
+    "LEGAL_PRIVACY_VERSION", development_default="development-unpublished"
+)
+LEGAL_TERMS_DOCUMENT_PATH = os.getenv("LEGAL_TERMS_DOCUMENT_PATH", "").strip()
+LEGAL_TERMS_DOCUMENT_SHA256 = os.getenv("LEGAL_TERMS_DOCUMENT_SHA256", "").strip().lower()
+LEGAL_PRIVACY_DOCUMENT_PATH = os.getenv("LEGAL_PRIVACY_DOCUMENT_PATH", "").strip()
+LEGAL_PRIVACY_DOCUMENT_SHA256 = os.getenv("LEGAL_PRIVACY_DOCUMENT_SHA256", "").strip().lower()
+try:
+    LEGAL_DOCUMENTS = load_legal_document_set(
+        privacy_path=LEGAL_PRIVACY_DOCUMENT_PATH,
+        privacy_version=LEGAL_PRIVACY_VERSION,
+        privacy_sha256=LEGAL_PRIVACY_DOCUMENT_SHA256,
+        terms_path=LEGAL_TERMS_DOCUMENT_PATH,
+        terms_version=LEGAL_TERMS_VERSION,
+        terms_sha256=LEGAL_TERMS_DOCUMENT_SHA256,
     )
-if not DEBUG and (
-    not raw_legal_terms_version
-    or any(
-        marker in LEGAL_TERMS_VERSION.casefold()
-        for marker in ("draft", "placeholder", "unpublished", "development", "latest")
-    )
-):
-    raise ImproperlyConfigured("Production requires an explicit finalized LEGAL_TERMS_VERSION")
+except LegalDocumentConfigurationError as exc:
+    LEGAL_DOCUMENTS = None
+    LEGAL_DOCUMENTS_ERROR = str(exc)
+    if not DEBUG:
+        raise ImproperlyConfigured(
+            "Production requires readable, version-matched and SHA-256-pinned privacy and terms documents"
+        ) from exc
+else:
+    LEGAL_DOCUMENTS_ERROR = ""
 
 APP_BASE_URL = os.getenv("APP_BASE_URL", "http://localhost:8000").rstrip("/")
 try:
@@ -431,40 +535,68 @@ if not DEBUG:
         raise ImproperlyConfigured("Production requires a verified, monitored SUPPORT_EMAIL")
 EMAIL_BACKEND = os.getenv(
     "DJANGO_EMAIL_BACKEND",
-    "django.core.mail.backends.locmem.EmailBackend"
-    if DEBUG
-    else "django.core.mail.backends.smtp.EmailBackend",
+    (
+        "django.core.mail.backends.smtp.EmailBackend"
+        if PROCESS_REQUIRES_SMTP
+        else "django.core.mail.backends.locmem.EmailBackend"
+    ),
 )
 EMAIL_HOST = os.getenv("EMAIL_HOST", "")
 EMAIL_PORT = int(os.getenv("EMAIL_PORT", "587"))
 EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER", "")
 EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD", "")
-EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", default=not DEBUG)
+EMAIL_USE_TLS = env_bool("EMAIL_USE_TLS", default=PROCESS_REQUIRES_SMTP and not DEBUG)
 EMAIL_USE_SSL = env_bool("EMAIL_USE_SSL", default=False)
 EMAIL_ALLOW_INSECURE_LOCAL_COMPOSE = env_bool("EMAIL_ALLOW_INSECURE_LOCAL_COMPOSE", default=False)
 EMAIL_TIMEOUT = float(os.getenv("EMAIL_TIMEOUT", "10"))
 DEFAULT_FROM_EMAIL = os.getenv("DEFAULT_FROM_EMAIL", "Hlásím se <noreply@hlasim.se>")
 SERVER_EMAIL = os.getenv("SERVER_EMAIL", DEFAULT_FROM_EMAIL)
+default_from_address = parseaddr(DEFAULT_FROM_EMAIL)[1].strip().lower()
+try:
+    validate_email(default_from_address)
+except ValidationError as exc:
+    raise ImproperlyConfigured("DEFAULT_FROM_EMAIL must contain one valid email address") from exc
+derived_message_id_domain = default_from_address.rsplit("@", 1)[-1]
+EMAIL_MESSAGE_ID_DOMAIN = (
+    os.getenv("EMAIL_MESSAGE_ID_DOMAIN", derived_message_id_domain).strip().lower()
+)
+if (
+    len(EMAIL_MESSAGE_ID_DOMAIN) > 253
+    or re.fullmatch(
+        r"(?=.{1,253}\Z)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
+        r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?",
+        EMAIL_MESSAGE_ID_DOMAIN,
+    )
+    is None
+):
+    raise ImproperlyConfigured("EMAIL_MESSAGE_ID_DOMAIN must be a valid DNS domain")
 
 if EMAIL_USE_TLS and EMAIL_USE_SSL:
     raise ImproperlyConfigured("EMAIL_USE_TLS and EMAIL_USE_SSL cannot both be true")
 if EMAIL_PORT <= 0 or EMAIL_TIMEOUT <= 0:
     raise ImproperlyConfigured("EMAIL_PORT and EMAIL_TIMEOUT must be positive")
-if not DEBUG:
-    if (
-        parsed_app_base_url.scheme != "https"
-        or not parsed_app_base_url.hostname
-        or parsed_app_base_url.username
-        or parsed_app_base_url.password
-        or app_base_port is not None
-        or parsed_app_base_url.path
-        or parsed_app_base_url.query
-        or parsed_app_base_url.fragment
-    ):
-        raise ImproperlyConfigured(
-            "Production APP_BASE_URL must be a clean HTTPS origin without credentials, "
-            "port, path, query, or fragment"
-        )
+if not DEBUG and (
+    parsed_app_base_url.scheme != "https"
+    or not parsed_app_base_url.hostname
+    or parsed_app_base_url.username
+    or parsed_app_base_url.password
+    or app_base_port is not None
+    or parsed_app_base_url.path
+    or parsed_app_base_url.query
+    or parsed_app_base_url.fragment
+):
+    raise ImproperlyConfigured(
+        "Production APP_BASE_URL must be a clean HTTPS origin without credentials, "
+        "port, path, query, or fragment"
+    )
+allowed_origin_hostnames = {
+    host[1:-1] if host.startswith("[") and host.endswith("]") else host for host in ALLOWED_HOSTS
+}
+if not DEBUG and parsed_app_base_url.hostname not in allowed_origin_hostnames:
+    raise ImproperlyConfigured(
+        "Production APP_BASE_URL hostname must be one exact DJANGO_ALLOWED_HOSTS entry"
+    )
+if not DEBUG and PROCESS_REQUIRES_SMTP:
     if EMAIL_BACKEND != "django.core.mail.backends.smtp.EmailBackend":
         raise ImproperlyConfigured("Production requires the Django SMTP email backend")
     if EMAIL_ALLOW_INSECURE_LOCAL_COMPOSE:
@@ -486,4 +618,13 @@ if not DEBUG:
     if missing_email_settings:
         raise ImproperlyConfigured(
             "Production email configuration is incomplete: " + ", ".join(missing_email_settings)
+        )
+if not DEBUG and not PROCESS_REQUIRES_SMTP:
+    unexpected_smtp_credentials = sorted(
+        name for name in ("EMAIL_HOST_USER", "EMAIL_HOST_PASSWORD") if os.getenv(name, "").strip()
+    )
+    if unexpected_smtp_credentials:
+        raise ImproperlyConfigured(
+            f"Production role {HLASIMSE_PROCESS_ROLE} must not receive SMTP credentials: "
+            + ", ".join(unexpected_smtp_credentials)
         )
