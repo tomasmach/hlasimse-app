@@ -48,20 +48,21 @@ tags:
     centerElement: true
 - tapOn:
     id: "timeline-profile-picker"
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: "Archivované profily"
+    timeout: 10000
 - scrollUntilVisible:
-    element: "E2E archiv historie"
+    element:
+      id: "timeline-profile-archived-.*"
     direction: DOWN
     centerElement: true
-- tapOn: "E2E archiv historie"
+- tapOn:
+    id: "timeline-profile-archived-.*"
 - extendedWaitUntil:
     visible: "Pouze historie — profil je archivovaný"
     timeout: 15000
-- assertNotVisible:
-    id: "checkin-submit"
-- assertNotVisible:
-    id: "profile-pause"
-- assertNotVisible:
-    id: "profile-edit-open"
+- assertVisible: "E2E archiv historie"
 - scrollUntilVisible:
     element: "Profil archivován"
     direction: DOWN

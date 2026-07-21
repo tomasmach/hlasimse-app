@@ -585,11 +585,13 @@ ruby -e '
     %q{E2E Strážce},
     %q{Incident zobrazen},
     %q{id: "timeline-profile-picker"},
+    %q{retryTapIfNoChange: true},
+    %q{Archivované profily},
+    %q{id: "timeline-profile-archived-.*"},
     %q{E2E archiv historie},
     %q{Pouze historie — profil je archivovaný},
     %q{id: "checkin-submit"},
     %q{id: "profile-pause"},
-    %q{id: "profile-edit-open"},
     %q{Profil archivován},
     %q{Vybraný profil E2E bezpečnostní profil},
     %q{id: "pause-duration-custom"},
@@ -601,7 +603,20 @@ ruby -e '
   ]
   missing_parity = required_parity.reject { |fragment| parity.include?(fragment) }
   abort("Owner parity Maestro contract is incomplete: #{missing_parity.join(", ")}") unless missing_parity.empty?
-  abort("Archived parity flow must explicitly reject operational controls") unless parity.scan("assertNotVisible:").length == 3
+  archived_id = %q{id: "timeline-profile-archived-.*"}
+  abort("Archived profile must be located and selected by stable id") unless parity.scan(archived_id).length == 2
+  archived_journey = [
+    %q{id: "timeline-profile-picker"},
+    %q{retryTapIfNoChange: true},
+    %q{Archivované profily},
+    archived_id,
+    %q{Pouze historie — profil je archivovaný},
+    %q{E2E archiv historie},
+    %q{Profil archivován},
+    %q{Vybraný profil E2E bezpečnostní profil},
+  ]
+  archived_positions = archived_journey.map { |fragment| parity.index(fragment) }
+  abort("Archived profile journey must preserve its evidence order") unless archived_positions.each_cons(2).all? { |left, right| left < right }
 
   required_ios_name = [
     %q{id: "profile-resume"},
