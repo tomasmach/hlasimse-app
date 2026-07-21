@@ -5,6 +5,9 @@ tags: [android, profile]
 - assertVisible:
     id: "profile-create-name-input"
 - assertVisible: "E2E Druhy profil"
+- pressKey: ENTER
+- assertVisible:
+    id: "profile-create-name-input"
 - scrollUntilVisible:
     element: "1 hodina"
     direction: DOWN
