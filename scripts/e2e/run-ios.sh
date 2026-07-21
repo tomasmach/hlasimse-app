@@ -946,6 +946,8 @@ else
   IOS_EXPECTED_EVIDENCE=(
     00_guardian_clean_install
     10_owner_online_core
+    12_owner_parity_core
+    13_ios_owner_name_update
     15_owner_profile_create
     20_owner_offline_queue
     25_owner_offline_deadline_pending

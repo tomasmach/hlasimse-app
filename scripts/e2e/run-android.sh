@@ -813,6 +813,12 @@ print(
 ) | tee "${E2E_ARTIFACT_DIR}/backend/android-location-denial-assertion.log"
 
 e2e_run_flow "${ANDROID_SERIAL}" 10_owner_online_core
+e2e_run_flow "${ANDROID_SERIAL}" 12_owner_parity_core
+e2e_assert_owner_parity_pause
+e2e_run_flow "${ANDROID_SERIAL}" 13a_android_owner_name_focus
+android_input_text "E2E Potvrzeno" "confirmed account name"
+e2e_run_flow "${ANDROID_SERIAL}" 13b_android_owner_name_after_input
+e2e_assert_owner_parity_final
 e2e_run_flow "${ANDROID_SERIAL}" 15a_android_profile_focus_name
 android_input_text "E2E Druhy profil" "profile name"
 e2e_run_flow "${ANDROID_SERIAL}" 15b_android_profile_after_name
@@ -845,6 +851,9 @@ node "${E2E_ROOT_DIR}/scripts/e2e/assert-junit-evidence.mjs" "${E2E_ARTIFACT_DIR
   06b_android_submit_location_owner \
   07_android_location_denied \
   10_owner_online_core \
+  12_owner_parity_core \
+  13a_android_owner_name_focus \
+  13b_android_owner_name_after_input \
   15a_android_profile_focus_name \
   15b_android_profile_after_name \
   20_owner_offline_queue \

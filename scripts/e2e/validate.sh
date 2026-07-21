@@ -499,6 +499,34 @@ ruby -e '
   abort("AT-08 is not ordered API-stop/queue/sweep/persist/restart/sync/exact-verify") unless ordered_at08.all? && ordered_at08.each_cons(2).all? { |left, right| left < right }
   abort("iOS JUnit evidence omits AT-08 persistent pending flow") unless ios.include?("25_owner_offline_deadline_pending")
   abort("Android JUnit evidence omits AT-08 persistent pending flow") unless android.include?("25_owner_offline_deadline_pending")
+
+  ios_core = common.index(%q{e2e_run_flow "$device_id" 12_owner_parity_core})
+  ios_pause_assertion = common.index("e2e_assert_owner_parity_pause", ios_core.to_i)
+  ios_name = common.index(%q{e2e_run_flow "$device_id" 13_ios_owner_name_update}, ios_pause_assertion.to_i)
+  ios_final_assertion = common.index("e2e_assert_owner_parity_final", ios_name.to_i)
+  ios_next_profile = common.index(%q{e2e_run_flow "$device_id" 15_owner_profile_create}, ios_final_assertion.to_i)
+  ordered_ios_parity = [ios_core, ios_pause_assertion, ios_name, ios_final_assertion, ios_next_profile]
+  abort("iOS parity proof is not ordered UI/pause-database/name-restart/database/next-profile") unless ordered_ios_parity.all? && ordered_ios_parity.each_cons(2).all? { |left, right| left < right }
+
+  android_core = android.index(%q{e2e_run_flow "${ANDROID_SERIAL}" 12_owner_parity_core})
+  android_pause_assertion = android.index("e2e_assert_owner_parity_pause", android_core.to_i)
+  android_name_focus = android.index(%q{e2e_run_flow "${ANDROID_SERIAL}" 13a_android_owner_name_focus}, android_pause_assertion.to_i)
+  android_name_input = android.index(%q{android_input_text "E2E Potvrzeno" "confirmed account name"}, android_name_focus.to_i)
+  android_name_save = android.index(%q{e2e_run_flow "${ANDROID_SERIAL}" 13b_android_owner_name_after_input}, android_name_input.to_i)
+  android_final_assertion = android.index("e2e_assert_owner_parity_final", android_name_save.to_i)
+  android_next_profile = android.index(%q{e2e_run_flow "${ANDROID_SERIAL}" 15a_android_profile_focus_name}, android_final_assertion.to_i)
+  ordered_android_parity = [android_core, android_pause_assertion, android_name_focus, android_name_input, android_name_save, android_final_assertion, android_next_profile]
+  abort("Android parity proof is not ordered UI/pause-database/focus/ADB-input/name-restart/database/next-profile") unless ordered_android_parity.all? && ordered_android_parity.each_cons(2).all? { |left, right| left < right }
+
+  required_parity_fragments = [
+    "acknowledgement_server_timestamp",
+    "archive_audit_event_present",
+    "custom_pause_server_timestamp",
+    "account_name_server_confirmed",
+    "active_profile_resumed",
+  ]
+  missing_parity_fragments = required_parity_fragments.reject { |fragment| common.include?(fragment) }
+  abort("Parity backend evidence is incomplete: #{missing_parity_fragments.join(", ")}") unless missing_parity_fragments.empty?
 ' "${ROOT_DIR}/scripts/e2e/common.sh" "${ROOT_DIR}/scripts/e2e/run-ios.sh" \
   "${ROOT_DIR}/scripts/e2e/run-android.sh"
 
@@ -544,6 +572,61 @@ ruby -e '
     abort("#{path}: second document must be a non-empty command list") unless documents[1].is_a?(Array) && !documents[1].empty?
   end
 ' "${ROOT_DIR}"/.maestro/flows/*.yaml
+
+ruby -e '
+  root = ARGV.fetch(0)
+  parity = File.read(File.join(root, ".maestro/flows/12_owner_parity_core.yaml"))
+  ios_name = File.read(File.join(root, ".maestro/flows/13_ios_owner_name_update.yaml"))
+  android_focus = File.read(File.join(root, ".maestro/flows/13a_android_owner_name_focus.yaml"))
+  android_save = File.read(File.join(root, ".maestro/flows/13b_android_owner_name_after_input.yaml"))
+
+  required_parity = [
+    %q{Potvrzení znamená jen to, že strážce otevřel incident v aplikaci},
+    %q{E2E Strážce},
+    %q{Incident zobrazen},
+    %q{id: "timeline-profile-picker"},
+    %q{E2E archiv historie},
+    %q{Pouze historie — profil je archivovaný},
+    %q{id: "checkin-submit"},
+    %q{id: "profile-pause"},
+    %q{id: "profile-edit-open"},
+    %q{Profil archivován},
+    %q{Vybraný profil E2E bezpečnostní profil},
+    %q{id: "pause-duration-custom"},
+    %q{id: "pause-custom-datetime-picker"},
+    %q{id: "pause-custom-date-open"},
+    %q{id: "pause-custom-time-open"},
+    %q{id: "pause-confirm"},
+    %q{Obnovení potvrzené serverem},
+  ]
+  missing_parity = required_parity.reject { |fragment| parity.include?(fragment) }
+  abort("Owner parity Maestro contract is incomplete: #{missing_parity.join(", ")}") unless missing_parity.empty?
+  abort("Archived parity flow must explicitly reject operational controls") unless parity.scan("assertNotVisible:").length == 3
+
+  required_ios_name = [
+    %q{id: "profile-resume"},
+    %q{id: "account-name-open"},
+    %q{id: "account-first-name"},
+    %q{eraseText: 100},
+    %q{inputText: "E2E Potvrzeno"},
+    %q{id: "account-name-submit"},
+    %q{stopApp},
+    %q{launchApp},
+  ]
+  missing_ios_name = required_ios_name.reject { |fragment| ios_name.include?(fragment) }
+  abort("iOS account-name restart contract is incomplete: #{missing_ios_name.join(", ")}") unless missing_ios_name.empty?
+
+  required_android_name = [
+    %q{id: "profile-resume"},
+    %q{id: "account-first-name"},
+    %q{eraseText: 100},
+  ]
+  missing_android_focus = required_android_name.reject { |fragment| android_focus.include?(fragment) }
+  abort("Android account-name focus contract is incomplete: #{missing_android_focus.join(", ")}") unless missing_android_focus.empty?
+  abort("Android name focus flow must leave text injection to adb") if android_focus.include?("inputText") || android_focus.include?("pasteText")
+  abort("Android account-name save flow omits the server submit") unless android_save.include?(%q{id: "account-name-submit"})
+  abort("Android account-name save flow omits restart verification") unless android_save.include?("stopApp") && android_save.scan("launchApp").length >= 1 && android_save.scan("E2E Potvrzeno").length >= 2
+' "${ROOT_DIR}"
 
 ruby -e '
   focused_login = File.read(ARGV.fetch(0))

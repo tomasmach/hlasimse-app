@@ -17,8 +17,14 @@ the source tree, run mode, app version/build, device/runtime identity, toolchain
 platform artifact identity. Unrelated user-owned root documents are outside this source gate.
 Every Maestro flow is single-attempt; a failed mutating flow is never replayed automatically.
 
-The runner first seeds two reserved `.invalid` accounts, acknowledges an already-open incident
-as the guardian, resolves it with an owner check-in, tests pause/resume and a second free profile,
+The runner first seeds two reserved `.invalid` accounts plus one inert archived-history profile,
+acknowledges an already-open incident as the guardian, resolves it with an owner check-in, and
+then proves that the owner sees the guardian acknowledgement name, server timestamp, and its
+limited "incident was opened" meaning. The Activity archive picker must expose the archived
+profile and its `profile.archived` event without changing the operational profile or exposing
+check-in, pause, or edit controls. A custom native date/time pause is server-confirmed before the
+profile is resumed. The owner then changes the account name, verifies it after an app restart,
+and the harness checks both changes directly in PostgreSQL. It continues with a second free profile,
 forces a local API outage to prove that an offline request remains visibly unconfirmed, advances
 the exact selected profile through a scheduler-created incident without changing its one-hour
 production interval, restarts the app while that encrypted SecureStore request is still pending,

@@ -1,0 +1,36 @@
+appId: ${APP_ID}
+name: Android owner resumes and focuses account name
+tags: [android, owner, parity]
+---
+- launchApp
+- scrollUntilVisible:
+    element:
+      id: "profile-resume"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "profile-resume"
+- assertVisible: "Obnovit profil?"
+- tapOn: "Obnovit"
+- extendedWaitUntil:
+    visible:
+      id: "profile-pause"
+    timeout: 15000
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-settings"
+      - extendedWaitUntil:
+          visible:
+            id: "account-name-open"
+          timeout: 5000
+- tapOn:
+    id: "account-name-open"
+- extendedWaitUntil:
+    visible:
+      id: "account-first-name"
+    timeout: 10000
+- tapOn:
+    id: "account-first-name"
+- eraseText: 100

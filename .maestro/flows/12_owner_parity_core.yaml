@@ -1,0 +1,134 @@
+appId: ${APP_ID}
+name: Owner verifies acknowledgement, archived history and custom pause
+tags:
+  - simulator
+  - owner
+  - parity
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "checkin-submit"
+    timeout: 15000
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-activity"
+      - extendedWaitUntil:
+          visible:
+            id: "timeline-profile-picker"
+          timeout: 5000
+- scrollUntilVisible:
+    element: "Vyřešený incident profilu E2E bezpečnostní profil"
+    direction: DOWN
+    centerElement: true
+- tapOn: "Vyřešený incident profilu E2E bezpečnostní profil"
+- extendedWaitUntil:
+    visible: "Detail incidentu"
+    timeout: 15000
+- scrollUntilVisible:
+    element: "Koordinace strážců"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Potvrzení znamená jen to, že strážce otevřel incident v aplikaci.*"
+- assertVisible: "E2E Strážce"
+- assertVisible: "Incident zobrazen.*"
+- scrollUntilVisible:
+    element:
+      id: "back-button"
+    direction: UP
+    centerElement: true
+- tapOn:
+    id: "back-button"
+- scrollUntilVisible:
+    element:
+      id: "timeline-profile-picker"
+    direction: UP
+    centerElement: true
+- tapOn:
+    id: "timeline-profile-picker"
+- scrollUntilVisible:
+    element: "E2E archiv historie"
+    direction: DOWN
+    centerElement: true
+- tapOn: "E2E archiv historie"
+- extendedWaitUntil:
+    visible: "Pouze historie — profil je archivovaný"
+    timeout: 15000
+- assertNotVisible:
+    id: "checkin-submit"
+- assertNotVisible:
+    id: "profile-pause"
+- assertNotVisible:
+    id: "profile-edit-open"
+- scrollUntilVisible:
+    element: "Profil archivován"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Server zrušil termín a odvolal.*"
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-index"
+      - extendedWaitUntil:
+          visible: "Vybraný profil E2E bezpečnostní profil"
+          timeout: 5000
+- scrollUntilVisible:
+    element:
+      id: "profile-pause"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "profile-pause"
+- extendedWaitUntil:
+    visible: "Jak dlouho má pauza trvat?"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "pause-duration-custom"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "pause-duration-custom"
+- extendedWaitUntil:
+    visible:
+      id: "pause-custom-picker"
+    timeout: 10000
+- assertVisible:
+    id: "pause-custom-summary"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - assertVisible:
+          id: "pause-custom-datetime-picker"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn:
+          id: "pause-custom-date-open"
+      - extendedWaitUntil:
+          visible: "OK"
+          timeout: 5000
+      - tapOn: "OK"
+      - tapOn:
+          id: "pause-custom-time-open"
+      - extendedWaitUntil:
+          visible: "OK"
+          timeout: 5000
+      - tapOn: "OK"
+- scrollUntilVisible:
+    element:
+      id: "pause-confirm"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "pause-confirm"
+- extendedWaitUntil:
+    visible:
+      id: "profile-resume"
+    timeout: 15000
+- assertVisible: "Obnovení potvrzené serverem:.*"

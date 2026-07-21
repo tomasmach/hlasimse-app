@@ -481,10 +481,95 @@ e2e_run_at08_offline_deadline() {
   e2e_verify_at08_resolution
 }
 
+e2e_assert_owner_parity_pause() {
+  (
+    cd "${E2E_ROOT_DIR}/apps/server"
+    uv run python manage.py shell --verbosity 0 -c '
+import json
+
+from django.utils import timezone
+
+from core.management.commands.seed_e2e import (
+    ARCHIVED_HISTORY_PROFILE_NAME,
+    GUARDIAN_EMAIL,
+    OWNER_ACTIVE_PROFILE_NAME,
+    OWNER_EMAIL,
+)
+from core.models import AlertAcknowledgement, AlertIncident, AuditEvent, CheckInProfile, User
+
+owner = User.objects.get(email=OWNER_EMAIL)
+guardian = User.objects.get(email=GUARDIAN_EMAIL)
+active = CheckInProfile.objects.get(
+    owner=owner,
+    name=OWNER_ACTIVE_PROFILE_NAME,
+    archived_at__isnull=True,
+)
+archived = CheckInProfile.objects.get(owner=owner, name=ARCHIVED_HISTORY_PROFILE_NAME)
+incident = AlertIncident.objects.get(profile=active)
+acknowledgement = AlertAcknowledgement.objects.get(incident=incident, user=guardian)
+assert incident.status == AlertIncident.Status.RESOLVED, "Owner parity flow did not resolve the seeded incident"
+assert acknowledgement.acknowledged_at is not None, "Guardian acknowledgement has no server timestamp"
+assert archived.archived_at is not None and not archived.enabled, "Archived fixture is operational"
+assert archived.is_paused and archived.next_deadline_at is None, "Archived fixture retained a deadline"
+assert AuditEvent.objects.filter(
+    event_type="profile.archived",
+    aggregate_id=archived.id,
+).exists(), "Archived fixture has no profile.archived audit event"
+assert active.is_paused and active.paused_until is not None, "Custom pause was not persisted"
+pause_delta = (active.paused_until - timezone.now()).total_seconds()
+assert 34 * 60 * 60 <= pause_delta <= 38 * 60 * 60, (
+    f"Custom pause is outside the distinct bounded 36-hour E2E window: {pause_delta} seconds"
+)
+print(json.dumps({
+    "acknowledgement_user_id": str(guardian.id),
+    "acknowledgement_server_timestamp": acknowledgement.acknowledged_at.isoformat(),
+    "archived_profile_id": str(archived.id),
+    "archived_profile_inert": True,
+    "archive_audit_event_present": True,
+    "active_profile_id": str(active.id),
+    "custom_pause_server_timestamp": active.paused_until.isoformat(),
+    "custom_pause_distinct_36h_window_verified": True,
+}, sort_keys=True))
+'
+  ) | tee "${E2E_ARTIFACT_DIR}/backend/owner-parity-pause-assertion.json"
+}
+
+e2e_assert_owner_parity_final() {
+  (
+    cd "${E2E_ROOT_DIR}/apps/server"
+    uv run python manage.py shell --verbosity 0 -c '
+import json
+
+from core.management.commands.seed_e2e import OWNER_ACTIVE_PROFILE_NAME, OWNER_EMAIL
+from core.models import CheckInProfile, User
+
+owner = User.objects.get(email=OWNER_EMAIL)
+active = CheckInProfile.objects.get(
+    owner=owner,
+    name=OWNER_ACTIVE_PROFILE_NAME,
+    archived_at__isnull=True,
+)
+assert owner.first_name == "E2E Potvrzeno", "Account name was not confirmed by the server"
+assert not active.is_paused and active.paused_until is None, "Owner parity flow did not resume the profile"
+assert active.enabled and active.next_deadline_at is not None, "Resumed profile has no active deadline"
+print(json.dumps({
+    "account_name_server_confirmed": True,
+    "active_profile_id": str(active.id),
+    "active_profile_resumed": True,
+    "first_name": owner.first_name,
+}, sort_keys=True))
+'
+  ) | tee "${E2E_ARTIFACT_DIR}/backend/owner-parity-final-assertion.json"
+}
+
 e2e_run_journey() {
   local device_id="$1"
   e2e_run_flow "$device_id" 00_guardian_clean_install
   e2e_run_flow "$device_id" 10_owner_online_core
+  e2e_run_flow "$device_id" 12_owner_parity_core
+  e2e_assert_owner_parity_pause
+  e2e_run_flow "$device_id" 13_ios_owner_name_update
+  e2e_assert_owner_parity_final
   e2e_run_flow "$device_id" 15_owner_profile_create
 
   e2e_run_at08_offline_deadline "$device_id"

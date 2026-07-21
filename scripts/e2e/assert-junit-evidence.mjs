@@ -61,8 +61,8 @@ for (const key of expectedKeys) {
   }
 
   const testcaseCount = (xml.match(/<testcase\b/g) ?? []).length;
-  if (reportTests < 1 || testcaseCount !== reportTests) {
-    fail(`JUnit test count mismatch for ${key}: suites=${reportTests}, testcases=${testcaseCount}.`);
+  if (reportTests !== 1 || testcaseCount !== 1) {
+    fail(`Each Maestro flow must produce exactly one JUnit testcase for ${key}: suites=${reportTests}, testcases=${testcaseCount}.`);
   }
   if (reportFailures !== 0 || reportErrors !== 0 || /<(?:failure|error)\b/.test(xml)) {
     fail(`JUnit evidence contains a failure or error for ${key}.`);
