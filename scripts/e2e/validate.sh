@@ -638,11 +638,12 @@ ruby -e '
     %q{hideKeyboard},
     %q{id: "account-name-submit"},
     %q{id: "account-name-open"},
-    %q{assertVisible: "E2E Potvrzeno"},
+    %q{assertVisible: E2E Potvrzeno\s*},
     %q{stopApp},
     %q{launchApp},
     %q{id: "tab-settings"},
-    %q{visible: "E2E Potvrzeno"},
+    %q{id: "account-name-open"},
+    %q{assertVisible: E2E Potvrzeno\s*},
   ]
   ios_name_cursor = -1
   ios_name_journey.each do |fragment|
