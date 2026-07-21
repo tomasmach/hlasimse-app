@@ -109,12 +109,26 @@ tags:
     when:
       platform: Android
     commands:
+      - scrollUntilVisible:
+          element:
+            id: "pause-custom-date-open"
+          direction: DOWN
+          centerElement: true
       - tapOn:
           id: "pause-custom-date-open"
       - extendedWaitUntil:
           visible: "OK"
           timeout: 5000
       - tapOn: "OK"
+      - extendedWaitUntil:
+          visible:
+            id: "pause-custom-picker"
+          timeout: 5000
+      - scrollUntilVisible:
+          element:
+            id: "pause-custom-time-open"
+          direction: DOWN
+          centerElement: true
       - tapOn:
           id: "pause-custom-time-open"
       - extendedWaitUntil:

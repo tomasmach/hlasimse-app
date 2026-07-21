@@ -35,8 +35,7 @@ function TabButton({ tab, isActive, onPress }: TabButtonProps) {
   return (
     <Pressable
       onPress={handlePress}
-      hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-      className="items-center justify-center flex-1"
+      className="min-h-12 items-center justify-center flex-1"
       accessibilityRole="tab"
       accessibilityLabel={tab.label}
       accessibilityState={{ selected: isActive }}

@@ -604,6 +604,26 @@ ruby -e '
   ]
   missing_parity = required_parity.reject { |fragment| parity.include?(fragment) }
   abort("Owner parity Maestro contract is incomplete: #{missing_parity.join(", ")}") unless missing_parity.empty?
+  android_picker_journey = [
+    %q{id: "pause-custom-date-open"},
+    %q{direction: DOWN},
+    %q{centerElement: true},
+    %q{id: "pause-custom-date-open"},
+    %q{visible: "OK"},
+    %q{tapOn: "OK"},
+    %q{id: "pause-custom-picker"},
+    %q{id: "pause-custom-time-open"},
+    %q{direction: DOWN},
+    %q{centerElement: true},
+    %q{id: "pause-custom-time-open"},
+    %q{visible: "OK"},
+    %q{tapOn: "OK"},
+  ]
+  android_picker_cursor = parity.index(%q{platform: Android}) || -1
+  android_picker_journey.each do |fragment|
+    android_picker_cursor = parity.index(fragment, android_picker_cursor + 1)
+    abort("Android custom-pause controls must be centered outside the floating tab bar") unless android_picker_cursor
+  end
   archived_id = %q{id: "timeline-profile-archived-.*"}
   abort("Archived profile must be located and selected by stable id") unless parity.scan(archived_id).length == 2
   archived_journey = [

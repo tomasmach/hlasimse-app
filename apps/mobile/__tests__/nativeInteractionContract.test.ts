@@ -185,3 +185,12 @@ it("edits the server-confirmed account name while keeping email read-only", () =
   expect(editor).toContain('accessibilityRole="text"');
   expect(editor).toContain('testID="account-name-submit"');
 });
+
+it("keeps floating tab targets accessible without overlapping page actions", () => {
+  const source = readFileSync(
+    resolve(mobileRoot, "components/navigation/FloatingTabBar.tsx"),
+    "utf8",
+  );
+  expect(source).toContain('className="min-h-12 items-center justify-center flex-1"');
+  expect(source).not.toContain("hitSlop={{ top:");
+});
