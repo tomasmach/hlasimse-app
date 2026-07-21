@@ -31,7 +31,7 @@ tags:
     centerElement: true
 - tapOn:
     id: "account-delete-open"
-- assertVisible: "Nejdřív bezpečně uzavřete vztahy"
+- assertVisible: "Nejdřív bezpečně uzavřete vlastní incidenty"
 - scrollUntilVisible:
     element:
       id: "account-delete-password"
