@@ -38,11 +38,19 @@ tags:
     id: "account-first-name"
 - eraseText: 100
 - inputText: "E2E Potvrzeno"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "account-name-submit"
+    direction: DOWN
+    centerElement: true
 - tapOn:
     id: "account-name-submit"
 - extendedWaitUntil:
-    visible: "E2E Potvrzeno"
+    visible:
+      id: "account-name-open"
     timeout: 15000
+- assertVisible: "E2E Potvrzeno"
 - stopApp
 - launchApp
 - extendedWaitUntil:
@@ -51,7 +59,9 @@ tags:
     timeout: 20000
 - tapOn:
     id: "tab-settings"
-- assertVisible: "E2E Potvrzeno"
+- extendedWaitUntil:
+    visible: "E2E Potvrzeno"
+    timeout: 15000
 - tapOn:
     id: "tab-index"
 - extendedWaitUntil:

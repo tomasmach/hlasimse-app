@@ -624,12 +624,30 @@ ruby -e '
     %q{id: "account-first-name"},
     %q{eraseText: 100},
     %q{inputText: "E2E Potvrzeno"},
+    %q{hideKeyboard},
     %q{id: "account-name-submit"},
+    %q{id: "account-name-open"},
     %q{stopApp},
     %q{launchApp},
   ]
   missing_ios_name = required_ios_name.reject { |fragment| ios_name.include?(fragment) }
   abort("iOS account-name restart contract is incomplete: #{missing_ios_name.join(", ")}") unless missing_ios_name.empty?
+  ios_name_journey = [
+    %q{inputText: "E2E Potvrzeno"},
+    %q{hideKeyboard},
+    %q{id: "account-name-submit"},
+    %q{id: "account-name-open"},
+    %q{assertVisible: "E2E Potvrzeno"},
+    %q{stopApp},
+    %q{launchApp},
+    %q{id: "tab-settings"},
+    %q{visible: "E2E Potvrzeno"},
+  ]
+  ios_name_cursor = -1
+  ios_name_journey.each do |fragment|
+    ios_name_cursor = ios_name.index(fragment, ios_name_cursor + 1)
+    abort("iOS account-name journey must save before restart and reassert persistence") unless ios_name_cursor
+  end
 
   required_android_name = [
     %q{id: "profile-resume"},
