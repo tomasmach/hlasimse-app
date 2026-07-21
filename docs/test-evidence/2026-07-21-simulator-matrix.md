@@ -1,60 +1,88 @@
-# Simulator matrix — 21 July 2026
+# Final simulator matrix — 21 July 2026
 
-This record summarizes the final reviewed local Maestro runs after the safety, free-product parity,
-and release-readiness hardening. Both platforms exercised the exact same commit
-`52111414c86c0f88fc1f23f3167e9c31a098df24` (`5211141`) and Git tree
-`d5a809e16f6a2a12f36ebf080a0e33898b5ccc71`.
+This record covers the final local release-derived Maestro matrix after selecting the owned public
+application identity `cz.tomasmach.hlasimse` and completing the Django, deployment, legal-document,
+native-permission, and release-gate hardening.
 
-Both runners started an isolated PostgreSQL database, created a fresh simulator or emulator, ran
-every mutating flow exactly once, and completed their source-integrity and cleanup checks.
+The Android application run used commit `0180f1c78e596fc4900ca45100f834ff4031c5c8` and Git tree
+`0256b6269815b3c8470955dc7877f56057526814`. The iOS application run used commit
+`fc63ae592621b95988b59f700fa46feee7276bf8` and tree
+`2bd1da1ec4a900cf8bc571285e256e5b47f1de49`. The only change between those commits is the Maestro
+helper fix that limits `hideKeyboard` to Android; no mobile or server application source changed.
+
+Both runners used isolated PostgreSQL databases, fresh runner-owned virtual devices, embedded
+release bundles, clean source-integrity checks, and complete owned-resource cleanup.
 
 | Platform | Device | OS/API | Result | Local raw evidence |
 | --- | --- | --- | --- | --- |
-| iOS | iPhone 17 Pro Simulator | iOS 26.2 (Xcode SDK 26.5) | 14/14 tests passed, 0 failures, 0 errors | `/tmp/hlasimse-e2e-5211141-ios` |
-| Android | Medium Phone Emulator | Android 16 / API 36 | 28/28 tests passed, 0 failures, 0 errors | `/tmp/hlasimse-e2e-5211141-android` |
+| Android | Medium Phone API 36.1 emulator | Android 16 / API 36 | 28/28 passed, 0 failures, 0 errors | `/tmp/hlasimse-e2e/android-final-0180f1c-20260721` |
+| iOS | iPhone 17 Pro Simulator | iOS 26.5 / Xcode 26.5 | 14/14 passed, 0 failures, 0 errors | `/tmp/hlasimse-e2e/ios-final-fc63ae5-20260721` |
 
-Both runs used Maestro 2.6.1, exited with code 0, and recorded `run_mode=full`,
-`release_evidence_eligible=true`, `journey_completed=true`, and clean start/end source trees. Their
-start/end commits and trees match. Their `run.properties` SHA-256 values are:
+Both final runs used Maestro 2.6.1, exited with code 0, and recorded `run_mode=full`,
+`release_evidence_eligible=true`, `journey_completed=true`, `source_clean_start=true`, and
+`source_clean_end=true`.
 
-- iOS: `07d8f5bb180806a47f042c378dc676a61cbaf2608e8dc42495e7e3b4f0a5e8e4`
-- Android: `8e21831621e3f0efe0afa89a65d1e95b3b244cc821702edeca5067fc52032633`
+Evidence identities:
 
-The iOS runner created device `Hlásím se E2E 20260721T072827Z-21036`
-(`C7DACE24-939A-4C28-8DFF-BDEEDA0F9D74`). It verified a release-derived ad-hoc-signed simulator
-build, a byte-identical production/E2E embedded JS bundle, packaged-versus-installed app integrity,
-and successful backend, PostgreSQL, build, and device cleanup. Its in-place same-build reinstall
-retained authentication, the selected non-default profile, credential-free local sentinel state,
-and the expected server-confirmed check-in.
+- Android `run.properties` SHA-256:
+  `ce8c1a18024a57852507f5c8c3dbdaa31213e1f03a13b24c8661b9d407a9c9ff`
+- Android combined JUnit evidence SHA-256:
+  `ea59bb13b21f18ff5714f98a52b56d5c20154dd4ebdb3ae0be242565cdb9a683`
+- Android release-derived APK SHA-256:
+  `2b3bd23d1896316413a5d1f1e8b5511ae993718da55a7893678f52ff9a1f9f5b`
+- iOS `run.properties` SHA-256:
+  `afed5468fa34bba4babd95644ca1aee18e59ac88f12070c442be894a5e054da0`
+- iOS evidence-tree SHA-256:
+  `6b35918feb488b9d87710e36701d0bcd2c354b97c9502ecab064777c593b694c`
+- iOS production app SHA-256:
+  `ceecb23c4978aea11a99a9135f079df39f1a51ef613b0089d6072fdab329fd08`
+- iOS E2E app SHA-256:
+  `6aeb2ab40b4605f70de81493b2050c7b60457f24e5121db03055b155a2cd83e4`
+- iOS byte-identical production/E2E JS bundle SHA-256:
+  `1df2b3f4f3ed636978dff1e880d87ece22c9ba90c7296711f740c97ab156b8a5`
 
-The Android runner created AVD `Hlasimse_E2E_20260721T070906Z_95316` from template
-`Medium_Phone_API_36.1` and used `emulator-5554`. It verified release-derived embedded-bundle APK
-assembly, production-manifest cleartext restrictions, lint, a fresh package install, an in-place
-same-APK update, and successful backend, PostgreSQL, and device cleanup. The update retained
-onboarding, authentication, and the selected non-default profile. The APK is test-only debug signed,
-not store signed.
+The Android runner created AVD `Hlasimse_E2E_20260721T141807Z_65029` from the untouched
+`Medium_Phone_API_36.1` template, using the Google Play arm64-v8a Android 16 image on
+`emulator-5554`. It verified the production base identity `cz.tomasmach.hlasimse`, a fresh
+`cz.tomasmach.hlasimse.e2e` package install, production cleartext denial, release-derived embedded
+bundle assembly, lint, signing and package identity, then an in-place same-APK reinstall. The
+reinstall preserved onboarding, authentication, credential-free local state, and the selected
+non-default profile.
 
-On both platforms the real foreground-location prompt was denied and the resulting PostgreSQL
-check-in was verified without latitude, longitude, or accuracy. The matrix also covers guardian
-incident acknowledgement with server identity and timestamp, confirmed check-in, pause/resume,
-archived history, an inert archived profile, a distinct 36-hour custom pause, exact account-name
-persistence across restart, creation of a second free profile, account export, account deletion, and
-the complete free boundaries: five active profiles, five active guardians, prevention of further
-additions at those boundaries, and the seven-day maximum interval. No payment or paywall path is
-present.
+The final iOS runner created `Hlásím se E2E 20260721T145435Z-75154` from the untouched iPhone 17 Pro
+template. It verified the production bundle identity `cz.tomasmach.hlasimse`, a fresh
+`cz.tomasmach.hlasimse.e2e` install, Release build, ATS policy, simulator codesign and entitlements,
+byte-identical production/E2E JavaScript, and packaged-versus-installed app-tree integrity. The
+same-build reinstall preserved authentication, credential-free local sentinel state, the selected
+non-default profile, and the expected server-confirmed check-in.
 
-The deterministic AT-08 API-outage journey passed independently on both platforms. It verified that
-the unconfirmed request persisted across a process restart in `expo-secure-store`; that an incident
-opened while the mobile request remained pending; and that API recovery synchronized the exact
-queued check-in and resolved the exact same incident while preserving its audit and outbox identity.
-The evidence records `general_purpose_plaintext_storage_absent=true` and
-`audit_and_outbox_identity_verified=true` for both runs.
+The first iOS attempt on `0180f1c` correctly failed fast after 12 passing reports when Maestro 2.6.1
+could not perform a generic `hideKeyboard` inside the post-location helper. The location denial,
+successful check-in, and visible denied state had already passed. Commit `fc63ae5` changed only that
+test helper to use the already-proven iOS profile-form scroll behavior, after which a completely new
+build, database, simulator, and all 14 flows passed. No mutating flow was resumed or selectively
+retried.
 
-This remains simulator evidence, not production release approval. Both builds still use the
-placeholder public application ID `com.anonymous.hlasimse` and a sentinel HTTPS configuration rather
-than the real production endpoint. The runs reinstall the same build instead of a signed N-1 store
-artifact. They do not prove production APNs/FCM delivery; background or terminated-app behavior;
-iOS Focus; Android Doze or OEM restrictions; physical GPS; physical-device VoiceOver/TalkBack; or
-real store signing and upgrade behavior. Production infrastructure, store credentials and signing,
-approved legal/operator details, and physical iPhone and Android test passes therefore remain
-mandatory release blockers.
+Across both platforms the matrix covers registration/authentication, guardian incident
+acknowledgement with server identity and timestamp, server-confirmed check-in, pause/resume,
+archived history, inert archived profiles, a distinct 36-hour custom pause, exact account-name
+persistence across restart, creation of a second free profile, account export, account deletion,
+and the free-product boundaries: five active profiles, five guardians per profile, prevention of a
+sixth addition, and the seven-day maximum interval. No payment, subscription, premium, trial, or
+paywall path exists.
+
+Both platforms denied the real foreground-location prompt and then verified the PostgreSQL check-in
+without latitude, longitude, or accuracy. The deterministic API-outage journey verified that an
+unconfirmed request survived process restart in `expo-secure-store`, an incident opened while the
+mobile request remained pending, and API recovery synchronized that exact queued check-in and
+resolved the same incident while preserving audit and outbox identity. General-purpose plaintext
+credential storage was absent.
+
+This is strong simulator evidence, not permission to publish. Android uses a debug test certificate;
+iOS uses ad-hoc simulator signing. The isolated builds use a sentinel HTTPS production
+configuration while routing the E2E identity to the runner-owned backend. Same-build reinstall is
+not an N-1 store upgrade. The matrix does not prove production APNs/FCM delivery, provider receipt
+reconciliation, background/terminated delivery, iOS Focus, Android Doze/OEM restrictions, physical
+GPS, physical-device VoiceOver/TalkBack, or real store signing. Those facts remain fail-closed in
+`docs/release/readiness-manifest.json` until the signed TestFlight and Play closed-track builds,
+production deployment, physical devices, legal approval, and operations drills actually exist.
