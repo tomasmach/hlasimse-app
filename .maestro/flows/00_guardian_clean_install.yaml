@@ -184,7 +184,7 @@ tags:
       - tapOn:
           id: "tab-settings"
       - extendedWaitUntil:
-          visible: "Odhlásit se"
+          visible: "Nastavení důvěry"
           timeout: 5000
 - scrollUntilVisible:
     element:
