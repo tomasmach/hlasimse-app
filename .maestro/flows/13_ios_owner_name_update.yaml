@@ -1,0 +1,72 @@
+appId: ${APP_ID}
+name: iOS owner resumes, updates account name and verifies restart
+tags:
+  - ios
+  - owner
+  - parity
+---
+- launchApp
+- scrollUntilVisible:
+    element:
+      id: "profile-resume"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "profile-resume"
+- assertVisible: "Obnovit profil?"
+- tapOn: "Obnovit"
+- extendedWaitUntil:
+    visible:
+      id: "profile-pause"
+    timeout: 15000
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-settings"
+      - extendedWaitUntil:
+          visible:
+            id: "account-name-open"
+          timeout: 5000
+- tapOn:
+    id: "account-name-open"
+- extendedWaitUntil:
+    visible:
+      id: "account-first-name"
+    timeout: 10000
+- tapOn:
+    id: "account-first-name"
+- eraseText: 100
+- inputText: "E2E Potvrzeno"
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "account-name-submit"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "account-name-submit"
+- extendedWaitUntil:
+    visible:
+      id: "account-name-open"
+    timeout: 15000
+- assertVisible: "E2E Potvrzeno"
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "tab-settings"
+    timeout: 20000
+- tapOn:
+    id: "tab-settings"
+- extendedWaitUntil:
+    visible:
+      id: "account-name-open"
+    timeout: 15000
+- assertVisible: "E2E Potvrzeno"
+- tapOn:
+    id: "tab-index"
+- extendedWaitUntil:
+    visible:
+      id: "checkin-submit"
+    timeout: 10000

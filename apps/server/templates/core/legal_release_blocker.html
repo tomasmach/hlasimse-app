@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}{% if document == "privacy" %}Ochrana soukromí{% elif document == "terms" %}Podmínky používání{% else %}Registrace není dostupná{% endif %} — Hlásím se{% endblock %}
+{% block meta_description %}Tato právní stránka čeká na doplnění ověřených údajů provozovatele služby Hlásím se.{% endblock %}
+{% block content %}
+<section class="legal-blocker container" aria-labelledby="legal-title">
+  <div class="legal-blocker__copy">
+    <p class="eyebrow">Služba ještě není připravená k veřejnému provozu</p>
+    <h1 id="legal-title">{% if document == "privacy" %}Zásady ochrany soukromí{% elif document == "terms" %}Podmínky používání{% else %}Registrace je do zveřejnění právních dokumentů vypnutá.{% endif %}{% if document %} nelze poctivě zveřejnit bez údajů provozovatele.{% endif %}</h1>
+    <p>Před vydáním musí provozovatel doplnit a právně ověřit svou identitu, kontaktní údaje, účely a dobu zpracování, dodavatele i přesné provozní podmínky. Hlásím se zde nebude zobrazovat smyšlené nebo zastaralé údaje.</p>
+    <div class="warning-note" role="status">
+      <strong>Blokuje veřejné vydání</strong>
+      <p>Tato dočasná stránka není náhradou právního dokumentu. Služba nesmí být spuštěna pro veřejnost, dokud nebude finální znění schválené a nasazené.</p>
+    </div>
+    <a class="button button--dark" href="{% url 'core:landing' %}">Zpět na úvodní stránku</a>
+  </div>
+  <aside class="emergency-card emergency-card--light">
+    <h2>Potřebujete okamžitou pomoc?</h2>
+    <p>Hlásím se není tísňová služba. V bezprostředním ohrožení volejte <a href="tel:112">112</a> nebo <a href="tel:155">155</a>.</p>
+  </aside>
+</section>
+{% endblock %}

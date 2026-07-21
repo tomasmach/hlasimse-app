@@ -1,0 +1,167 @@
+{% extends "base.html" %}
+{% load static %}
+{% block title %}Hlásím se — klid pro vás i vaše blízké{% endblock %}
+{% block body_class %}landing-page{% endblock %}
+{% block content %}
+<div class="page-clip">
+  <section class="hero container" aria-labelledby="hero-title">
+    <div class="hero__copy">
+      <h1 id="hero-title">Jeden signál, že je <span class="inline-photo inline-photo--sunset" aria-hidden="true"></span> všechno v pořádku.</h1>
+      <p>Pravidelně se ohlásíte. Když server termín zaznamená jako zmeškaný, vytvoří incident a pokusí se upozornit vámi zvolené blízké best-effort push notifikací. Jednoduše, srozumitelně a kompletně zdarma.</p>
+      <div class="button-row">
+        <a class="button button--coral" href="{% url 'accounts:register' %}">Vytvořit účet zdarma</a>
+        <a class="button button--ghost" href="#jak-to-funguje">Podívat se, jak to funguje</a>
+      </div>
+      <p class="microcopy">Bez plateb, reklam a zamčených funkcí.</p>
+    </div>
+    <div class="hero__visual" aria-hidden="true">
+      <div class="hero__orb" aria-hidden="true"></div>
+      <article class="phone-preview">
+        <div class="phone-preview__top"><span>Hlásím se</span><span class="status-dot"></span></div>
+        <div class="phone-preview__body">
+          <p>Další ohlášení do</p>
+          <strong>14:23:05</strong>
+          <button type="button" tabindex="-1">Jsem v pořádku</button>
+          <small>Poslední ohlášení dnes v 8:30</small>
+        </div>
+      </article>
+      <div class="hero-note hero-note--top"><span aria-hidden="true"></span>Aktivní ochrana</div>
+      <div class="hero-note hero-note--bottom">Interval si určujete vy</div>
+    </div>
+  </section>
+
+  <section class="marquee" aria-label="Pro koho je služba určená">
+    <div class="marquee__track">
+      <span>Pro život o samotě</span><i aria-hidden="true"></i><span>Pro cesty a výlety</span><i aria-hidden="true"></i><span>Pro klid rodiny</span><i aria-hidden="true"></i><span>Pro každý den</span><i aria-hidden="true"></i>
+      <span aria-hidden="true">Pro život o samotě</span><i aria-hidden="true"></i><span aria-hidden="true">Pro cesty a výlety</span><i aria-hidden="true"></i><span aria-hidden="true">Pro klid rodiny</span><i aria-hidden="true"></i><span aria-hidden="true">Pro každý den</span><i aria-hidden="true"></i>
+    </div>
+  </section>
+
+  <section class="chapter container" id="jak-to-funguje" aria-labelledby="how-title">
+    <div class="chapter-heading">
+      <p class="eyebrow">Jednoduchý návyk</p>
+      <h2 id="how-title">Tři klidné kroky. Bez složitého nastavování.</h2>
+      <p>Vy určíte rytmus. My hlídáme termín a dáme vědět lidem, kterým důvěřujete.</p>
+    </div>
+    <div class="stacking-cards" data-card-stack>
+      <article class="story-card story-card--clay" data-stack-card>
+        <span class="story-card__number">1</span>
+        <div><h3>Nastavíte si interval</h3><p>Vyberete, jak často se chcete ohlásit. Od jedné hodiny až po sedm dní.</p></div>
+        <div class="interval-dial" aria-hidden="true"><span>24 h</span></div>
+      </article>
+      <article class="story-card story-card--ink" data-stack-card>
+        <span class="story-card__number">2</span>
+        <div><h3>Přidáte své strážce</h3><p>Pozvete lidi, kteří mají dostat upozornění, pokud se včas neozvete.</p></div>
+        <div class="avatar-cluster" aria-hidden="true"><span>TM</span><span>AK</span><span>JN</span></div>
+      </article>
+      <article class="story-card story-card--paper" data-stack-card>
+        <span class="story-card__number">3</span>
+        <div><h3>Jedním dotykem se ohlásíte</h3><p>Potvrdíte, že jste v pořádku. Termín se posune a blízcí mají klid.</p></div>
+        <div class="check-pulse" aria-hidden="true"><span></span></div>
+      </article>
+    </div>
+  </section>
+
+  <section class="chapter chapter--ink" id="funkce" aria-labelledby="features-title">
+    <div class="container">
+      <div class="chapter-heading chapter-heading--light">
+        <p class="eyebrow">Všechno podstatné</p>
+        <h2 id="features-title">Nástroje pro chvíle, kdy na spolehlivosti záleží.</h2>
+      </div>
+      <div class="bento-grid">
+        <article class="bento bento--wide bento--signal">
+          <div><h3>Jasný stav na první pohled</h3><p>Vždy vidíte poslední ohlášení, zbývající čas i stav profilu.</p></div>
+          <div class="signal-line" aria-hidden="true"><span></span></div>
+        </article>
+        <article class="bento bento--narrow bento--warm">
+          <h3>Více strážců</h3><p>Ke každému profilu přidáte až pět blízkých, kterým důvěřujete. Vše bezplatně.</p>
+          <div class="avatar-cluster" aria-hidden="true"><span>EL</span><span>MH</span><span>PB</span></div>
+        </article>
+        <article class="bento bento--narrow bento--map">
+          <div class="map-lines" aria-hidden="true"></div><h3>Poloha podle vašeho svolení</h3><p>Připojuje se jen k vybranému ohlášení. Strážce ji uvidí jako poslední známou polohu pouze při aktivním incidentu, nikdy jako živé sledování.</p>
+        </article>
+        <article class="bento bento--wide bento--history">
+          <div><h3>Historie bez dohadů</h3><p>Časová osa odlišuje potvrzená ohlášení, pozdější synchronizaci, pauzy i incidenty. Statistiky počítá jen z dat přijatých serverem.</p></div>
+          <div class="mini-chart" aria-hidden="true"><span style="--h:38%"></span><span style="--h:62%"></span><span style="--h:48%"></span><span style="--h:82%"></span><span style="--h:72%"></span><span style="--h:94%"></span></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <section class="manifesto" aria-labelledby="manifesto-title">
+    <div class="container manifesto__inner">
+      <p class="eyebrow">Klid bez falešných slibů</p>
+      <h2 id="manifesto-title" data-word-reveal>Bezpečnost nevzniká z velkých gest. Vzniká z jednoduchého systému, kterému rozumíte a který používáte pravidelně.</h2>
+    </div>
+  </section>
+
+  <section class="chapter container" id="bezpecnost" aria-labelledby="trust-title">
+    <div class="trust-layout">
+      <div class="chapter-heading">
+        <p class="eyebrow">Důležité souvislosti</p>
+        <h2 id="trust-title">Pomocný signál, ne náhrada tísňové linky.</h2>
+        <p>Hlásím se je podpůrná služba pro pravidelný kontakt. Push notifikace závisí na připojení, nastavení zařízení a službách třetích stran, proto jsou odesílány v režimu best-effort.</p>
+      </div>
+      <aside class="emergency-card">
+        <h3>V bezprostředním ohrožení nečekejte.</h3>
+        <p>Volejte přímo tísňovou linku <a href="tel:112">112</a> nebo zdravotnickou záchrannou službu <a href="tel:155">155</a>.</p>
+      </aside>
+    </div>
+  </section>
+
+  <section class="chapter testimonial-section" aria-labelledby="voices-title">
+    <div class="container">
+      <div class="chapter-heading chapter-heading--center">
+        <p class="eyebrow">Situace, pro které vznikáme</p>
+        <h2 id="voices-title">Jeden princip, různé životy.</h2>
+      </div>
+      <div class="testimonial-carousel" data-carousel>
+        <div class="testimonial-viewport" aria-live="polite">
+          <article class="testimonial is-active" data-slide>
+            <div class="portrait portrait--forest" aria-hidden="true"></div>
+            <blockquote>„Když vyrážím sama na delší trasu, rodina ví, kdy se mám příště ozvat.“</blockquote>
+            <p>Samostatné cestování</p>
+          </article>
+          <article class="testimonial" data-slide>
+            <div class="portrait portrait--home" aria-hidden="true"></div>
+            <blockquote>„Krátké každodenní potvrzení dává oběma stranám klid bez neustálého volání.“</blockquote>
+            <p>Samostatné bydlení</p>
+          </article>
+          <article class="testimonial" data-slide>
+            <div class="portrait portrait--road" aria-hidden="true"></div>
+            <blockquote>„Interval si přizpůsobím cestě a po návratu profil jednoduše pozastavím.“</blockquote>
+            <p>Práce a cesty</p>
+          </article>
+        </div>
+        <div class="carousel-controls">
+          <button class="icon-button" type="button" data-carousel-prev aria-label="Předchozí situace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
+          <p><span data-carousel-current>1</span> / 3</p>
+          <button class="icon-button" type="button" data-carousel-next aria-label="Další situace"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="final-cta container" aria-labelledby="cta-title">
+    <div class="final-cta__inner">
+      <h2 id="cta-title">Vytvořte si klidnější každodenní rytmus.</h2>
+      <p>Až 5 profilů, 5 strážců na profil, interval od 1 hodiny do 7 dní, pauza, historie, statistiky i volitelná poloha. Všechny funkce jsou zdarma.</p>
+      <a class="button button--light" href="{% url 'accounts:register' %}">Začít používat Hlásím se</a>
+    </div>
+  </section>
+
+  <footer class="site-footer">
+    <div class="container site-footer__grid">
+      <div><a class="brand brand--light" href="{% url 'core:landing' %}"><span class="brand__mark" aria-hidden="true"><span></span><span></span></span><span>Hlásím se</span></a><p>Pravidelný kontakt pro větší klid.</p></div>
+      <div><h2>Služba</h2><a href="#jak-to-funguje">Jak to funguje</a><a href="#funkce">Co umí</a><a href="{% url 'accounts:login' %}">Přihlášení</a></div>
+      <div><h2>Důležité</h2><a href="{% url 'core:privacy' %}">Ochrana soukromí</a><a href="{% url 'core:terms' %}">Podmínky používání</a><a href="{% url 'core:support' %}">Podpora</a></div>
+    </div>
+    <div class="container site-footer__bottom"><p>© {% now "Y" %} Hlásím se</p><p>Nenahrazuje linky 112 ani 155.</p></div>
+  </footer>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script src="{% static 'core/js/vendor/gsap-3.15.0.min.js' %}" defer></script>
+<script src="{% static 'core/js/vendor/scroll-trigger-3.15.0.min.js' %}" defer></script>
+<script src="{% static 'core/js/landing.js' %}" defer></script>
+{% endblock %}

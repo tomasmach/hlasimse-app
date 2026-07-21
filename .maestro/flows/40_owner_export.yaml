@@ -1,0 +1,46 @@
+appId: ${APP_ID}
+name: Owner requests an account export and dismisses the system share sheet
+tags:
+  - simulator
+  - export
+---
+- launchApp
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-settings"
+      - extendedWaitUntil:
+          visible: "Nastavení důvěry"
+          timeout: 5000
+- scrollUntilVisible:
+    element:
+      id: "account-export-open"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "account-export-open"
+- assertVisible: "Vaše data bez černé skříňky"
+- scrollUntilVisible:
+    element:
+      id: "account-export-submit"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "account-export-submit"
+- waitForAnimationToEnd:
+    timeout: 15000
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn:
+          id: "PopoverDismissRegion"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - pressKey: BACK
+- extendedWaitUntil:
+    visible: "Export server připravil a otevřel systémovou nabídku sdílení."
+    timeout: 10000

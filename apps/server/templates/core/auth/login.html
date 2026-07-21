@@ -1,0 +1,21 @@
+{% extends "core/auth/auth_base.html" %}
+{% block title %}Přihlášení — Hlásím se{% endblock %}
+{% block auth_content %}
+<header class="form-heading"><p class="eyebrow">Vítejte zpět</p><h1>Přihlaste se ke svému přehledu.</h1><p>Zkontrolujte termíny, profily i upozornění na jednom místě.</p></header>
+<form method="post" class="form-stack" novalidate>
+  {% csrf_token %}
+  {% if form.non_field_errors %}<div class="form-alert" role="alert">{{ form.non_field_errors }}</div>{% endif %}
+  {% for field in form %}
+    <div class="field{% if field.errors %} field--error{% endif %}">
+      <label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
+      {% if field.help_text %}<p class="field-help" id="{{ field.auto_id }}_helptext">{{ field.help_text|safe }}</p>{% endif %}
+      {% for error in field.errors %}<p class="field-error" role="alert">{{ error }}</p>{% endfor %}
+    </div>
+  {% endfor %}
+  <div class="form-inline"><label class="check-field"><input type="checkbox" name="remember_me"><span>Nechat mě přihlášeného</span></label><a href="{% url 'accounts:password_reset' %}">Zapomenuté heslo</a></div>
+  {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+  <button class="button button--coral button--wide" type="submit">Přihlásit se</button>
+</form>
+<p class="auth-switch">Ještě nemáte účet? <a href="{% url 'accounts:register' %}">Vytvořit účet zdarma</a></p>
+<p class="auth-switch">Čekáte na ověřovací e-mail? <a href="{% url 'accounts:resend-verification' %}">Poslat odkaz znovu</a></p>
+{% endblock %}

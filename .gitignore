@@ -3,6 +3,17 @@
 # dependencies
 node_modules/
 
+# Python / Django
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.sqlite3
+staticfiles/
+
 # Expo
 .expo/
 dist/
@@ -17,6 +28,8 @@ expo-env.d.ts
 *.p12
 *.key
 *.mobileprovision
+/apps/mobile/google-services.json
+/apps/mobile/GoogleService-Info.plist
 
 # Metro
 .metro-health-check*
@@ -30,8 +43,21 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
-.env*.local
+# local environment and secret files
+.env
+.env.*
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.compose.example
+
+# sensitive backup and restore artifacts
+backups/
+**/backups/
+*.dump
+*.dump.age
+*.restore-scratch
+*.partial
 
 # typescript
 *.tsbuildinfo
@@ -42,6 +68,8 @@ supabase/.temp/
 # generated native folders
 /ios
 /android
-.env.local
+/apps/mobile/ios
+/apps/mobile/android
+/release-evidence/
 
 supabase/.temp

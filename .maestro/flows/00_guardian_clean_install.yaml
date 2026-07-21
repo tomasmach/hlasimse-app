@@ -1,0 +1,212 @@
+appId: ${APP_ID}
+name: Guardian clean install, onboarding, incident acknowledgement
+tags:
+  - simulator
+  - guardian
+---
+- launchApp:
+    clearState: true
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: "Not Now"
+          timeout: 5000
+          optional: true
+      - tapOn:
+          text: "Not Now"
+          optional: true
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - openLink: ${DEV_CLIENT_URL}
+- extendedWaitUntil:
+    visible:
+      id: "onboarding-persona-screen"
+    timeout: 90000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - tapOn: "Bydlím sám/sama.*"
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - tapOn:
+          id: "onboarding-persona-alone"
+- waitForAnimationToEnd:
+    timeout: 5000
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "onboarding-persona-continue-button"
+          retryTapIfNoChange: true
+      - extendedWaitUntil:
+          visible:
+            id: "onboarding-empathy-screen"
+          timeout: 5000
+- tapOn:
+    id: "onboarding-empathy-continue-button"
+- extendedWaitUntil:
+    visible:
+      id: "onboarding-solution-screen"
+    timeout: 10000
+- tapOn:
+    id: "onboarding-solution-continue-button"
+- extendedWaitUntil:
+    visible:
+      id: "onboarding-demo-screen"
+    timeout: 10000
+- tapOn:
+    id: "onboarding-demo-checkin-button"
+- extendedWaitUntil:
+    visible: "Nanečisto hotovo."
+    timeout: 10000
+- tapOn:
+    id: "onboarding-demo-continue-button"
+- extendedWaitUntil:
+    visible:
+      id: "onboarding-register-screen"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "onboarding-register-login-button"
+    direction: DOWN
+- tapOn:
+    id: "onboarding-register-login-button"
+- extendedWaitUntil:
+    visible:
+      id: "login-screen"
+    timeout: 10000
+- tapOn:
+    id: "login-email-input"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setClipboard: ${GUARDIAN_EMAIL}
+      - pasteText
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - inputText: ${GUARDIAN_EMAIL}
+- tapOn:
+    id: "login-password-input"
+    retryTapIfNoChange: true
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setClipboard: ${E2E_CREDENTIAL}
+      - pasteText
+      - hideKeyboard
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - inputText: ${E2E_CREDENTIAL}
+      - pressKey: ENTER
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - scrollUntilVisible:
+          element:
+            id: "login-submit-button"
+          direction: DOWN
+          centerElement: true
+      - tapOn:
+          id: "login-submit-button"
+- extendedWaitUntil:
+    visible: "Not Now"
+    timeout: 5000
+    optional: true
+- tapOn:
+    text: "Not Now"
+    optional: true
+- launchApp
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - openLink: ${DEV_CLIENT_URL}
+- extendedWaitUntil:
+    visible:
+      id: "tab-activity"
+    timeout: 30000
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-activity"
+      - extendedWaitUntil:
+          visible: "Aktivní incident profilu E2E bezpečnostní profil"
+          timeout: 5000
+- tapOn: "Aktivní incident profilu E2E bezpečnostní profil"
+- extendedWaitUntil:
+    visible:
+      id: "incident-acknowledge"
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: "incident-acknowledge"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "incident-acknowledge"
+- extendedWaitUntil:
+    visible: "Potvrzení uloženo serverem"
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: "back-button"
+    direction: UP
+    centerElement: true
+- tapOn:
+    id: "back-button"
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-guardians"
+      - extendedWaitUntil:
+          visible: "Profily, které hlídám"
+          timeout: 5000
+- assertVisible: "Otevřít aktivní incident profilu E2E bezpečnostní profil"
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-settings"
+      - extendedWaitUntil:
+          visible: "Nastavení důvěry"
+          timeout: 5000
+- scrollUntilVisible:
+    element:
+      id: "settings-sign-out"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "settings-sign-out"
+- assertVisible: "Odhlásit se?"
+- tapOn: "Odhlásit"
+- extendedWaitUntil:
+    visible:
+      id: "login-screen"
+    timeout: 15000
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: "Not Now"
+          timeout: 5000
+          optional: true
+      - tapOn:
+          text: "Not Now"
+          optional: true

@@ -1,0 +1,327 @@
+import json
+import os
+from datetime import timedelta
+from pathlib import Path
+
+from django.conf import settings
+from django.core.management.base import BaseCommand, CommandError
+from django.db import connection, transaction
+from django.db.models import Q
+from django.utils import timezone
+
+from core.models import (
+    AlertIncident,
+    CheckIn,
+    CheckInProfile,
+    DeliveryAttempt,
+    EmailVerificationChallenge,
+    GuardianInvitation,
+    GuardianMembership,
+    OutboxEvent,
+    PushDevice,
+    User,
+)
+from core.services import (
+    _materialize_due_incident_locked,
+    accept_invitation,
+    archive_profile,
+    create_invitation,
+    create_profile,
+    perform_check_in,
+)
+
+OWNER_EMAIL = "e2e.owner@hlasimse.invalid"
+GUARDIAN_EMAIL = "e2e.guardian@hlasimse.invalid"
+OWNER_SAFE_PROFILE_NAME = "E2E vlastník – bezpečný check-in"
+INCIDENT_PROFILE_NAME = "E2E strážce – aktivní incident"
+OWNER_ACTIVE_PROFILE_NAME = "E2E bezpečnostní profil"
+ARCHIVED_HISTORY_PROFILE_NAME = "E2E archiv historie"
+BOUNDARY_GUARDIAN_EMAILS = tuple(
+    f"e2e.boundary-guardian-{number}@hlasimse.invalid" for number in range(2, 6)
+)
+E2E_EMAILS = (OWNER_EMAIL, GUARDIAN_EMAIL, *BOUNDARY_GUARDIAN_EMAILS)
+SEED_MODES = (
+    "guardian-open",
+    "store-review",
+    "free-boundaries",
+    "owner-no-profile",
+    "cleanup-only",
+)
+
+
+def assert_safe_e2e_database() -> None:
+    """Fail closed unless this is an unmistakably local development database."""
+    if not settings.DEBUG:
+        raise CommandError("E2E seed is disabled when DEBUG is false.")
+
+    config = connection.settings_dict
+    engine = str(config.get("ENGINE", ""))
+    database_name = str(config.get("NAME", ""))
+    if engine == "django.db.backends.sqlite3":
+        database_path = Path(database_name).resolve()
+        server_root = Path(settings.BASE_DIR).resolve()
+        if database_path.parent != server_root or database_path.name != "db.sqlite3":
+            raise CommandError(
+                "E2E seed only allows the repository-local apps/server/db.sqlite3 database."
+            )
+        return
+
+    if engine == "django.db.backends.postgresql":
+        host = str(config.get("HOST", "")).strip().lower()
+        safe_hosts = {"", "localhost", "127.0.0.1", "::1"}
+        normalized_name = database_name.lower().replace("-", "_")
+        safe_name = any(part in {"e2e", "test"} for part in normalized_name.split("_") if part)
+        if host not in safe_hosts or not safe_name:
+            raise CommandError(
+                "PostgreSQL E2E seed requires a loopback/local socket and a database name "
+                "containing a distinct 'e2e' or 'test' segment."
+            )
+        return
+
+    raise CommandError(f"Unsupported E2E database engine: {engine or 'unknown'}")
+
+
+def delete_previous_e2e_dataset() -> set:
+    """Delete only aggregates reachable from the exact reserved E2E users.
+
+    Outbox aggregate IDs are intentionally not foreign keys. Remove delivery rows
+    first (their outbox relation is PROTECT), then the matching outbox rows, then
+    the users and their normal FK graph. Immutable audit rows remain anonymized.
+    """
+    user_ids = list(User.objects.filter(email__in=E2E_EMAILS).values_list("id", flat=True))
+    if not user_ids:
+        return set()
+
+    profile_ids = list(
+        CheckInProfile.objects.filter(owner_id__in=user_ids).values_list("id", flat=True)
+    )
+    check_in_ids = list(
+        CheckIn.objects.filter(profile_id__in=profile_ids).values_list("id", flat=True)
+    )
+    incident_ids = list(
+        AlertIncident.objects.filter(profile_id__in=profile_ids).values_list("id", flat=True)
+    )
+    invitation_ids = list(
+        GuardianInvitation.objects.filter(
+            Q(profile_id__in=profile_ids)
+            | Q(invited_by_id__in=user_ids)
+            | Q(accepted_by_id__in=user_ids)
+            | Q(normalized_email__in=E2E_EMAILS)
+        ).values_list("id", flat=True)
+    )
+    membership_ids = list(
+        GuardianMembership.objects.filter(
+            Q(profile_id__in=profile_ids) | Q(guardian_id__in=user_ids)
+        ).values_list("id", flat=True)
+    )
+    device_ids = list(PushDevice.objects.filter(user_id__in=user_ids).values_list("id", flat=True))
+    challenge_ids = list(
+        EmailVerificationChallenge.objects.filter(user_id__in=user_ids).values_list("id", flat=True)
+    )
+    aggregate_ids = {
+        *user_ids,
+        *profile_ids,
+        *check_in_ids,
+        *incident_ids,
+        *invitation_ids,
+        *membership_ids,
+        *device_ids,
+        *challenge_ids,
+    }
+    outbox_ids = list(
+        OutboxEvent.objects.filter(aggregate_id__in=aggregate_ids).values_list("id", flat=True)
+    )
+    DeliveryAttempt.objects.filter(
+        Q(outbox_event_id__in=outbox_ids) | Q(incident_id__in=incident_ids)
+    ).delete()
+    OutboxEvent.objects.filter(id__in=outbox_ids).delete()
+    GuardianInvitation.objects.filter(id__in=invitation_ids).delete()
+    User.objects.filter(id__in=user_ids).delete()
+    if OutboxEvent.objects.filter(aggregate_id__in=aggregate_ids).exists():
+        raise CommandError("Reserved E2E outbox aggregates survived the bounded cleanup.")
+    return aggregate_ids
+
+
+class Command(BaseCommand):
+    help = (
+        "Reset and seed the bounded reserved @hlasimse.invalid simulator accounts. "
+        "The command refuses non-debug and non-local databases."
+    )
+
+    def add_arguments(self, parser):
+        parser.add_argument(
+            "--confirm-local-e2e",
+            action="store_true",
+            help="Explicitly confirm that this is a bounded local E2E operation.",
+        )
+        parser.add_argument(
+            "--mode",
+            choices=SEED_MODES,
+            default="guardian-open",
+            help=(
+                "guardian-open creates the two-account active-incident fixture; "
+                "store-review separates the owner's safe check-in profile from the "
+                "guardian's active-incident profile; "
+                "free-boundaries creates five profiles, five guardians on the selected "
+                "seven-day profile; "
+                "owner-no-profile creates verified accounts with no safety profile; "
+                "cleanup-only removes the exact reserved fixture graph without recreating it."
+            ),
+        )
+
+    def handle(self, *args, **options):
+        if not options["confirm_local_e2e"]:
+            raise CommandError("Pass --confirm-local-e2e explicitly.")
+        assert_safe_e2e_database()
+        run_credential = os.getenv("HLASIMSE_E2E_CREDENTIAL", "")
+        if options["mode"] != "cleanup-only" and len(run_credential) < 32:
+            raise CommandError(
+                "HLASIMSE_E2E_CREDENTIAL must be generated per run and contain "
+                "at least 32 characters."
+            )
+
+        with transaction.atomic():
+            # Exact reserved addresses are the complete deletion boundary. Never use a
+            # domain suffix query or delete unrelated fixtures/development data.
+            removed_aggregate_ids = delete_previous_e2e_dataset()
+
+            profile = None
+            archived_profile = None
+            owner_safe_profile = None
+            invitation = None
+            membership = None
+            incident = None
+            incidents_created = 0
+            events_created = 0
+            if options["mode"] != "cleanup-only":
+                owner = User.objects.create_user(
+                    email=OWNER_EMAIL,
+                    password=run_credential,
+                    first_name="E2E Vlastník",
+                )
+                guardian = User.objects.create_user(
+                    email=GUARDIAN_EMAIL,
+                    password=run_credential,
+                    first_name="E2E Strážce",
+                )
+                boundary_guardians = []
+                if options["mode"] == "free-boundaries":
+                    boundary_guardians = [
+                        User.objects.create_user(
+                            email=email,
+                            password=run_credential,
+                            first_name=f"E2E Strážce {number}",
+                        )
+                        for number, email in enumerate(BOUNDARY_GUARDIAN_EMAILS, start=2)
+                    ]
+            if options["mode"] in {"guardian-open", "store-review"}:
+                if options["mode"] == "guardian-open":
+                    archived_profile = create_profile(
+                        owner=owner,
+                        name=ARCHIVED_HISTORY_PROFILE_NAME,
+                        interval_seconds=3_600,
+                    )
+                    archive_result = archive_profile(profile=archived_profile, actor=owner)
+                    if not archive_result.archived or archive_result.blocking_incident is not None:
+                        raise CommandError(
+                            "The E2E archived-history profile was not archived safely."
+                        )
+                if options["mode"] == "store-review":
+                    owner_safe_profile = create_profile(
+                        owner=owner,
+                        name=OWNER_SAFE_PROFILE_NAME,
+                        interval_seconds=3_600,
+                    )
+                    perform_check_in(
+                        profile=owner_safe_profile,
+                        idempotency_key="e2e-store-review-owner-safe-check-in",
+                        client_recorded_at=timezone.now() - timedelta(minutes=20),
+                    )
+                profile = create_profile(
+                    owner=owner,
+                    name=(
+                        INCIDENT_PROFILE_NAME
+                        if options["mode"] == "store-review"
+                        else OWNER_ACTIVE_PROFILE_NAME
+                    ),
+                    interval_seconds=3_600,
+                )
+                perform_check_in(
+                    profile=profile,
+                    idempotency_key=(
+                        "e2e-store-review-incident-baseline-check-in"
+                        if options["mode"] == "store-review"
+                        else "e2e-seed-baseline-check-in"
+                    ),
+                    client_recorded_at=timezone.now() - timedelta(minutes=20),
+                )
+                invitation, raw_token = create_invitation(
+                    profile=profile,
+                    invited_by=owner,
+                    email=guardian.email,
+                )
+                membership = accept_invitation(raw_token=raw_token, user=guardian)
+
+                # Create one deterministic open incident after the guardian snapshot exists.
+                profile.refresh_from_db()
+                profile.next_deadline_at = timezone.now() - timedelta(minutes=5)
+                profile.save(update_fields=["next_deadline_at", "updated_at"])
+                locked_profile = CheckInProfile.objects.select_for_update().get(pk=profile.pk)
+                incident, incident_created, event_created = _materialize_due_incident_locked(
+                    profile=locked_profile,
+                    now=timezone.now(),
+                )
+                if incident is None or not incident_created:
+                    raise CommandError("The exact E2E incident was not materialized.")
+                incidents_created = int(incident_created)
+                events_created = int(event_created)
+            elif options["mode"] == "free-boundaries":
+                profile = create_profile(
+                    owner=owner,
+                    name="E2E hranice 7 dní",
+                    interval_seconds=7 * 24 * 60 * 60,
+                )
+                for number in range(2, 6):
+                    create_profile(
+                        owner=owner,
+                        name=f"E2E profil {number} z 5",
+                        interval_seconds=3_600,
+                    )
+                for boundary_guardian in [guardian, *boundary_guardians]:
+                    GuardianMembership.objects.create(
+                        profile=profile,
+                        guardian=boundary_guardian,
+                    )
+
+        result = {
+            "database_vendor": connection.vendor,
+            "owner_email": OWNER_EMAIL,
+            "guardian_email": GUARDIAN_EMAIL,
+            "mode": options["mode"],
+            "removed_aggregate_count": len(removed_aggregate_ids),
+            "profile_id": str(profile.id) if profile else None,
+            "incident_profile_id": str(profile.id) if incident else None,
+            "incident_profile_name": profile.name if incident else None,
+            "owner_safe_profile_id": (str(owner_safe_profile.id) if owner_safe_profile else None),
+            "owner_safe_profile_name": (owner_safe_profile.name if owner_safe_profile else None),
+            "archived_profile_id": str(archived_profile.id) if archived_profile else None,
+            "archived_profile_name": archived_profile.name if archived_profile else None,
+            "membership_id": str(membership.id) if membership else None,
+            "invitation_id": str(invitation.id) if invitation else None,
+            "incident_id": str(incident.id) if incident else None,
+            "incident_status": incident.status if incident else None,
+            "incidents_created": incidents_created,
+            "outbox_events_created": events_created,
+            "active_profile_count": (
+                CheckInProfile.objects.filter(owner=owner, enabled=True).count()
+                if options["mode"] != "cleanup-only"
+                else 0
+            ),
+            "active_guardian_count": (
+                profile.guardians.filter(status=GuardianMembership.Status.ACTIVE).count()
+                if profile
+                else 0
+            ),
+            "profile_interval_seconds": profile.interval_seconds if profile else None,
+        }
+        self.stdout.write(json.dumps(result, sort_keys=True))

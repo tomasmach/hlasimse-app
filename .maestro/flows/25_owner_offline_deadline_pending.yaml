@@ -1,0 +1,18 @@
+appId: ${APP_ID}
+name: Owner pending check-in survives deadline and process restart in secure storage
+tags:
+  - simulator
+  - offline
+  - at08
+---
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Toto je uložený náhled, může být zastaralý"
+    timeout: 25000
+- extendedWaitUntil:
+    visible: "Čeká na připojení — strážci zatím spoléhají na původní termín"
+    timeout: 15000
+- assertVisible: "1 hlášení čeká na odeslání.*Původní serverový termín se nezměnil.*"
+- assertVisible:
+    id: "offline-queue-sync"

@@ -1,0 +1,96 @@
+name: Mobile release candidate gate
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-release-candidate-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  store-pack:
+    name: Final store pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run release-gate tests
+        run: npm run test:release-gates
+
+      - name: Reject draft or incomplete store material
+        run: npm run check:store-release-pack
+
+      - name: Require complete release evidence
+        run: npm run check:release-readiness
+
+  android-candidate:
+    name: Android release AAB audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build and audit test-signed release AAB
+        run: npm run release:android-candidate
+
+      - name: Record Android evidence
+        if: always()
+        run: |
+          if test -f release-evidence/android/evidence.json; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat release-evidence/android/evidence.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  ios-candidate:
+    name: iOS generated native config audit
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate and audit iOS native configuration
+        run: npm run release:ios-candidate
+
+      - name: Record iOS evidence
+        if: always()
+        run: |
+          if test -f release-evidence/ios/evidence.json; then
+            echo '```json' >> "$GITHUB_STEP_SUMMARY"
+            cat release-evidence/ios/evidence.json >> "$GITHUB_STEP_SUMMARY"
+            echo '```' >> "$GITHUB_STEP_SUMMARY"
+          fi

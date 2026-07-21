@@ -1,0 +1,332 @@
+name: Publish server release artifact
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_version:
+        description: Immutable release version in vMAJOR.MINOR.PATCH format
+        required: true
+        type: string
+      confirm_publish:
+        description: Confirm that this run may publish a signed GHCR artifact
+        required: true
+        type: choice
+        options:
+          - "no"
+          - "yes"
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+
+concurrency:
+  group: publish-server-${{ inputs.release_version }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Build, scan, attest and sign
+    if: inputs.confirm_publish == 'yes'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 1
+
+      - name: Validate release input and repository state
+        id: release
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "Server releases may only be published from refs/heads/main" >&2
+            exit 2
+          fi
+          if [[ ! "$RELEASE_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "release_version must use vMAJOR.MINOR.PATCH" >&2
+            exit 2
+          fi
+          expected_version="v$(node -p "require('./apps/mobile/app.json').expo.version")"
+          if [[ "$RELEASE_VERSION" != "$expected_version" ]]; then
+            echo "release_version must equal the version in apps/mobile/app.json ($expected_version)" >&2
+            exit 2
+          fi
+          node scripts/release/validate-runtime-contract.mjs
+          image="ghcr.io/${GITHUB_REPOSITORY,,}/server"
+          tree="$(git rev-parse 'HEAD^{tree}')"
+          release_pack_sha256="$(sha256sum docs/store/release-pack.json | awk '{print $1}')"
+          runtime_contract_sha256="$(sha256sum deploy/runtime-contract.json | awk '{print $1}')"
+          migration_leaf="$(find apps/server/core/migrations -maxdepth 1 -type f -name '[0-9][0-9][0-9][0-9]_*.py' -printf '%f\n' | sort | tail -n 1)"
+          test -n "$migration_leaf"
+          {
+            echo "image=$image"
+            echo "tree=$tree"
+            echo "release_pack_sha256=$release_pack_sha256"
+            echo "runtime_contract_sha256=$runtime_contract_sha256"
+            echo "migration_leaf=$migration_leaf"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2 # v4.0.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
+
+      - name: Reject an existing immutable release tag
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          set -euo pipefail
+          for tag in "$RELEASE_VERSION" "sha-$GITHUB_SHA"; do
+            inspect_error="$(mktemp)"
+            if docker buildx imagetools inspect "$IMAGE:$tag" >/dev/null 2>"$inspect_error"; then
+              echo "Immutable registry tag already exists: $IMAGE:$tag" >&2
+              exit 1
+            fi
+            if ! grep -Eqi 'manifest unknown|name unknown|not found|404' "$inspect_error"; then
+              echo "Could not prove that $IMAGE:$tag is unused:" >&2
+              cat "$inspect_error" >&2
+              exit 1
+            fi
+            rm -f "$inspect_error"
+          done
+
+      - name: Build and publish a candidate by content digest
+        id: build
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7.2.0
+        with:
+          context: apps/server
+          file: apps/server/Dockerfile
+          platforms: linux/amd64
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.release.outputs.image }}:candidate-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - name: Scan the published digest before signing
+        id: scan
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          EVIDENCE_DIR: ${{ runner.temp }}/server-release-evidence
+        run: |
+          set -euo pipefail
+          mkdir -p "$EVIDENCE_DIR"
+          docker run --rm \
+            --volume "$HOME/.docker:/root/.docker:ro" \
+            --volume "$EVIDENCE_DIR:/evidence" \
+            aquasec/trivy:0.72.0@sha256:cffe3f5161a47a6823fbd23d985795b3ed72a4c806da4c4df16266c02accdd6f \
+            image \
+            --scanners vuln,secret \
+            --severity HIGH,CRITICAL \
+            --exit-code 1 \
+            --format json \
+            --output /evidence/trivy-report.json \
+            --no-progress \
+            --timeout 10m \
+            "$IMAGE@$DIGEST"
+          test -s "$EVIDENCE_DIR/trivy-report.json"
+          echo "report_sha256=$(sha256sum "$EVIDENCE_DIR/trivy-report.json" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Exercise the exact production image contract
+        id: runtime_gate
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          EVIDENCE_DIR: ${{ runner.temp }}/server-release-evidence
+        run: |
+          set -euo pipefail
+          docker pull "$IMAGE@$DIGEST"
+          scripts/ci/validate-production-image.sh "$IMAGE@$DIGEST" 2>&1 | tee "$EVIDENCE_DIR/runtime-gate.log"
+          echo "report_sha256=$(sha256sum "$EVIDENCE_DIR/runtime-gate.log" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Install verified Cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+        with:
+          cosign-release: v3.1.2
+
+      - name: Create release manifest
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          IMAGE: ${{ steps.release.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TREE: ${{ steps.release.outputs.tree }}
+          RELEASE_PACK_SHA256: ${{ steps.release.outputs.release_pack_sha256 }}
+          RUNTIME_CONTRACT_SHA256: ${{ steps.release.outputs.runtime_contract_sha256 }}
+          RUNTIME_GATE_SHA256: ${{ steps.runtime_gate.outputs.report_sha256 }}
+          SCAN_REPORT_SHA256: ${{ steps.scan.outputs.report_sha256 }}
+          MIGRATION_LEAF: ${{ steps.release.outputs.migration_leaf }}
+          EVIDENCE_DIR: ${{ runner.temp }}/server-release-evidence
+        run: |
+          node <<'NODE'
+          const fs = require("node:fs");
+          const manifest = {
+            schemaVersion: 1,
+            releaseVersion: process.env.RELEASE_VERSION,
+            source: {
+              repository: process.env.GITHUB_REPOSITORY,
+              commit: process.env.GITHUB_SHA,
+              tree: process.env.TREE,
+            },
+            serverImage: `${process.env.IMAGE}@${process.env.DIGEST}`,
+            migrationLeaf: process.env.MIGRATION_LEAF,
+            releasePackSha256: process.env.RELEASE_PACK_SHA256,
+            processContract: {
+              path: "deploy/runtime-contract.json",
+              sha256: process.env.RUNTIME_CONTRACT_SHA256,
+            },
+            runtimeGate: {
+              path: "runtime-gate.log",
+              sha256: process.env.RUNTIME_GATE_SHA256,
+            },
+            securityScan: {
+              tool: "trivy",
+              scanners: ["vuln", "secret"],
+              severity: ["HIGH", "CRITICAL"],
+              report: "trivy-report.json",
+              reportSha256: process.env.SCAN_REPORT_SHA256,
+            },
+          };
+          fs.writeFileSync(`${process.env.EVIDENCE_DIR}/release-manifest.json`, `${JSON.stringify(manifest, null, 2)}\n`, {
+            mode: 0o600,
+          });
+          NODE
+
+      - name: Sign, attest, and independently verify the digest
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          EVIDENCE_DIR: ${{ runner.temp }}/server-release-evidence
+          CERTIFICATE_IDENTITY: https://github.com/${{ github.workflow_ref }}
+          CERTIFICATE_OIDC_ISSUER: https://token.actions.githubusercontent.com
+        run: |
+          set -euo pipefail
+          cosign sign --yes \
+            --bundle "$EVIDENCE_DIR/image-signature.bundle.json" \
+            "$IMAGE@$DIGEST"
+          cosign attest --yes \
+            --bundle "$EVIDENCE_DIR/release-manifest-attestation.bundle.json" \
+            --type https://hlasimse.cz/attestations/release-manifest/v1 \
+            --predicate "$EVIDENCE_DIR/release-manifest.json" \
+            "$IMAGE@$DIGEST"
+          cosign verify \
+            --certificate-identity "$CERTIFICATE_IDENTITY" \
+            --certificate-oidc-issuer "$CERTIFICATE_OIDC_ISSUER" \
+            --output-file "$EVIDENCE_DIR/verified-signature.json" \
+            "$IMAGE@$DIGEST"
+          cosign verify-attestation \
+            --certificate-identity "$CERTIFICATE_IDENTITY" \
+            --certificate-oidc-issuer "$CERTIFICATE_OIDC_ISSUER" \
+            --type https://hlasimse.cz/attestations/release-manifest/v1 \
+            --output-file "$EVIDENCE_DIR/verified-attestation.json" \
+            "$IMAGE@$DIGEST"
+          test -s "$EVIDENCE_DIR/image-signature.bundle.json"
+          test -s "$EVIDENCE_DIR/release-manifest-attestation.bundle.json"
+          test -s "$EVIDENCE_DIR/verified-signature.json"
+          test -s "$EVIDENCE_DIR/verified-attestation.json"
+
+      - name: Create the server release evidence index
+        id: evidence
+        env:
+          RELEASE_VERSION: ${{ inputs.release_version }}
+          IMAGE: ${{ steps.release.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          TREE: ${{ steps.release.outputs.tree }}
+          RUNTIME_CONTRACT_SHA256: ${{ steps.release.outputs.runtime_contract_sha256 }}
+          EVIDENCE_DIR: ${{ runner.temp }}/server-release-evidence
+        run: |
+          set -euo pipefail
+          node <<'NODE'
+          const { createHash } = require("node:crypto");
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const evidenceDir = process.env.EVIDENCE_DIR;
+          const hash = (file) => createHash("sha256").update(fs.readFileSync(path.join(evidenceDir, file))).digest("hex");
+          const evidence = {
+            schemaVersion: 1,
+            releaseVersion: process.env.RELEASE_VERSION,
+            source: {
+              repository: process.env.GITHUB_REPOSITORY,
+              commit: process.env.GITHUB_SHA,
+              tree: process.env.TREE,
+            },
+            image: `${process.env.IMAGE}@${process.env.DIGEST}`,
+            runtimeContractSha256: process.env.RUNTIME_CONTRACT_SHA256,
+            releaseManifestSha256: hash("release-manifest.json"),
+            runtimeGateSha256: hash("runtime-gate.log"),
+            scanReportSha256: hash("trivy-report.json"),
+            signatureBundleSha256: hash("image-signature.bundle.json"),
+            attestationBundleSha256: hash("release-manifest-attestation.bundle.json"),
+          };
+          fs.writeFileSync(path.join(evidenceDir, "server-release-evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`, { mode: 0o600 });
+          NODE
+          echo "index_sha256=$(sha256sum "$EVIDENCE_DIR/server-release-evidence.json" | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
+      - name: Upload immutable release evidence
+        id: upload_evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: server-release-evidence-${{ inputs.release_version }}-${{ github.sha }}
+          path: ${{ runner.temp }}/server-release-evidence
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Promote the verified digest to immutable release tags
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          RELEASE_VERSION: ${{ inputs.release_version }}
+        run: |
+          set -euo pipefail
+          for tag in "$RELEASE_VERSION" "sha-$GITHUB_SHA"; do
+            inspect_error="$(mktemp)"
+            if docker buildx imagetools inspect "$IMAGE:$tag" >/dev/null 2>"$inspect_error"; then
+              echo "Refusing to overwrite immutable registry tag created during this run: $IMAGE:$tag" >&2
+              exit 1
+            fi
+            if ! grep -Eqi 'manifest unknown|name unknown|not found|404' "$inspect_error"; then
+              echo "Could not prove that $IMAGE:$tag is still unused:" >&2
+              cat "$inspect_error" >&2
+              exit 1
+            fi
+            rm -f "$inspect_error"
+          done
+          docker buildx imagetools create \
+            --tag "$IMAGE:$RELEASE_VERSION" \
+            --tag "$IMAGE:sha-$GITHUB_SHA" \
+            "$IMAGE@$DIGEST"
+          for tag in "$RELEASE_VERSION" "sha-$GITHUB_SHA"; do
+            promoted_digest="$(docker buildx imagetools inspect "$IMAGE:$tag" --format '{{.Manifest.Digest}}')"
+            if [[ "$promoted_digest" != "$DIGEST" ]]; then
+              echo "$IMAGE:$tag resolved to $promoted_digest instead of $DIGEST" >&2
+              exit 1
+            fi
+          done
+
+      - name: Record immutable release result
+        env:
+          IMAGE: ${{ steps.release.outputs.image }}
+          DIGEST: ${{ steps.build.outputs.digest }}
+          EVIDENCE_INDEX_SHA256: ${{ steps.evidence.outputs.index_sha256 }}
+          EVIDENCE_ARTIFACT_SHA256: ${{ steps.upload_evidence.outputs.artifact-digest }}
+        run: |
+          {
+            echo '### Signed server artifact'
+            echo
+            echo "\`$IMAGE@$DIGEST\`"
+            echo
+            echo "Evidence index SHA-256: \`$EVIDENCE_INDEX_SHA256\`"
+            echo
+            echo "Uploaded evidence artifact SHA-256: \`$EVIDENCE_ARTIFACT_SHA256\`"
+            echo
+            echo 'The final tags were created only after the exact digest passed the runtime gate and Trivy policy, received BuildKit provenance and an SBOM, and passed keyless Cosign signature and attestation verification.'
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,53 @@
+{% extends "core/dashboard/dashboard_base.html" %}
+{% block title %}Přehled — Hlásím se{% endblock %}
+{% block dashboard_content %}
+<header class="dashboard-heading"><div><p class="eyebrow">Dobrý den{% if request.user.first_name %}, {{ request.user.first_name }}{% endif %}</p><h1>Váš klidný přehled.</h1><p>Stav profilů, nejbližší termíny a upozornění na jednom místě.</p></div>{% if profile_limit_reached %}<div class="capacity-note" data-testid="profile-limit-reached" role="status"><strong>Vše zdarma, limit 5/5.</strong><span>Další profil přidáte po archivaci některého aktivního profilu.</span></div>{% else %}<a class="button button--dark" href="{% url 'checkins:profile-create' %}">Přidat profil</a>{% endif %}</header>
+
+{% if active_alert %}
+<a class="alert-banner" href="{% url 'alerts:detail' active_alert.pk %}"><span class="alert-banner__pulse" aria-hidden="true"></span><div><strong>Aktivní upozornění vyžaduje pozornost</strong><p>{{ active_alert.profile.name }} zmeškal/a termín {{ active_alert.deadline_at|date:"j. n. Y v H:i" }}.</p></div><span>Zobrazit detail</span></a>
+{% endif %}
+
+<section class="dashboard-section" aria-labelledby="profiles-title">
+  <div class="section-row"><div><h2 id="profiles-title">Moje profily</h2><p>Profily, za které se pravidelně hlásíte.</p></div></div>
+  <div class="profile-grid">
+    {% for item in profiles %}
+      <article class="profile-card {% if not item.enabled %}profile-card--paused{% endif %}">
+        <div class="profile-card__top"><span class="profile-avatar">{{ item.name|slice:":1"|upper }}</span><span class="status-pill {% if item.enabled %}status-pill--ok{% else %}status-pill--neutral{% endif %}">{% if item.enabled %}Aktivní{% else %}Pozastaveno{% endif %}</span></div>
+        <div><h3>{{ item.name }}</h3>{% if item.enabled and item.next_deadline_at %}<p>Další termín</p><strong class="profile-card__deadline">{{ item.next_deadline_at|date:"D j. n. v H:i" }}</strong>{% elif item.enabled %}<p>Čeká na první ohlášení</p>{% else %}<p>Odpočet neběží</p>{% endif %}</div>
+        <div class="profile-card__actions"><a class="button button--coral" href="{% url 'checkins:profile-detail' item.pk %}">Otevřít profil</a><span>{{ item.interval_seconds|default:"86400" }} s interval</span></div>
+      </article>
+    {% empty %}
+      <div class="empty-state"><span class="empty-state__visual" aria-hidden="true"></span><h3>Zatím tu není žádný profil.</h3><p>Vytvořte první profil, nastavte interval a přidejte člověka, kterému důvěřujete.</p><a class="button button--coral" href="{% url 'checkins:profile-create' %}">Vytvořit první profil</a></div>
+    {% endfor %}
+  </div>
+</section>
+
+{% if watched_memberships %}
+<section class="dashboard-section" aria-labelledby="watched-title">
+  <div class="section-row"><div><h2 id="watched-title">Profily, které hlídáte</h2><p>Aktuální stav vztahů, které jste výslovně přijali.</p></div><a href="{% url 'guardians:list' %}#hlidane-profily">Spravovat vztahy</a></div>
+  <div class="watched-grid">
+    {% for membership in watched_memberships %}
+      <article class="watched-card {% if membership.open_incident %}watched-card--incident{% endif %}">
+        <div class="watched-card__identity"><span class="profile-avatar">{{ membership.profile.name|slice:":1"|upper }}</span><div><h3>{{ membership.profile.name }}</h3><p>{{ membership.owner_display_name }}</p></div></div>
+        {% if membership.open_incident %}
+          <span class="status-pill status-pill--danger">Aktivní incident</span>
+          <p>Termín vypršel {{ membership.open_incident.deadline_at|date:"j. n. v H:i" }}. Ověřte situaci.</p>
+          <a class="button button--danger button--small" href="{% url 'alerts:detail' membership.open_incident.pk %}">Otevřít bezpečnostní postup</a>
+        {% elif membership.profile.is_paused or not membership.profile.enabled %}
+          <span class="status-pill status-pill--neutral">Pozastaveno</span>
+          <p>Odpočet neběží a za dobu pauzy nevznikají nové incidenty.</p>
+        {% else %}
+          <span class="status-pill status-pill--ok">Bez aktivního incidentu</span>
+          <p>Další termín: <strong>{{ membership.profile.next_deadline_at|date:"j. n. v H:i"|default:"čeká na potvrzení" }}</strong></p>
+        {% endif %}
+      </article>
+    {% endfor %}
+  </div>
+</section>
+{% endif %}
+
+<section class="dashboard-section dashboard-section--split">
+  <div class="panel"><div class="section-row"><div><h2>Nedávná ohlášení</h2><p>Poslední přijaté signály.</p></div><a href="{% url 'checkins:history' %}">Celá historie</a></div><div class="event-list">{% for checkin in checkins|slice:":4" %}<div class="event-row"><span class="event-icon event-icon--ok" aria-hidden="true"></span><div><strong>{{ checkin.profile.name|default:"Profil" }}</strong><p>Ohlášení přijato</p></div><time datetime="{{ checkin.accepted_at|date:'c' }}">{{ checkin.accepted_at|date:"j. n., H:i" }}</time></div>{% empty %}<p class="muted-empty">První přijaté ohlášení se zobrazí tady.</p>{% endfor %}</div></div>
+  <aside class="panel notification-health"><div><h2>Doručování upozornění</h2><p>Push upozornění závisejí na připojení a nastavení zařízení.</p></div><span class="status-pill {% if notification_health.ok %}status-pill--ok{% else %}status-pill--warning{% endif %}">{% if notification_health.ok %}Zařízení připravená{% else %}Zkontrolovat zařízení{% endif %}</span><a href="{% url 'accounts:settings' %}#upozorneni">Zkontrolovat nastavení</a></aside>
+</section>
+{% endblock %}

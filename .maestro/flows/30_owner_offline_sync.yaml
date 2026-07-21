@@ -1,0 +1,60 @@
+appId: ${APP_ID}
+name: Owner synchronizes a pending request after API recovery
+tags:
+  - simulator
+  - offline
+---
+- launchApp
+- extendedWaitUntil:
+    notVisible: "Čeká na připojení — strážci zatím spoléhají na původní termín"
+    timeout: 15000
+- tapOn:
+    id: "tab-activity"
+- scrollUntilVisible:
+    element:
+      id: "timeline-profile-picker"
+    direction: UP
+    centerElement: true
+- tapOn:
+    id: "timeline-profile-picker"
+    retryTapIfNoChange: true
+- extendedWaitUntil:
+    visible: "Aktivní profily"
+    timeout: 10000
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - scrollUntilVisible:
+          element: "E2E druhý profil"
+          direction: DOWN
+          centerElement: true
+      - tapOn: "E2E druhý profil"
+      - extendedWaitUntil:
+          visible: "Historie profilu: E2E druhý profil"
+          timeout: 15000
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - scrollUntilVisible:
+          element: "E2E Druhy profil"
+          direction: DOWN
+          centerElement: true
+      - tapOn: "E2E Druhy profil"
+      - extendedWaitUntil:
+          visible: "Historie profilu: E2E Druhy profil"
+          timeout: 15000
+- scrollUntilVisible:
+    element: "Synchronizováno později z offline fronty.*"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Synchronizováno později z offline fronty.*Vyřešil 1 aktivní incident.*"
+- scrollUntilVisible:
+    element: "Incident vyřešen potvrzeným check-inem.*"
+    direction: DOWN
+    centerElement: true
+- scrollUntilVisible:
+    element: "Server otevřel incident.*"
+    direction: DOWN
+    centerElement: true

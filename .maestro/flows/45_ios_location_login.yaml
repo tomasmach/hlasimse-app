@@ -1,0 +1,50 @@
+appId: ${APP_ID}
+name: iOS owner prepares an authenticated location-permission check
+tags:
+  - simulator
+  - ios
+  - location
+---
+- launchApp
+- extendedWaitUntil:
+    visible: "Not Now"
+    timeout: 5000
+    optional: true
+- tapOn:
+    text: "Not Now"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: "^(login-screen|onboarding-persona-screen)$"
+    timeout: 30000
+- runFlow:
+    when:
+      visible:
+        id: "onboarding-persona-screen"
+    commands:
+      - tapOn:
+          id: "onboarding-existing-account-button"
+- extendedWaitUntil:
+    visible:
+      id: "login-screen"
+    timeout: 30000
+- tapOn:
+    id: "login-email-input"
+- inputText: ${OWNER_EMAIL}
+- tapOn:
+    id: "login-password-input"
+    retryTapIfNoChange: true
+- inputText: ${E2E_CREDENTIAL}
+- pressKey: ENTER
+- extendedWaitUntil:
+    visible: "Not Now"
+    timeout: 5000
+    optional: true
+- tapOn:
+    text: "Not Now"
+    optional: true
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "checkin-submit"
+    timeout: 20000

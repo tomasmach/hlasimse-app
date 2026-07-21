@@ -1,0 +1,32 @@
+appId: ${APP_ID}
+name: Android submits owner login before location reset
+tags:
+  - android
+  - location
+---
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "login-submit-button"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "login-submit-button"
+- extendedWaitUntil:
+    visible: "Not Now"
+    timeout: 5000
+    optional: true
+- tapOn:
+    text: "Not Now"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: "checkin-submit"
+    timeout: 30000
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "checkin-submit"
+    timeout: 30000
+- assertVisible: "Vybraný profil E2E bezpečnostní profil"

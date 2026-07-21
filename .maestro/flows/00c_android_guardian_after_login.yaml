@@ -1,0 +1,89 @@
+appId: ${APP_ID}
+name: Android guardian acknowledges incident and signs out
+tags: [android, guardian]
+---
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "login-submit-button"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "login-submit-button"
+- extendedWaitUntil:
+    visible: "Not Now"
+    timeout: 5000
+    optional: true
+- tapOn:
+    text: "Not Now"
+    optional: true
+- extendedWaitUntil:
+    visible:
+      id: "tab-activity"
+    timeout: 30000
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "tab-activity"
+    timeout: 30000
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-activity"
+      - extendedWaitUntil:
+          visible: "Aktivní incident profilu E2E bezpečnostní profil"
+          timeout: 5000
+- tapOn: "Aktivní incident profilu E2E bezpečnostní profil"
+- extendedWaitUntil:
+    visible:
+      id: "incident-acknowledge"
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: "incident-acknowledge"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "incident-acknowledge"
+- extendedWaitUntil:
+    visible: "Potvrzení uloženo serverem"
+    timeout: 15000
+- scrollUntilVisible:
+    element:
+      id: "back-button"
+    direction: UP
+    centerElement: true
+- tapOn:
+    id: "back-button"
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-guardians"
+      - extendedWaitUntil:
+          visible: "Profily, které hlídám"
+          timeout: 5000
+- assertVisible: "Otevřít aktivní incident profilu E2E bezpečnostní profil"
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-settings"
+      - extendedWaitUntil:
+          visible: "Nastavení důvěry"
+          timeout: 5000
+- scrollUntilVisible:
+    element:
+      id: "settings-sign-out"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "settings-sign-out"
+- assertVisible: "Odhlásit se?"
+- tapOn: "Odhlásit"
+- extendedWaitUntil:
+    visible:
+      id: "login-screen"
+    timeout: 15000

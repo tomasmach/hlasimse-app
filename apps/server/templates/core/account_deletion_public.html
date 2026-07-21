@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Smazání účtu — Hlásím se{% endblock %}
+{% block meta_description %}Veřejný postup pro trvalé smazání účtu a osobních údajů ve službě Hlásím se.{% endblock %}
+{% block content %}
+<section class="legal-blocker container" aria-labelledby="account-deletion-title">
+  <div class="legal-blocker__copy">
+    <p class="eyebrow">Správa osobních údajů</p>
+    <h1 id="account-deletion-title">Účet můžete kdykoli trvale smazat přímo na webu.</h1>
+    <p>Přihlaste se stejným účtem, otevřete Nastavení a potvrďte smazání svým heslem. Odstraníme účet, vaše profily, historii ohlášení, pozvánky, vztahy se strážci a registrovaná push zařízení.</p>
+    <p>Pokud některý z vašich profilů právě má aktivní incident, smazání se bezpečně zastaví. Nejprve incident vyřešte potvrzeným ohlášením. U cizího incidentu, který pouze hlídáte, zůstane bezpečnostní historie zachována bez vaší identity.</p>
+    <a class="button button--dark" href="{% url 'accounts:login' %}?next={% url 'accounts:delete' %}">Přihlásit se a smazat účet</a>
+  </div>
+  <aside class="emergency-card emergency-card--light">
+    <h2>Potřebujete pomoc?</h2>
+    <p>Pokud se nemůžete přihlásit nebo potřebujete vysvětlit rozsah smazání, kontaktujte <a href="{% url 'core:support' %}">podporu</a>. Do zprávy neposílejte heslo ani jiné citlivé údaje.</p>
+  </aside>
+</section>
+{% endblock %}

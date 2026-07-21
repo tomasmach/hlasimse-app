@@ -1,0 +1,23 @@
+{% extends "core/dashboard/dashboard_base.html" %}
+{% block title %}{{ profile.name|default:"Profil" }} — Hlásím se{% endblock %}
+{% block dashboard_content %}
+<nav class="breadcrumbs" aria-label="Drobečková navigace"><a href="{% url 'core:dashboard' %}">Přehled</a><span aria-hidden="true">/</span><span aria-current="page">{{ profile.name|default:"Profil" }}</span></nav>
+<header class="dashboard-heading"><div><p class="eyebrow">Profil</p><h1>{{ profile.name|default:"Můj profil" }}</h1><p>{% if profile.enabled %}Odpočet je aktivní a čeká na vaše další ohlášení.{% else %}Profil je pozastavený a termín se nyní nehlídá.{% endif %}</p></div><div class="button-row"><a class="button button--ghost" href="{% url 'checkins:profile-edit' profile.pk %}">Upravit profil</a><a class="button button--ghost" href="{% url 'checkins:profile-pause' profile.pk %}">{% if profile.enabled %}Pozastavit profil{% else %}Obnovit profil{% endif %}</a></div></header>
+
+<section class="checkin-hero {% if not profile.enabled %}checkin-hero--paused{% endif %}" aria-labelledby="checkin-title">
+  <div class="checkin-hero__copy"><span class="status-pill {% if profile.enabled %}status-pill--ok{% else %}status-pill--neutral{% endif %}">{% if profile.enabled %}Hlídání aktivní{% else %}Pozastaveno{% endif %}</span><h2 id="checkin-title">{% if profile.enabled %}Jste v pořádku?{% else %}Odpočet právě neběží.{% endif %}</h2>{% if profile.enabled %}<p>Další termín: <strong>{{ profile.next_deadline_at|date:"l j. n. Y v H:i"|default:"po prvním ohlášení" }}</strong></p>{% else %}<p>Po obnovení profilu se nastaví nový termín podle vašeho intervalu.</p>{% endif %}</div>
+  {% if profile.enabled %}<form method="post" action="{% url 'checkins:check-in' profile.pk %}" class="checkin-action" data-checkin-form>{% csrf_token %}<input type="hidden" name="idempotency_key" value="{{ web_checkin_key }}"><input type="hidden" name="latitude" data-checkin-latitude><input type="hidden" name="longitude" data-checkin-longitude><input type="hidden" name="location_accuracy_meters" data-checkin-accuracy><button type="submit" class="checkin-button" data-checkin-submit><span class="checkin-button__rings" aria-hidden="true"></span><span>Jsem v pořádku</span><small>Odeslat serveru</small></button><label class="location-consent"><input type="checkbox" name="location_requested" data-checkin-location><span><strong>Přidat polohu pouze k tomuto ohlášení</strong><small>Volitelné. Prohlížeč se zeptá až po stisku tlačítka. Odmítnutí ohlášení neblokuje.</small></span></label><p class="location-status" data-checkin-location-status aria-live="polite"></p></form>{% endif %}
+</section>
+
+<div class="metric-grid">
+  <article><p>Poslední ohlášení</p><strong>{{ profile.last_checked_in_at|date:"j. n. Y, H:i"|default:"Zatím žádné" }}</strong></article>
+  <article><p>Interval</p><strong>{{ profile.interval_label|default:"24 hodin" }}</strong></article>
+  <article><p>Aktivní strážci</p><strong>{{ guardians|length }}</strong></article>
+  <article><p>Ohlášení celkem</p><strong>{{ stats.total_checkins|default:"0" }}</strong></article>
+</div>
+
+<section class="dashboard-section dashboard-section--split">
+  <div class="panel"><div class="section-row"><div><h2>Strážci profilu</h2><p>Lidé, kterým se služba při incidentu pokusí odeslat best-effort push upozornění.</p></div><a href="{% url 'guardians:list' %}">Spravovat</a></div><div class="guardian-mini-list">{% for guardian in guardians|slice:":4" %}<div><span class="profile-avatar profile-avatar--small">{{ guardian.guardian_display_name|slice:":1"|upper }}</span><div><strong>{{ guardian.guardian_display_name }}</strong><p>{{ guardian.guardian.email }}</p></div></div>{% empty %}<p class="muted-empty">Profil zatím nemá strážce. Přidejte alespoň jednoho člověka, kterému důvěřujete.</p>{% endfor %}</div></div>
+  <div class="panel"><div class="section-row"><div><h2>Nedávná historie</h2><p>Poslední přijatá ohlášení tohoto profilu.</p></div><a href="{% url 'checkins:history' %}?profile={{ profile.pk }}">Zobrazit celou časovou osu</a></div><div class="event-list">{% for checkin in checkins|slice:":4" %}<div class="event-row"><span class="event-icon event-icon--ok" aria-hidden="true"></span><div><strong>Ohlášení přijato serverem</strong><p>{% if checkin.submitted_from_queue %}Synchronizováno později{% elif checkin.latitude %}S volitelnou polohou{% else %}Bez polohy{% endif %}</p></div><time datetime="{{ checkin.accepted_at|date:'c' }}">{{ checkin.accepted_at|date:"j. n., H:i" }}</time></div>{% empty %}<p class="muted-empty">Zatím žádná ohlášení.</p>{% endfor %}</div></div>
+</section>
+{% endblock %}

@@ -1,0 +1,62 @@
+appId: ${APP_ID}
+name: Android verifies all free boundaries after login
+tags: [android, free-boundaries]
+---
+- hideKeyboard
+- scrollUntilVisible:
+    element:
+      id: "login-submit-button"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "login-submit-button"
+- extendedWaitUntil:
+    visible: "Not Now"
+    timeout: 5000
+    optional: true
+- tapOn:
+    text: "Not Now"
+    optional: true
+- extendedWaitUntil:
+    visible: "Vybraný profil E2E hranice 7 dní"
+    timeout: 30000
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible: "Vybraný profil E2E hranice 7 dní"
+    timeout: 30000
+- tapOn:
+    id: "profile-switcher"
+- scrollUntilVisible:
+    element: "Využíváte všech 5 profilů."
+    direction: DOWN
+    centerElement: true
+- assertNotVisible:
+    id: "profile-create-open"
+- tapOn:
+    id: "profile-switcher"
+- scrollUntilVisible:
+    element:
+      id: "profile-edit-open"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "profile-edit-open"
+- extendedWaitUntil:
+    visible: "Profil 1 z 5.*"
+    timeout: 10000
+- assertVisible: "10080"
+- assertVisible: "7 dní"
+- tapOn:
+    id: "back-button"
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-guardians"
+      - extendedWaitUntil:
+          visible: "5/5 aktivních"
+          timeout: 10000
+- assertVisible:
+    id: "guardian-invite-open"
+    enabled: false

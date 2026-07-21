@@ -1,0 +1,47 @@
+appId: ${APP_ID}
+name: Android package update preserves authenticated account state
+tags:
+  - android
+  - upgrade
+---
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "checkin-submit"
+    timeout: 60000
+- assertVisible:
+    id: "profile-selected-name"
+    text: "E2E update sentinel"
+- assertNotVisible:
+    id: "onboarding-persona-screen"
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-activity"
+      - extendedWaitUntil:
+          visible:
+            id: "statistics-section"
+          timeout: 5000
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-settings"
+      - extendedWaitUntil:
+          visible: "Nastavení důvěry"
+          timeout: 5000
+- scrollUntilVisible:
+    element:
+      id: "settings-sign-out"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "settings-sign-out"
+- assertVisible: "Odhlásit se?"
+- tapOn: "Odhlásit"
+- extendedWaitUntil:
+    visible:
+      id: "login-screen"
+    timeout: 15000

@@ -1,0 +1,38 @@
+appId: ${APP_ID}
+name: iOS in-place upgrade preserves authenticated owner state
+tags:
+  - simulator
+  - ios
+  - upgrade
+---
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "checkin-submit"
+    timeout: 30000
+- assertNotVisible:
+    id: "login-screen"
+- assertNotVisible:
+    id: "onboarding-persona-screen"
+- assertVisible:
+    id: "profile-selected-name"
+    text: "E2E update sentinel"
+- tapOn:
+    id: "checkin-submit"
+- extendedWaitUntil:
+    visible:
+      id: "checkin-success-overlay"
+    timeout: 15000
+- assertVisible:
+    id: "checkin-success-summary"
+- tapOn:
+    id: "checkin-success-continue"
+- extendedWaitUntil:
+    notVisible: "Zatím žádné serverem potvrzené ohlášení"
+    timeout: 15000
+- assertVisible: "Serverový termín aktivní"
+- assertVisible:
+    id: "profile-last-confirmed-checkin"
+- assertVisible:
+    id: "checkin-submit"
+    enabled: true

@@ -1,0 +1,76 @@
+appId: ${APP_ID}
+name: Owner explicitly deletes the test account after incidents are resolved
+tags:
+  - simulator
+  - destructive-test-fixture
+---
+- launchApp
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: "Not Now"
+          timeout: 5000
+          optional: true
+      - tapOn:
+          text: "Not Now"
+          optional: true
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-settings"
+      - extendedWaitUntil:
+          visible: "Nastavení důvěry"
+          timeout: 5000
+- scrollUntilVisible:
+    element:
+      id: "account-delete-open"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "account-delete-open"
+- assertVisible: "Nejdřív bezpečně uzavřete vlastní incidenty"
+- scrollUntilVisible:
+    element:
+      id: "account-delete-password"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "account-delete-password"
+- inputText: ${E2E_CREDENTIAL}
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - pressKey: ENTER
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - hideKeyboard
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: "Not Now"
+          timeout: 5000
+          optional: true
+      - tapOn:
+          text: "Not Now"
+          optional: true
+- scrollUntilVisible:
+    element:
+      id: "account-delete-submit"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "account-delete-submit"
+- assertVisible: "Trvale smazat účet?"
+- tapOn: "Ano, smazat účet"
+- extendedWaitUntil:
+    visible:
+      id: "login-screen"
+    timeout: 20000

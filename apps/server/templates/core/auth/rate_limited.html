@@ -1,0 +1,10 @@
+{% extends "core/auth/auth_base.html" %}
+{% block title %}Chvíli počkejte — Hlásím se{% endblock %}
+{% block auth_content %}
+<div class="completion-card" role="alert">
+  <span class="completion-card__icon" aria-hidden="true"></span>
+  <h1>Teď už je pokusů příliš mnoho.</h1>
+  <p>Chráníme tak váš účet před zneužitím. Zkuste to znovu přibližně za {{ retry_after_minutes }} min.</p>
+  <a class="button button--dark button--wide" href="{% url 'accounts:login' %}">Zpět k přihlášení</a>
+</div>
+{% endblock %}

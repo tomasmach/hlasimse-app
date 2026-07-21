@@ -1,0 +1,75 @@
+{
+  "schemaVersion": 1,
+  "status": "DRAFT",
+  "application": {
+    "version": "1.0.0",
+    "iosBundleIdentifier": "cz.tomasmach.hlasimse",
+    "iosBuildNumber": "1",
+    "androidApplicationId": "cz.tomasmach.hlasimse",
+    "androidVersionCode": 1
+  },
+  "source": {
+    "commit": "<exact-40-character-commit>",
+    "tree": "<exact-40-character-tree>"
+  },
+  "server": {
+    "image": "ghcr.io/<owner>/<repository>/server@sha256:<digest>",
+    "runtimeContractSha256": "<sha256>",
+    "runtimeGateSha256": "<sha256>",
+    "scanReportSha256": "<sha256>",
+    "releaseManifestSha256": "<sha256>",
+    "signatureBundleSha256": "<sha256>",
+    "attestationBundleSha256": "<sha256>",
+    "evidenceIndexSha256": "<sha256>",
+    "evidenceArtifactSha256": "<sha256>",
+    "migrationLeaf": "<migration-file>"
+  },
+  "publicContract": {
+    "origin": "https://www.hlasimse.cz",
+    "releasePackSha256": "<sha256>",
+    "termsDocumentSha256": "<sha256>",
+    "privacyDocumentSha256": "<sha256>"
+  },
+  "migration": {
+    "disposition": "UNDECIDED",
+    "evidenceSha256": "<sha256>"
+  },
+  "operations": {
+    "backupRestore": {"passed": false, "completedAt": "", "evidenceSha256": "<sha256>"},
+    "pagingFireDrill": {"passed": false, "completedAt": "", "evidenceSha256": "<sha256>"},
+    "smtpDelivery": {"passed": false, "completedAt": "", "evidenceSha256": "<sha256>"},
+    "productionSoak": {"passed": false, "completedAt": "", "evidenceSha256": "<sha256>"}
+  },
+  "mobile": {
+    "ios": {
+      "artifactSha256": "<sha256>",
+      "signedArtifactAuditSha256": "<sha256>",
+      "storeBuildId": "",
+      "distribution": "testflight",
+      "physicalDevice": {"model": "", "os": ""},
+      "freshInstall": false,
+      "nMinusOneUpgrade": false,
+      "incidentPushReceived": false,
+      "pushReceiptReconciled": false,
+      "productionApiVerified": false
+    },
+    "android": {
+      "artifactSha256": "<sha256>",
+      "signedArtifactAuditSha256": "<sha256>",
+      "storeBuildId": "",
+      "distribution": "play-closed",
+      "physicalDevice": {"model": "", "os": ""},
+      "freshInstall": false,
+      "nMinusOneUpgrade": false,
+      "incidentPushReceived": false,
+      "pushReceiptReconciled": false,
+      "productionApiVerified": false
+    }
+  },
+  "approvals": {
+    "engineering": {"approved": false, "approvedAt": "", "evidenceSha256": "<sha256>"},
+    "security": {"approved": false, "approvedAt": "", "evidenceSha256": "<sha256>"},
+    "legal": {"approved": false, "approvedAt": "", "evidenceSha256": "<sha256>"},
+    "operations": {"approved": false, "approvedAt": "", "evidenceSha256": "<sha256>"}
+  }
+}

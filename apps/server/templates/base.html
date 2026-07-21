@@ -1,0 +1,59 @@
+{% load static %}
+<!doctype html>
+<html lang="cs">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f4f1e8">
+  <meta name="description" content="{% block meta_description %}Hlásím se pomáhá lidem pravidelně potvrdit, že jsou v pořádku, a při zmeškaném termínu se pokusí upozornit jejich blízké best-effort push notifikací.{% endblock %}">
+  <link rel="canonical" href="{{ app_base_url }}{{ request.path }}">
+  <meta property="og:locale" content="cs_CZ">
+  <meta property="og:type" content="website">
+  <meta property="og:title" content="{% block og_title %}Hlásím se{% endblock %}">
+  <meta property="og:image" content="{% static 'core/images/og-image.png' %}">
+  <title>{% block title %}Hlásím se{% endblock %}</title>
+  <link rel="icon" href="{% static 'core/images/favicon.svg' %}" type="image/svg+xml">
+  <link rel="preload" href="{% static 'core/fonts/satoshi-regular.woff2' %}" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="{% static 'core/css/app.css' %}">
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="{% block body_class %}{% endblock %}">
+  <a class="skip-link" href="#hlavni-obsah">Přeskočit na hlavní obsah</a>
+
+  {% block shell %}
+    <header class="site-header" data-site-header>
+      <div class="site-header__inner container">
+        <a class="brand" href="{% url 'core:landing' %}" aria-label="Hlásím se, domovská stránka">
+          <img class="brand__mark" src="{% static 'core/images/favicon.svg' %}" alt="" width="38" height="38">
+          <span>Hlásím se</span>
+        </a>
+        <button class="nav-toggle icon-button" type="button" aria-controls="site-nav" aria-expanded="false" data-nav-toggle>
+          <span class="sr-only">Otevřít menu</span>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg>
+        </button>
+        <nav class="site-nav" id="site-nav" aria-label="Hlavní navigace" data-site-nav>
+          <a href="{% url 'core:landing' %}#jak-to-funguje">Jak to funguje</a>
+          <a href="{% url 'core:landing' %}#funkce">Co umí</a>
+          <a href="{% url 'core:landing' %}#bezpecnost">Bezpečí</a>
+          {% if request.user.is_authenticated %}
+            <a class="button button--dark button--small" href="{% url 'core:dashboard' %}">Otevřít přehled</a>
+          {% else %}
+            <a href="{% url 'accounts:login' %}">Přihlásit se</a>
+            <a class="button button--coral button--small" href="{% url 'accounts:register' %}">Začít zdarma</a>
+          {% endif %}
+        </nav>
+      </div>
+    </header>
+    <main id="hlavni-obsah" tabindex="-1">{% block content %}{% endblock %}</main>
+  {% endblock %}
+
+  {% if messages %}
+    <div class="toast-region" aria-live="polite" aria-atomic="true">
+      {% for message in messages %}<div class="toast toast--{{ message.tags|default:'info' }}">{{ message }}</div>{% endfor %}
+    </div>
+  {% endif %}
+
+  <script src="{% static 'core/js/app.js' %}" defer></script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

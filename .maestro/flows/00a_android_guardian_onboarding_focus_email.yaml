@@ -1,0 +1,58 @@
+appId: ${APP_ID}
+name: Android guardian completes onboarding and focuses email
+tags: [android, guardian]
+---
+- launchApp:
+    clearState: true
+- extendedWaitUntil:
+    visible:
+      id: "onboarding-persona-screen"
+    timeout: 90000
+- tapOn: "Bydlím sám/sama.*"
+- waitForAnimationToEnd:
+    timeout: 5000
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "onboarding-persona-continue-button"
+          retryTapIfNoChange: true
+      - extendedWaitUntil:
+          visible:
+            id: "onboarding-empathy-screen"
+          timeout: 5000
+- tapOn:
+    id: "onboarding-empathy-continue-button"
+- extendedWaitUntil:
+    visible:
+      id: "onboarding-solution-screen"
+    timeout: 10000
+- tapOn:
+    id: "onboarding-solution-continue-button"
+- extendedWaitUntil:
+    visible:
+      id: "onboarding-demo-screen"
+    timeout: 10000
+- tapOn:
+    id: "onboarding-demo-checkin-button"
+- extendedWaitUntil:
+    visible: "Nanečisto hotovo."
+    timeout: 10000
+- tapOn:
+    id: "onboarding-demo-continue-button"
+- extendedWaitUntil:
+    visible:
+      id: "onboarding-register-screen"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "onboarding-register-login-button"
+    direction: DOWN
+- tapOn:
+    id: "onboarding-register-login-button"
+- extendedWaitUntil:
+    visible:
+      id: "login-screen"
+    timeout: 10000
+- tapOn:
+    id: "login-email-input"

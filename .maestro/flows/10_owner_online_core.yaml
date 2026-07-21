@@ -1,0 +1,125 @@
+appId: ${APP_ID}
+name: Owner login, confirmed check-in, pause, resume, history and guardian
+tags:
+  - simulator
+  - owner
+---
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - launchApp
+      - extendedWaitUntil:
+          visible: "Not Now"
+          timeout: 5000
+          optional: true
+      - tapOn:
+          text: "Not Now"
+          optional: true
+      - tapOn:
+          id: "login-email-input"
+      - inputText: ${OWNER_EMAIL}
+      - tapOn:
+          id: "login-password-input"
+          retryTapIfNoChange: true
+      - inputText: ${E2E_CREDENTIAL}
+      - pressKey: ENTER
+      - extendedWaitUntil:
+          visible: "Not Now"
+          timeout: 5000
+          optional: true
+      - tapOn:
+          text: "Not Now"
+          optional: true
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "checkin-submit"
+    timeout: 20000
+- assertVisible: "Vybraný profil E2E bezpečnostní profil"
+- tapOn:
+    id: "checkin-submit"
+    waitToSettleTimeoutMs: 500
+- extendedWaitUntil:
+    visible:
+      id: "checkin-success-overlay"
+    timeout: 10000
+- assertVisible:
+    id: "checkin-success-summary"
+- tapOn:
+    id: "checkin-success-continue"
+- extendedWaitUntil:
+    visible: "Serverový termín aktivní"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "profile-pause"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "profile-pause"
+- extendedWaitUntil:
+    visible: "Jak dlouho má pauza trvat?"
+    timeout: 10000
+- scrollUntilVisible:
+    element:
+      id: "pause-duration-24h"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "pause-duration-24h"
+- scrollUntilVisible:
+    element:
+      id: "pause-confirm"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "pause-confirm"
+- extendedWaitUntil:
+    visible:
+      id: "profile-resume"
+    timeout: 15000
+- tapOn:
+    id: "profile-resume"
+- assertVisible: "Obnovit profil?"
+- tapOn: "Obnovit"
+- extendedWaitUntil:
+    visible:
+      id: "profile-pause"
+    timeout: 15000
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-activity"
+      - extendedWaitUntil:
+          visible:
+            id: "statistics-section"
+          timeout: 5000
+- scrollUntilVisible:
+    element: "Vyřešený incident profilu E2E bezpečnostní profil"
+    direction: DOWN
+    centerElement: true
+- scrollUntilVisible:
+    element:
+      id: "history-section"
+    direction: DOWN
+    centerElement: true
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-guardians"
+      - extendedWaitUntil:
+          visible: "E2E Strážce"
+          timeout: 5000
+- assertVisible: "1/5 aktivních"
+- retry:
+    maxRetries: 2
+    commands:
+      - tapOn:
+          id: "tab-index"
+      - extendedWaitUntil:
+          visible:
+            id: "checkin-submit"
+          timeout: 5000

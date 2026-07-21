@@ -1,0 +1,32 @@
+appId: ${APP_ID}
+name: Android saves account name and verifies restart
+tags: [android, owner, parity]
+---
+- assertVisible: "E2E Potvrzeno"
+- hideKeyboard
+- tapOn:
+    id: "account-name-submit"
+- extendedWaitUntil:
+    visible:
+      id: "account-name-open"
+    timeout: 15000
+- assertVisible: "E2E Potvrzeno"
+- stopApp
+- launchApp
+- extendedWaitUntil:
+    visible:
+      id: "tab-settings"
+    timeout: 20000
+- tapOn:
+    id: "tab-settings"
+- extendedWaitUntil:
+    visible:
+      id: "account-name-open"
+    timeout: 15000
+- assertVisible: "E2E Potvrzeno"
+- tapOn:
+    id: "tab-index"
+- extendedWaitUntil:
+    visible:
+      id: "checkin-submit"
+    timeout: 10000

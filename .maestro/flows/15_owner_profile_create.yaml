@@ -1,0 +1,67 @@
+appId: ${APP_ID}
+name: Owner creates a second free safety profile
+tags:
+  - simulator
+  - owner
+  - profile
+---
+- launchApp
+- scrollUntilVisible:
+    element:
+      id: "profile-switcher"
+    direction: UP
+    centerElement: true
+- tapOn:
+    id: "profile-switcher"
+- extendedWaitUntil:
+    visible:
+      id: "profile-create-open"
+    timeout: 10000
+- tapOn:
+    id: "profile-create-open"
+- extendedWaitUntil:
+    visible:
+      id: "profile-create-name-input"
+    timeout: 10000
+- tapOn:
+    id: "profile-create-name-input"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - setClipboard: "E2E Druhy profil"
+      - pasteText
+      - hideKeyboard
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - inputText: "E2E druhý profil"
+- scrollUntilVisible:
+    element: "1 hodina"
+    direction: DOWN
+    centerElement: true
+- tapOn: "1 hodina"
+- scrollUntilVisible:
+    element:
+      id: "profile-create-submit"
+    direction: DOWN
+    centerElement: true
+- tapOn:
+    id: "profile-create-submit"
+- runFlow:
+    when:
+      platform: Android
+    commands:
+      - extendedWaitUntil:
+          visible: "Vybraný profil E2E Druhy profil"
+          timeout: 15000
+- runFlow:
+    when:
+      platform: iOS
+    commands:
+      - extendedWaitUntil:
+          visible: "Vybraný profil E2E druhý profil"
+          timeout: 15000
+- assertVisible:
+    id: "checkin-submit"

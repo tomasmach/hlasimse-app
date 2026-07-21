@@ -1,0 +1,58 @@
+appId: ${APP_ID}
+name: iOS owner denies one-time location and still completes check-in
+tags:
+  - simulator
+  - ios
+  - location
+---
+- extendedWaitUntil:
+    visible:
+      id: "checkin-submit"
+    timeout: 20000
+- scrollUntilVisible:
+    element:
+      id: "checkin-location-toggle"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Stav oprávnění: zatím nevybráno"
+- tapOn:
+    id: "checkin-location-toggle"
+- scrollUntilVisible:
+    element:
+      id: "checkin-submit"
+    direction: UP
+    centerElement: true
+- tapOn:
+    id: "checkin-submit"
+- extendedWaitUntil:
+    visible: "Don.t Allow|Nepovolit"
+    timeout: 10000
+- tapOn: "Don.t Allow|Nepovolit"
+- extendedWaitUntil:
+    visible:
+      id: "checkin-success-overlay"
+    timeout: 15000
+- assertVisible:
+    id: "checkin-success-summary"
+- tapOn:
+    id: "checkin-success-continue"
+- extendedWaitUntil:
+    visible: "Stav oprávnění: zamítnuto"
+    timeout: 15000
+- scrollUntilVisible:
+    element: "Stav oprávnění: zamítnuto"
+    direction: DOWN
+    centerElement: true
+- assertVisible: "Stav oprávnění: zamítnuto"
+- assertVisible:
+    id: "checkin-location-toggle"
+    checked: false
+- assertVisible:
+    id: "checkin-submit"
+    enabled: true
+- scrollUntilVisible:
+    element: "Serverový termín aktivní"
+    direction: UP
+    centerElement: true
+- assertVisible: "Serverový termín aktivní"
+- runFlow: 03_select_upgrade_sentinel_profile.yaml

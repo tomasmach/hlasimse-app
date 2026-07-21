@@ -1,0 +1,11 @@
+{% extends "core/auth/auth_base.html" %}
+{% block title %}Ověřte svůj e-mail — Hlásím se{% endblock %}
+{% block auth_content %}
+<header class="form-heading">
+  <h1>Zkontrolujte svůj e-mail.</h1>
+  <p>Poslali jsme jednorázový odkaz, kterým potvrdíte, že adresa patří vám. Odkaz platí 24 hodin.</p>
+</header>
+<div class="form-alert" role="status">Pokud zprávu nevidíte, zkontrolujte také složku hromadné pošty.</div>
+<a class="button button--coral button--wide" href="{% url 'accounts:login' %}">Po ověření se přihlásit</a>
+<p class="auth-switch">E-mail nedorazil? <a href="{% url 'accounts:resend-verification' %}">Poslat odkaz znovu</a></p>
+{% endblock %}

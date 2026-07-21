@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% load static %}
+{% block body_class %}dashboard-page{% endblock %}
+{% block shell %}
+<div class="dashboard-shell" data-dashboard-shell>
+  <aside class="dashboard-sidebar" id="dashboard-navigation" aria-label="Navigace aplikace" data-dashboard-sidebar>
+    <a class="brand" href="{% url 'core:dashboard' %}"><img class="brand__mark" src="{% static 'core/images/favicon.svg' %}" alt="" width="38" height="38"><span>Hlásím se</span></a>
+    <nav class="dashboard-nav">
+      <a href="{% url 'core:dashboard' %}" {% if request.resolver_match.url_name == 'dashboard' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 13h6V4H4v9Zm0 7h6v-4H4v4Zm10 0h6v-9h-6v9Zm0-16v4h6V4h-6Z"/></svg><span>Přehled</span></a>
+      <a href="{% url 'guardians:list' %}" {% if request.resolver_match.namespace == 'guardians' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m7-10a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm13 10v-2a4 4 0 0 0-3-3.87m-2-12a4 4 0 0 1 0 7.75"/></svg><span>Blízcí a hlídané profily</span></a>
+      <a href="{% url 'checkins:history' %}" {% if request.resolver_match.url_name == 'history' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8m0-5v5h5m4-1v5l3 2"/></svg><span>Historie</span></a>
+      <a href="{% url 'accounts:settings' %}" {% if request.resolver_match.url_name == 'settings' %}aria-current="page"{% endif %}><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm7.4-3.5a7.3 7.3 0 0 0-.1-1l2-1.5-2-3.4-2.3 1a8 8 0 0 0-1.8-1L14.8 3h-4l-.4 2.4a8 8 0 0 0-1.8 1l-2.3-1-2 3.4 2 1.5a7.3 7.3 0 0 0 0 2l-2 1.5 2 3.4 2.3-1a8 8 0 0 0 1.8 1l.4 2.4h4l.4-2.4a8 8 0 0 0 1.8-1l2.3 1 2-3.4-2-1.5a7.3 7.3 0 0 0 .1-1Z"/></svg><span>Nastavení</span></a>
+    </nav>
+    <div class="dashboard-sidebar__safety"><strong>Potřebujete okamžitou pomoc?</strong><p>Volejte <a href="tel:112">112</a> nebo <a href="tel:155">155</a>.</p></div>
+    <div class="account-chip"><span class="account-chip__avatar">{{ request.user.first_name|default:request.user.email|slice:":1"|upper }}</span><div><strong>{% if request.user.first_name or request.user.last_name %}{{ request.user.first_name }} {{ request.user.last_name }}{% else %}{{ request.user.email }}{% endif %}</strong><a href="{% url 'accounts:settings' %}">Spravovat účet</a></div><form method="post" action="{% url 'accounts:logout' %}">{% csrf_token %}<button class="icon-button" type="submit" aria-label="Odhlásit se"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 17l5-5-5-5m5 5H3m9-9h7a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-7"/></svg></button></form></div>
+  </aside>
+  <div class="dashboard-workspace">
+    <header class="dashboard-mobile-header"><button class="icon-button" type="button" aria-controls="dashboard-navigation" aria-expanded="false" data-dashboard-toggle><span class="sr-only">Otevřít navigaci</span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button><a class="brand" href="{% url 'core:dashboard' %}"><img class="brand__mark" src="{% static 'core/images/favicon.svg' %}" alt="" width="38" height="38"><span>Hlásím se</span></a></header>
+    <main id="hlavni-obsah" class="dashboard-main" tabindex="-1">
+      {% block dashboard_content %}{% endblock %}
+      <footer class="dashboard-footer"><p>Hlásím se nenahrazuje tísňovou linku. Push upozornění jsou odesílána v režimu best-effort.</p><a href="{% url 'core:support' %}">Potřebujete poradit?</a></footer>
+    </main>
+  </div>
+</div>
+{% endblock %}

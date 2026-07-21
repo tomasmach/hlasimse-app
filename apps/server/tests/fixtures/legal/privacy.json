@@ -1,0 +1,6 @@
+{
+  "kind": "privacy",
+  "version": "test-privacy-v1",
+  "title": "Testovací zásady ochrany soukromí",
+  "content": "TENTO DOKUMENT JE POUZE AUTOMATIZOVANÁ TESTOVACÍ FIXTURE A NESMÍ BÝT ZVEŘEJNĚN. Popisuje fiktivní zpracování testovacích údajů, aby testy prokázaly bezpečné načtení, kontrolu verze, kontrolu hashe a escapování výstupu. Neobsahuje skutečné údaje provozovatele, právní závazek, produkční dodavatele ani schválené retenční lhůty. Produkční prostředí musí použít samostatný právně schválený soubor s přesným SHA-256 digestem."
+}

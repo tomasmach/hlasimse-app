@@ -1,0 +1,608 @@
+import { useCallback, useEffect, useMemo, useState, type ComponentType } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  Text,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { router, useFocusEffect } from "expo-router";
+import {
+  Archive,
+  ArrowRight,
+  CheckCircle,
+  ClockCounterClockwise,
+  MapPin,
+  Pause,
+  Play,
+  ShieldWarning,
+  UserCircle,
+  WarningCircle,
+  type IconProps,
+} from "phosphor-react-native";
+import { ActionButton, Metric, Notice, PageTitle } from "@/components/product/ProductUI";
+import { ProfileTimelinePicker } from "@/components/product/ProfileTimelinePicker";
+import { useCheckInStore } from "@/stores/checkin";
+import { productPeriodFilterKey, useProductStore } from "@/stores/product";
+import { COLORS } from "@/constants/design";
+import { visibleAccessibleIncidents } from "@/lib/incidentVisibility";
+import { deliveryStatePresentation } from "@/lib/deliveryPresentation";
+import type {
+  ProfileTimelineEvent,
+  ProfileTimelineEventType,
+} from "@/types/product";
+
+const formatDateTime = (value: string) =>
+  new Intl.DateTimeFormat("cs-CZ", { dateStyle: "medium", timeStyle: "short" }).format(
+    new Date(value),
+  );
+
+type TimelineTone = "success" | "warning" | "info" | "danger";
+
+interface TimelinePresentation {
+  title: string;
+  detail: string;
+  category: string;
+  tone: TimelineTone;
+  Icon: ComponentType<IconProps>;
+  incidentId: string | null;
+}
+
+const timelineCategory: Record<ProfileTimelineEventType, string> = {
+  "profile.created": "Vznik profilu",
+  "profile.paused": "Pauza",
+  "profile.resumed": "Obnovení",
+  "profile.archived": "Archivace",
+  "checkin.confirmed": "Check-in",
+  "incident.opened": "Incident otevřen",
+  "incident.resolved": "Incident vyřešen",
+};
+
+function timelinePresentation(event: ProfileTimelineEvent): TimelinePresentation {
+  switch (event.event_type) {
+    case "checkin.confirmed": {
+      const resolution = event.details.resolved_incident_count
+        ? ` Vyřešil ${event.details.resolved_incident_count} aktivní incident.`
+        : "";
+      return {
+        title: "Check-in potvrzen serverem",
+        detail: event.details.submitted_from_queue
+          ? `Synchronizováno později z offline fronty. Rozhodující je čas přijetí serverem.${resolution}`
+          : `Odesláno přímo a potvrzeno serverem.${resolution}`,
+        category: timelineCategory[event.event_type],
+        tone: event.details.resolved_incident_count ? "warning" : "success",
+        Icon: CheckCircle,
+        incidentId: null,
+      };
+    }
+    case "incident.opened":
+      return {
+        title: "Server otevřel incident",
+        detail: `Serverový termín uplynul ${formatDateTime(event.details.deadline_at)}.`,
+        category: timelineCategory[event.event_type],
+        tone: "danger",
+        Icon: ShieldWarning,
+        incidentId: event.details.incident_id,
+      };
+    case "incident.resolved":
+      return {
+        title: "Incident vyřešen potvrzeným check-inem",
+        detail: "Vyřešení potvrdil server; incident zůstává v bezpečnostní historii.",
+        category: timelineCategory[event.event_type],
+        tone: "success",
+        Icon: CheckCircle,
+        incidentId: event.details.incident_id,
+      };
+    case "profile.paused":
+      return {
+        title: event.details.automatic
+          ? "Profil automaticky přešel do pauzy"
+          : "Pauza potvrzena serverem",
+        detail: event.details.has_scheduled_resume
+          ? "Server evidoval naplánované automatické obnovení."
+          : "Pauza neměla naplánovaný konec.",
+        category: timelineCategory[event.event_type],
+        tone: "info",
+        Icon: Pause,
+        incidentId: null,
+      };
+    case "profile.resumed":
+      return {
+        title: event.details.automatic
+          ? "Profil automaticky obnoven"
+          : "Obnovení potvrzeno serverem",
+        detail: "Server založil novou generaci termínu bez zpětného incidentu za dobu pauzy.",
+        category: timelineCategory[event.event_type],
+        tone: "info",
+        Icon: Play,
+        incidentId: null,
+      };
+    case "profile.archived":
+      return {
+        title: "Profil archivován",
+        detail: `Server zrušil termín a odvolal ${event.details.revoked_membership_count} vztahů strážců a ${event.details.revoked_invitation_count} čekajících pozvánek.`,
+        category: timelineCategory[event.event_type],
+        tone: "warning",
+        Icon: Archive,
+        incidentId: null,
+      };
+    case "profile.created":
+      return {
+        title: "Profil vytvořen",
+        detail: `Server založil první termín s intervalem ${event.details.interval_seconds / 60} minut.`,
+        category: timelineCategory[event.event_type],
+        tone: "info",
+        Icon: UserCircle,
+        incidentId: null,
+      };
+  }
+}
+
+const timelineColors: Record<TimelineTone, string> = {
+  success: "#245E3C",
+  warning: COLORS.warning,
+  info: "#315C5D",
+  danger: COLORS.error,
+};
+
+export default function ActivityScreen() {
+  const { profile, profiles, pendingItems } = useCheckInStore();
+  const product = useProductStore();
+  const [refreshing, setRefreshing] = useState(false);
+  const [periodDays, setPeriodDays] = useState<30 | 90 | 0>(30);
+  const [selectedTimelineProfileId, setSelectedTimelineProfileId] = useState<string | null>(
+    profile?.id ?? null,
+  );
+  const [showDefinitions, setShowDefinitions] = useState(false);
+  const [removingLocationId, setRemovingLocationId] = useState<string | null>(null);
+  const [locationMutationError, setLocationMutationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!selectedTimelineProfileId && profile?.id) setSelectedTimelineProfileId(profile.id);
+  }, [profile?.id, selectedTimelineProfileId]);
+
+  const selectedActiveProfile = profiles.find((item) => item.id === selectedTimelineProfileId);
+  const selectedArchivedProfile = product.archivedProfiles.find(
+    (item) => item.id === selectedTimelineProfileId,
+  );
+  const selectedProfileName = selectedActiveProfile?.name ?? selectedArchivedProfile?.name ?? null;
+  const selectedIsArchived = Boolean(selectedArchivedProfile);
+
+  const filter = useMemo(
+    () => ({
+      ...(selectedTimelineProfileId ? { profile: selectedTimelineProfileId } : {}),
+      ...(periodDays
+        ? { from: new Date(Date.now() - periodDays * 86_400_000).toISOString() }
+        : {}),
+    }),
+    [selectedTimelineProfileId, periodDays],
+  );
+  const filterKey = productPeriodFilterKey(filter);
+
+  const load = useCallback(async () => {
+    await Promise.allSettled([
+      selectedTimelineProfileId
+        ? product.loadTimeline(selectedTimelineProfileId)
+        : Promise.resolve(),
+      selectedTimelineProfileId ? product.loadStatistics(filter) : Promise.resolve(),
+      product.loadAlerts(),
+    ]);
+  }, [
+    filter,
+    selectedTimelineProfileId,
+    product.loadTimeline,
+    product.loadStatistics,
+    product.loadAlerts,
+  ]);
+
+  useFocusEffect(
+    useCallback(() => {
+      void load();
+    }, [load]),
+  );
+
+  useFocusEffect(
+    useCallback(() => {
+      void product.loadArchivedProfiles();
+    }, [product.loadArchivedProfiles]),
+  );
+
+  const refresh = async () => {
+    setRefreshing(true);
+    await Promise.allSettled([load(), product.loadArchivedProfiles()]);
+    setRefreshing(false);
+  };
+
+  const confirmLocationRemoval = (checkInId: string) => {
+    Alert.alert(
+      "Odstranit polohu z check-inu?",
+      "Server odstraní uloženou polohu, ale zachová check-in, termín i bezpečnostní historii. Souřadnice se na této obrazovce nezobrazují.",
+      [
+        { text: "Zrušit", style: "cancel" },
+        {
+          text: "Odstranit polohu",
+          style: "destructive",
+          onPress: () => {
+            setLocationMutationError(null);
+            setRemovingLocationId(checkInId);
+            void product
+              .removeCheckInLocation(checkInId)
+              .catch((mutationError: unknown) => {
+                setLocationMutationError(
+                  mutationError instanceof Error
+                    ? mutationError.message
+                    : "Polohu se nepodařilo odstranit.",
+                );
+              })
+              .finally(() => setRemovingLocationId(null));
+          },
+        },
+      ],
+    );
+  };
+  const profileAlerts = visibleAccessibleIncidents(product.alerts);
+  const visiblePendingItems = selectedTimelineProfileId
+    ? pendingItems.filter((item) => item.profileId === selectedTimelineProfileId)
+    : [];
+  const timeline = product.timelineProfileId === selectedTimelineProfileId ? product.timeline : null;
+  const timelineLoading = product.resources.timeline.status === "loading";
+  const archivedLoading = product.resources.archivedProfiles.status === "loading";
+  const error =
+    product.resources.timeline.error ||
+    product.resources.archivedProfiles.error ||
+    product.resources.statistics.error ||
+    product.resources.alerts.error;
+
+  return (
+    <SafeAreaView className="flex-1 bg-cream" edges={["top"]}>
+      <ScrollView
+        contentContainerClassName="px-5 pt-5 pb-36"
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={refresh}
+            tintColor={COLORS.brand[500]}
+          />
+        }
+      >
+        <PageTitle
+          title="Časová stopa"
+          subtitle={
+            selectedProfileName
+              ? `${selectedProfileName} · časová osa pochází pouze ze serveru`
+              : "Pro časovou osu vyberte vlastní profil; incidenty strážce zůstávají níže."
+          }
+        />
+        <ProfileTimelinePicker
+          activeProfiles={profiles}
+          archivedProfiles={product.archivedProfiles}
+          selectedId={selectedTimelineProfileId}
+          archivedNext={product.archivedProfilesNext}
+          archivedLoading={archivedLoading}
+          onSelect={setSelectedTimelineProfileId}
+          onLoadMoreArchived={() => {
+            void product.loadMoreArchivedProfiles().catch(() => undefined);
+          }}
+        />
+        {selectedIsArchived ? (
+          <View className="mb-7">
+            <Notice title="Pouze historie — profil je archivovaný" tone="info">
+              <Text className="font-body text-[#315C5D] leading-5">
+                Tento profil už nevytváří termíny ani incidenty. Výběr zde nemění provozní profil
+                aplikace a neumožňuje check-in ani úpravy.
+              </Text>
+            </Notice>
+          </View>
+        ) : null}
+        <View className="flex-row gap-2 mb-7" accessibilityRole="radiogroup">
+          {(
+            [
+              { value: 30, label: "30 dní" },
+              { value: 90, label: "90 dní" },
+              { value: 0, label: "Vše" },
+            ] as const
+          ).map((item) => (
+            <Pressable
+              key={item.value}
+              onPress={() => setPeriodDays(item.value)}
+              className={`min-h-[44px] px-4 rounded-full items-center justify-center ${periodDays === item.value ? "bg-charcoal" : "bg-white border border-sand"}`}
+              accessibilityRole="radio"
+              accessibilityState={{ checked: periodDays === item.value }}
+            >
+              <Text
+                className={`font-body-semibold ${periodDays === item.value ? "text-white" : "text-charcoal"}`}
+              >
+                {item.label}
+              </Text>
+            </Pressable>
+          ))}
+        </View>
+        <Text className="font-body text-xs leading-5 text-muted -mt-4 mb-5">
+          Období mění statistiky. Bezpečnostní časová osa se stránkuje v úplném serverovém pořadí.
+        </Text>
+
+        {error ? (
+          <Notice title="Některá data se nepodařilo obnovit" tone="warning">
+            <Text className="font-body text-[#7B4A08]">
+              {error.message} Starší zobrazená data mohou být zastaralá.
+            </Text>
+          </Notice>
+        ) : null}
+
+        <View testID="statistics-section" className="py-8 border-b border-sand">
+          <Text className="font-display text-[28px] text-charcoal mb-4">Co potvrzuje server</Text>
+          {selectedTimelineProfileId &&
+          product.statistics &&
+          product.statisticsFilterKey === filterKey ? (
+            <View className="flex-row flex-wrap gap-x-5">
+              <Metric
+                value={product.statistics.total_check_ins}
+                label="potvrzených check-inů"
+              />
+              <Metric
+                value={product.statistics.on_time_check_ins}
+                label="včasných check-inů"
+              />
+              <Metric
+                value={product.statistics.incident_count}
+                label="vzniklých incidentů v období"
+              />
+            </View>
+          ) : (
+            <ActivityIndicator color={COLORS.brand[500]} />
+          )}
+          <Pressable
+            onPress={() => setShowDefinitions((value) => !value)}
+            className="min-h-[44px] justify-center mt-2"
+            accessibilityRole="button"
+            accessibilityState={{ expanded: showDefinitions }}
+          >
+            <Text className="font-body-semibold text-brand-500">
+              {showDefinitions ? "Skrýt definice metrik" : "Jak se metriky počítají"}
+            </Text>
+          </Pressable>
+          {showDefinitions && product.statistics ? (
+            <View className="gap-3 mt-2">
+              {Object.values(product.statistics.definitions).map((definition) => (
+                <Text key={definition} className="font-body text-sm leading-5 text-muted">
+                  {definition}
+                </Text>
+              ))}
+              <Text className="font-body text-sm leading-5 text-muted">
+                Čekající nebo odmítnutý offline požadavek se do statistik nepočítá.
+              </Text>
+            </View>
+          ) : null}
+        </View>
+
+        {visiblePendingItems.length ? (
+          <View className="py-7 border-b border-sand">
+            <Text className="font-display text-[26px] text-charcoal mb-4">
+              Mimo serverovou historii
+            </Text>
+            {visiblePendingItems.map((item) => (
+              <View key={item.id} className="py-3 flex-row gap-3">
+                <WarningCircle
+                  size={22}
+                  color={item.status === "failed" ? COLORS.error : COLORS.warning}
+                  weight="fill"
+                />
+                <View className="flex-1">
+                  <Text className="font-body-semibold text-charcoal">
+                    {item.status === "failed"
+                      ? "Server odmítl požadavek"
+                      : "Čeká na připojení"}
+                  </Text>
+                  <Text className="font-body text-sm text-muted mt-1">
+                    {formatDateTime(item.clientRecordedAt)} · původní termín zůstal beze změny
+                  </Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        ) : null}
+
+        <View className="py-8 border-b border-sand">
+          <Text className="font-display text-[28px] text-charcoal mb-2">
+            Incidenty, ke kterým máte přístup
+          </Text>
+          <Text className="font-body text-sm leading-5 text-muted mb-4">
+            Zahrnuje vaše profily i profily, které hlídáte. Kompletní check-in historii hlídaných
+            lidí zde neuvidíte.
+          </Text>
+          {profileAlerts.length ? (
+            profileAlerts.map((alert) => (
+              <Pressable
+                testID={`incident-open-${alert.id}`}
+                key={alert.id}
+                onPress={() =>
+                  router.push({
+                    pathname: "/(tabs)/incident/[id]",
+                    params: { id: alert.id },
+                  })
+                }
+                className="py-5 border-b border-sand flex-row gap-4"
+                accessibilityRole="button"
+                accessibilityLabel={`${alert.status === "open" ? "Aktivní" : "Vyřešený"} incident profilu ${alert.profile_name}`}
+              >
+                <WarningCircle
+                  size={25}
+                  weight="fill"
+                  color={alert.status === "open" ? COLORS.error : "#315C5D"}
+                />
+                <View className="flex-1">
+                  <View className="flex-row justify-between gap-3">
+                    <Text className="font-body-semibold text-base text-charcoal flex-1">
+                      {alert.status === "open" ? "Aktivní incident" : "Vyřešený incident"}
+                    </Text>
+                    <ArrowRight size={20} color={COLORS.muted} />
+                  </View>
+                  <Text className="font-body text-sm text-muted mt-1">
+                    Otevřen {formatDateTime(alert.opened_at)}
+                  </Text>
+                  <Text className="font-body text-sm leading-5 text-muted mt-2">
+                    {deliveryStatePresentation[alert.delivery_status.state].label}
+                  </Text>
+                </View>
+              </Pressable>
+            ))
+          ) : (
+            <Text className="font-body text-muted py-2">
+              Nejsou zobrazené žádné přístupné incidenty.
+            </Text>
+          )}
+        </View>
+
+        <View testID="history-section" className="py-8">
+          <Text className="font-display text-[28px] text-charcoal mb-2">
+            Úplná časová osa profilu
+          </Text>
+          <Text className="font-body text-sm leading-5 text-muted mb-6">
+            Check-iny, pauzy, obnovení, incidenty a archivace v jednom serverovém pořadí.
+            Souřadnice se zde nikdy nezobrazují.
+          </Text>
+
+          {locationMutationError ? (
+            <View className="mb-5">
+              <Notice title="Polohu se nepodařilo odstranit" tone="danger">
+                <Text className="font-body text-[#9E2E2A] leading-5">
+                  {locationMutationError} Serverová data zůstala beze změny.
+                </Text>
+              </Notice>
+            </View>
+          ) : null}
+
+          {!selectedTimelineProfileId ? (
+            <Notice title="Časová osa patří vlastníkovi profilu" tone="info">
+              <Text className="font-body text-[#315C5D]">
+                Jako strážce uvidíte přístupné incidenty výše, ne kompletní soukromou historii
+                hlídaného člověka.
+              </Text>
+            </Notice>
+          ) : timelineLoading && !timeline ? (
+            <ActivityIndicator color={COLORS.brand[500]} />
+          ) : timeline?.results.length ? (
+            <View>
+              {timeline.results.map((event, index) => {
+                const presentation = timelinePresentation(event);
+                const color = timelineColors[presentation.tone];
+                const isLast = index === timeline.results.length - 1 && !timeline.next;
+                const body = (
+                  <>
+                    <View className="w-11 items-center self-stretch">
+                      <View
+                        className="w-10 h-10 rounded-full items-center justify-center"
+                        style={{ backgroundColor: `${color}18` }}
+                      >
+                        <presentation.Icon size={21} color={color} weight="fill" />
+                      </View>
+                      {!isLast ? (
+                        <View className="w-px flex-1 bg-sand min-h-[36px] mt-2" />
+                      ) : null}
+                    </View>
+                    <View className="flex-1 pb-8">
+                      <Text className="font-body-semibold text-[13px]" style={{ color }}>
+                        {presentation.category}
+                      </Text>
+                      <Text className="font-body-semibold text-base text-charcoal mt-1">
+                        {presentation.title}
+                      </Text>
+                      <Text className="font-body text-sm text-muted mt-1">
+                        {formatDateTime(event.occurred_at)}
+                      </Text>
+                      <Text className="font-body text-sm leading-5 text-muted mt-2">
+                        {presentation.detail}
+                      </Text>
+                      {event.event_type === "checkin.confirmed" &&
+                      event.details.has_location ? (
+                        <View className="mt-4 pt-3 border-t border-sand flex-row items-start gap-3">
+                          <MapPin size={20} color={COLORS.muted} />
+                          <View className="flex-1">
+                            <Text className="font-body-semibold text-sm text-charcoal">
+                              Poloha je k tomuto check-inu připojena
+                            </Text>
+                            <Text className="font-body text-xs leading-5 text-muted mt-1">
+                              Zobrazuje se jen informace o přítomnosti, ne souřadnice.
+                            </Text>
+                            <Pressable
+                              testID={`checkin-location-delete-${event.details.check_in_id}`}
+                              onPress={() => confirmLocationRemoval(event.details.check_in_id)}
+                              disabled={removingLocationId !== null}
+                              className="min-h-[44px] self-start justify-center mt-1"
+                              accessibilityRole="button"
+                              accessibilityLabel="Odstranit polohu z tohoto check-inu"
+                              accessibilityHint="Po potvrzení odstraní server pouze uloženou polohu. Check-in zůstane zachovaný."
+                              accessibilityState={{
+                                disabled: removingLocationId !== null,
+                                busy: removingLocationId === event.details.check_in_id,
+                              }}
+                            >
+                              <Text className="font-body-semibold text-sm text-error">
+                                {removingLocationId === event.details.check_in_id
+                                  ? "Čekáme na server…"
+                                  : "Odstranit polohu"}
+                              </Text>
+                            </Pressable>
+                          </View>
+                        </View>
+                      ) : null}
+                    </View>
+                    {presentation.incidentId ? (
+                      <ArrowRight size={20} color={COLORS.muted} />
+                    ) : null}
+                  </>
+                );
+                return presentation.incidentId ? (
+                  <Pressable
+                    key={event.id}
+                    testID={`timeline-incident-${presentation.incidentId}`}
+                    onPress={() =>
+                      router.push({
+                        pathname: "/(tabs)/incident/[id]",
+                        params: { id: presentation.incidentId! },
+                      })
+                    }
+                    className="flex-row gap-3"
+                    accessibilityRole="button"
+                    accessibilityLabel={`${presentation.title}, ${formatDateTime(event.occurred_at)}`}
+                  >
+                    {body}
+                  </Pressable>
+                ) : (
+                  <View key={event.id} className="flex-row gap-3">
+                    {body}
+                  </View>
+                );
+              })}
+              {timeline.next ? (
+                <View className="mt-2">
+                  <ActionButton
+                    testID="timeline-load-more"
+                    label="Načíst starší události"
+                    variant="quiet"
+                    loading={timelineLoading}
+                    onPress={() => void product.loadMoreTimeline(selectedTimelineProfileId)}
+                  />
+                </View>
+              ) : (
+                <Text className="font-body text-xs leading-5 text-muted mt-1">
+                  Zobrazen začátek serverové historie tohoto profilu.
+                </Text>
+              )}
+            </View>
+          ) : (
+            <View className="py-6 items-center">
+              <ClockCounterClockwise size={32} color={COLORS.muted} />
+              <Text className="font-body text-muted mt-3 text-center">
+                Časová osa profilu je zatím prázdná.
+              </Text>
+            </View>
+          )}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
+  );
+}

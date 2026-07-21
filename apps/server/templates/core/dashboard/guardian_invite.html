@@ -1,0 +1,11 @@
+{% extends "core/dashboard/dashboard_base.html" %}
+{% block title %}Pozvat strážce — Hlásím se{% endblock %}
+{% block dashboard_content %}
+<nav class="breadcrumbs" aria-label="Drobečková navigace"><a href="{% url 'guardians:list' %}">Strážci</a><span aria-hidden="true">/</span><span aria-current="page">Nová pozvánka</span></nav>
+<header class="dashboard-heading"><div><p class="eyebrow">Člověk, kterému důvěřujete</p><h1>Pozvěte strážce.</h1><p>Po přijetí pozvánky uvidí strážce stav zvoleného profilu a může dostat upozornění.</p></div></header>
+{% if guardian_limit_reached %}
+<div class="capacity-note capacity-note--page" data-testid="guardian-limit-reached" role="status"><strong>Vše zdarma, limit 5/5.</strong><span>Všechny vaše profily už mají pět aktivních strážců. Dalšího pozvete po odebrání některého z nich.</span><a class="button button--ghost" href="{% url 'guardians:list' %}">Zpět ke strážcům</a></div>
+{% else %}
+<section class="form-panel form-panel--narrow"><form method="post" class="form-stack" novalidate>{% csrf_token %}{% if form.non_field_errors %}<div class="form-alert" role="alert">{{ form.non_field_errors }}</div>{% endif %}{% for field in form %}<div class="field{% if field.errors %} field--error{% endif %}"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.help_text %}<p class="field-help">{{ field.help_text|safe }}</p>{% endif %}{% for error in field.errors %}<p class="field-error" role="alert">{{ error }}</p>{% endfor %}</div>{% endfor %}<div class="form-actions"><a class="button button--ghost" href="{% url 'guardians:list' %}">Zrušit</a><button class="button button--coral" type="submit">Odeslat pozvánku</button></div></form><aside class="context-note"><strong>Než pozvánku odešlete</strong><p>Domluvte se s blízkým, co má při upozornění udělat. Push zpráva nemusí být doručena okamžitě.</p></aside></section>
+{% endif %}
+{% endblock %}

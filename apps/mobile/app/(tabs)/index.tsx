@@ -1,0 +1,534 @@
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ActivityIndicator, Alert, Platform, Pressable, ScrollView, Switch, Text, View } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { router } from "expo-router";
+import DateTimePicker, { type DateTimePickerEvent } from "@react-native-community/datetimepicker";
+import Animated, { FadeInDown, useReducedMotion } from "react-native-reanimated";
+import { CaretDown, Check, MapPin, Pause, Play, Plus, ShieldWarning } from "phosphor-react-native";
+import { useAuth } from "@/hooks/useAuth";
+import { useCountdown } from "@/hooks/useCountdown";
+import { useLocation } from "@/hooks/useLocation";
+import { useNetworkStatus } from "@/hooks/useNetworkStatus";
+import { useCheckInStore } from "@/stores/checkin";
+import { OfflineBanner } from "@/components/OfflineBanner";
+import { SuccessOverlay } from "@/components/SuccessOverlay";
+import { Toast } from "@/components/ui";
+import { ActionButton, Notice, StatusLabel } from "@/components/product/ProductUI";
+import { COLORS } from "@/constants/design";
+import { getCheckInFeedback } from "@/lib/checkInFeedback";
+import {
+  initialCustomPauseEnd,
+  MAX_CUSTOM_PAUSE_MS,
+  mergeCustomPauseSelection,
+  pauseRequestForPreset,
+  type PauseDurationPreset,
+  type PauseScheduleRequest,
+} from "@/lib/pauseScheduling";
+import { serverNowMs } from "@/lib/serverClock";
+
+const pauseDurationOptions: Array<{
+  value: PauseDurationPreset;
+  label: string;
+  detail: string;
+}> = [
+  {
+    value: "indefinite",
+    label: "Bez plánovaného konce",
+    detail: "Profil obnovíte ručně. Aplikace pauzu připomene místní notifikací, pokud ji zařízení dovolí.",
+  },
+  {
+    value: "24h",
+    label: "Naplánovat obnovení za 24 hodin",
+    detail: "Server uloží čas obnovení za 24 hodin od potvrzení pauzy.",
+  },
+  {
+    value: "7d",
+    label: "Naplánovat obnovení za 7 dní",
+    detail: "Server uloží čas obnovení za 7 dní od potvrzení pauzy.",
+  },
+  {
+    value: "custom",
+    label: "Vybrat vlastní datum a čas",
+    detail: "Zvolíte přesný budoucí okamžik v časové zóně tohoto zařízení.",
+  },
+];
+
+const pauseReferenceNowMs = () => serverNowMs() ?? Date.now();
+
+const formatDateTime = (value: string | null) => value
+  ? new Intl.DateTimeFormat("cs-CZ", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
+  : "Termín není aktivní";
+
+const formatLastCheckIn = (value: string | null) => value
+  ? new Intl.DateTimeFormat("cs-CZ", { dateStyle: "medium", timeStyle: "short" }).format(new Date(value))
+  : "Zatím žádné serverem potvrzené ohlášení";
+
+function Countdown({
+  deadline,
+  paused,
+  enabled,
+  countdown,
+}: {
+  deadline: string | null;
+  paused: boolean;
+  enabled: boolean;
+  countdown: ReturnType<typeof useCountdown>;
+}) {
+  if (!enabled) {
+    return <Text className="font-display text-[42px] leading-[46px] tracking-[-1px] text-charcoal">Profil je archivovaný</Text>;
+  }
+  if (paused) {
+    return <Text className="font-display text-[42px] leading-[46px] tracking-[-1px] text-charcoal">Profil je v pauze</Text>;
+  }
+  if (!deadline) {
+    return <Text className="font-display text-[38px] leading-[43px] tracking-[-1px] text-charcoal">Čekáme na serverový termín</Text>;
+  }
+  if (!countdown.isTimeVerified) {
+    return <Text className="font-display text-[38px] leading-[43px] tracking-[-1px] text-charcoal">Čas čeká na ověření serverem</Text>;
+  }
+  if (countdown.isExpired) {
+    return <Text className="font-display text-[44px] leading-[48px] tracking-[-1px] text-error">Termín vypršel</Text>;
+  }
+  return (
+    <View>
+      <Text className="font-display text-[54px] leading-[58px] tracking-[-2px] text-charcoal" maxFontSizeMultiplier={1.35}>
+        {countdown.formatted}
+      </Text>
+      <Text className="font-body text-sm text-muted mt-1">hodin : minut : sekund</Text>
+    </View>
+  );
+}
+
+export default function CheckInScreen() {
+  const { user } = useAuth();
+  const store = useCheckInStore();
+  const { permissionStatus, getCurrentPosition, requestPermission } = useLocation();
+  const { isConnected } = useNetworkStatus();
+  const reduceMotion = useReducedMotion();
+  const [showProfiles, setShowProfiles] = useState(false);
+  const [includeLocation, setIncludeLocation] = useState(false);
+  const [isCheckingIn, setIsCheckingIn] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isChangingPause, setIsChangingPause] = useState(false);
+  const [showPauseOptions, setShowPauseOptions] = useState(false);
+  const [pauseDuration, setPauseDuration] = useState<PauseDurationPreset>("indefinite");
+  const [customPauseUntil, setCustomPauseUntil] = useState(initialCustomPauseEnd);
+  const [androidPickerMode, setAndroidPickerMode] = useState<"date" | "time" | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [toast, setToast] = useState<{ visible: boolean; message: string; type: "success" | "info" | "warning" | "error" }>({ visible: false, message: "", type: "info" });
+  const countdown = useCountdown(store.profile?.next_deadline_at ?? null);
+  const pickerReferenceNowMs = pauseReferenceNowMs();
+  const pickerMinimumDate = new Date(pickerReferenceNowMs);
+  const pickerMaximumDate = new Date(pickerReferenceNowMs + MAX_CUSTOM_PAUSE_MS);
+  const deviceTimeZone = Intl.DateTimeFormat().resolvedOptions().timeZone || "místní čas zařízení";
+  const formatPauseEnd = (value: Date | string) => new Intl.DateTimeFormat("cs-CZ", {
+    weekday: "long",
+    day: "numeric",
+    month: "long",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZoneName: "longOffset",
+    timeZone: deviceTimeZone === "místní čas zařízení" ? undefined : deviceTimeZone,
+  }).format(typeof value === "string" ? new Date(value) : value);
+
+  useEffect(() => {
+    if (user?.id && !store.hasFetched) void store.fetchProfile(user.id);
+  }, [user?.id, store.hasFetched]);
+
+  useEffect(() => {
+    if (user && store.hasFetched && store.profile === null) {
+      if (store.guardianOnlyMode) router.replace("/(tabs)/guardians");
+      else if (store.lastFetchSucceeded) router.replace("/(tabs)/profile-setup");
+    }
+  }, [user, store.hasFetched, store.lastFetchSucceeded, store.profile, store.guardianOnlyMode]);
+
+  const sync = useCallback(async () => {
+    setIsSyncing(true);
+    const result = await store.syncPendingCheckIns();
+    setIsSyncing(false);
+    if (result.synced > 0) setToast({ visible: true, type: "success", message: `${result.synced} čekající hlášení server potvrdil.` });
+  }, [store.syncPendingCheckIns]);
+
+  useEffect(() => {
+    if (isConnected && store.pendingCount > 0) void sync();
+  }, [isConnected, store.pendingCount, sync]);
+
+  useEffect(() => {
+    setIncludeLocation(false);
+    setShowPauseOptions(false);
+    setPauseDuration("indefinite");
+    setCustomPauseUntil(initialCustomPauseEnd());
+    setAndroidPickerMode(null);
+  }, [store.profile?.id]);
+
+  const changeCustomPauseUntil = (
+    event: DateTimePickerEvent,
+    selectedDate?: Date,
+    mode: "date" | "time" | "datetime" = "datetime",
+  ) => {
+    if (Platform.OS === "android") setAndroidPickerMode(null);
+    if (event.type !== "set" || !selectedDate) return;
+    setCustomPauseUntil((current) => mergeCustomPauseSelection(current, selectedDate, mode));
+  };
+
+  const handleCheckIn = async () => {
+    if (isCheckingIn) return;
+    setIsCheckingIn(true);
+    let coords = null;
+    if (includeLocation) {
+      let canUseLocation = permissionStatus === "granted";
+      if (!canUseLocation) {
+        canUseLocation = await requestPermission();
+        if (!canUseLocation) {
+          setIncludeLocation(false);
+          setToast({ visible: true, type: "info", message: "Poloha nebyla přidána. Check-in můžete potvrdit i bez ní." });
+        }
+      }
+      if (canUseLocation) {
+        coords = await getCurrentPosition(5000);
+        if (!coords) setToast({ visible: true, type: "info", message: "Poloha nebyla včas dostupná. Check-in odešleme bez ní." });
+      }
+    }
+    const result = await store.checkIn(coords);
+    setIncludeLocation(false);
+    const feedback = getCheckInFeedback(result);
+    if (feedback.showServerConfirmation) setShowSuccess(true);
+    if (feedback.toast) setToast({ visible: true, ...feedback.toast });
+    setIsCheckingIn(false);
+  };
+
+  const confirmPause = async () => {
+    if (!store.profile || store.profile.is_paused || store.isUsingCachedProfiles) return;
+    let pauseRequest: PauseScheduleRequest;
+    try {
+      pauseRequest = pauseRequestForPreset(pauseDuration, customPauseUntil);
+    } catch (error) {
+      setToast({
+        visible: true,
+        type: "error",
+        message: error instanceof Error ? error.message : "Vyberte budoucí konec pauzy.",
+      });
+      return;
+    }
+    setIsChangingPause(true);
+    try {
+      const updated = await store.updateProfile({ is_paused: true, ...pauseRequest });
+      setShowPauseOptions(false);
+      setToast({
+        visible: true,
+        type: "success",
+        message: updated.paused_until
+          ? `Server potvrdil pauzu do ${formatPauseEnd(updated.paused_until)}.`
+          : "Server potvrdil pauzu bez plánovaného konce.",
+      });
+    } catch (error) {
+      setToast({
+        visible: true,
+        type: "error",
+        message: error instanceof Error ? error.message : "Pauzu se nepodařilo potvrdit.",
+      });
+    } finally {
+      setIsChangingPause(false);
+    }
+  };
+
+  const togglePause = () => {
+    if (!store.profile || store.isUsingCachedProfiles) return;
+    const pausing = !store.profile.is_paused;
+    if (pausing) {
+      setCustomPauseUntil(initialCustomPauseEnd());
+      setShowPauseOptions(true);
+      return;
+    }
+    Alert.alert(
+      "Obnovit profil?",
+      "Server nastaví nový termín od okamžiku obnovení. Za dobu pauzy nevznikne zpětný incident.",
+      [
+        { text: "Zrušit", style: "cancel" },
+        {
+          text: "Obnovit",
+          onPress: async () => {
+            setIsChangingPause(true);
+            try {
+              await store.updateProfile({ is_paused: false, paused_until: null });
+              setToast({ visible: true, type: "success", message: "Profil obnoven. Nový termín potvrdil server." });
+            } catch (error) {
+              setToast({ visible: true, type: "error", message: error instanceof Error ? error.message : "Změnu se nepodařilo potvrdit." });
+            } finally {
+              setIsChangingPause(false);
+            }
+          },
+        },
+      ],
+    );
+  };
+
+  const selectedStatus = useMemo(() => {
+    if (!store.profile) return { label: "Bez profilu", tone: "warning" as const };
+    if (store.isUsingCachedProfiles) return { label: "Uložený náhled", tone: "warning" as const };
+    if (!store.profile.enabled) return { label: "Archivovaný profil", tone: "info" as const };
+    if (store.profile.is_paused) return { label: "Pauza potvrzena", tone: "info" as const };
+    if (store.profile.next_deadline_at && !countdown.isTimeVerified) return { label: "Čas není ověřený", tone: "warning" as const };
+    if (store.profile.next_deadline_at && countdown.isExpired) return { label: "Termín vypršel", tone: "danger" as const };
+    return { label: "Serverový termín aktivní", tone: "success" as const };
+  }, [store.profile, store.isUsingCachedProfiles, countdown.isExpired, countdown.isTimeVerified]);
+
+  if (!user || (!store.hasFetched && !store.profile)) {
+    return <SafeAreaView className="flex-1 bg-cream items-center justify-center"><ActivityIndicator size="large" color={COLORS.brand[500]} /></SafeAreaView>;
+  }
+
+  if (!store.profile) {
+    return (
+      <SafeAreaView className="flex-1 bg-cream px-6 justify-center">
+        <Notice title="Profil nelze ověřit" tone="warning"><Text className="font-body text-[#7B4A08]">Bez spojení se serverem nevytvoříme nový profil ani neodhadneme termín. Zkuste načtení znovu.</Text></Notice>
+        <View className="mt-4"><ActionButton label="Zkusit znovu" onPress={() => void store.fetchProfile(user.id)} /></View>
+      </SafeAreaView>
+    );
+  }
+
+  const profile = store.profile;
+  return (
+    <SafeAreaView className="flex-1 bg-cream" edges={["top"]}>
+      <ScrollView contentContainerClassName="px-5 pt-4 pb-36" showsVerticalScrollIndicator={false}>
+        <View className="flex-row items-center justify-between mb-6">
+          <Text className="font-display text-[20px] text-charcoal">Hlásím se</Text>
+          <StatusLabel {...selectedStatus} />
+        </View>
+
+        <Pressable
+          testID="profile-switcher"
+          onPress={() => setShowProfiles((value) => !value)}
+          className="flex-row items-center justify-between py-3 border-y border-sand"
+          accessibilityRole="button"
+          accessibilityLabel={`Vybraný profil ${profile.name}`}
+          accessibilityHint="Otevře výběr profilů"
+          accessibilityState={{ expanded: showProfiles }}
+        >
+          <View className="flex-1">
+            <Text className="font-body text-sm text-muted">Právě se hlásí</Text>
+            <Text testID="profile-selected-name" className="font-display text-[28px] leading-8 text-charcoal mt-1">{profile.name}</Text>
+          </View>
+          <CaretDown size={24} color={COLORS.charcoal.default} />
+        </Pressable>
+
+        {showProfiles ? (
+          <Animated.View entering={reduceMotion ? undefined : FadeInDown.duration(220)} className="py-3 border-b border-sand">
+            {store.profiles.map((item) => (
+              <Pressable
+                key={item.id}
+                testID={`profile-select-${item.id}`}
+                onPress={() => { void store.selectProfile(item.id); setShowProfiles(false); }}
+                className="min-h-[52px] flex-row items-center justify-between py-3"
+                accessibilityRole="radio"
+                accessibilityState={{ checked: item.id === profile.id }}
+                accessibilityLabel={item.name}
+              >
+                <Text className="font-body-medium text-base text-charcoal">{item.name}</Text>
+                {item.id === profile.id ? <Check size={20} weight="bold" color={COLORS.brand[500]} /> : null}
+              </Pressable>
+            ))}
+            {store.profiles.length < 5 ? (
+              <Pressable testID="profile-create-open" onPress={() => router.push("/(tabs)/profile-setup?mode=add")} className="min-h-[52px] flex-row items-center gap-2 py-3" accessibilityRole="button">
+                <Plus size={20} color={COLORS.brand[500]} /><Text className="font-body-semibold text-brand-500">Přidat profil ({store.profiles.length}/5)</Text>
+              </Pressable>
+            ) : <Text className="font-body text-sm text-muted py-3">Využíváte všech 5 profilů.</Text>}
+          </Animated.View>
+        ) : null}
+
+        {store.isUsingCachedProfiles ? (
+          <View className="mt-5">
+            <Notice title="Toto je uložený náhled, může být zastaralý" tone="warning">
+              <Text className="font-body text-[#7B4A08] leading-5">Naposledy potvrzeno serverem {formatDateTime(store.profilesCachedAt)}. Check-in můžete bezpečně uložit do zařízení; serverový termín se nezmění, dokud požadavek nepřijme. Pauzu ani nastavení bez spojení měnit nelze.</Text>
+            </Notice>
+          </View>
+        ) : null}
+
+        <Animated.View entering={reduceMotion ? undefined : FadeInDown.duration(420)} className="pt-10 pb-8">
+          <Text className="font-body-medium text-sm text-muted mb-3">Původní serverový termín</Text>
+          <Countdown deadline={profile.next_deadline_at} paused={profile.is_paused} enabled={profile.enabled} countdown={countdown} />
+          <Text className="font-body text-[15px] text-muted mt-3">{formatDateTime(profile.next_deadline_at)}</Text>
+          {profile.is_paused ? <Text className="font-body text-[15px] leading-6 text-muted mt-2">{profile.paused_until ? `Obnovení potvrzené serverem: ${formatPauseEnd(profile.paused_until)}. Časová zóna zařízení: ${deviceTimeZone}.` : "Pauza nemá nastavený konec. Nezapomeňte profil obnovit."}</Text> : null}
+        </Animated.View>
+
+        <View className="py-5 border-y border-sand">
+          <Text className="font-body-medium text-sm text-muted">Poslední serverem potvrzené ohlášení</Text>
+          <Text testID="profile-last-confirmed-checkin" className="font-display text-[22px] leading-7 text-charcoal mt-2">{formatLastCheckIn(profile.last_checked_in_at)}</Text>
+        </View>
+
+        <OfflineBanner
+          pendingCount={store.pendingCount}
+          failedItems={store.pendingItems.filter((item) => item.status === "failed")}
+          onSync={sync}
+          isSyncing={isSyncing}
+          onRetry={(id) => void store.retryPendingCheckIn(id)}
+          onDelete={(id) => void store.deletePendingCheckIn(id)}
+        />
+
+        <View className="bg-charcoal rounded-[30px] p-6 overflow-hidden">
+          <View className="absolute w-40 h-40 rounded-full bg-coral/20 -right-14 -top-16" />
+          <Text className="font-display text-[28px] leading-[32px] text-white max-w-[280px]">Potvrďte serveru, že jste se ohlásili</Text>
+          <Text className="font-body text-[15px] leading-6 text-white/70 mt-3 mb-6">Úspěch zobrazíme až po přijetí serverem. Bez sítě požadavek pouze bezpečně uložíme.</Text>
+          <ActionButton
+            testID="checkin-submit"
+            label={isCheckingIn ? "Čekáme na server" : "Potvrdit check-in"}
+            loading={isCheckingIn}
+            disabled={profile.is_paused || !profile.enabled}
+            onPress={() => void handleCheckIn()}
+            icon={<Check size={21} weight="bold" color="#251D18" />}
+            accessibilityHint="Odešle check-in serveru. Bez spojení ho uloží do zařízení; úspěch nastane až po potvrzení serverem."
+          />
+          {profile.is_paused ? <Text className="font-body text-sm text-white/70 mt-3">Během potvrzené pauzy není check-in vyžadován. Obnovení má vlastní serverové potvrzení.</Text> : !profile.enabled ? <Text className="font-body text-sm text-white/70 mt-3">Archivovaný profil nemá aktivní termín. Obnovte ho ve správě profilu.</Text> : null}
+        </View>
+
+        <View className="py-6 border-b border-sand">
+          <View className="flex-row items-start gap-3">
+            <MapPin size={23} color={COLORS.charcoal.default} />
+            <View className="flex-1 pr-3">
+              <Text className="font-body-semibold text-base text-charcoal">Přidat polohu pouze k tomuto check-inu</Text>
+              <Text className="font-body text-sm leading-5 text-muted mt-1">Volitelné. Odmítnutí check-in nezablokuje. Poloha se uloží jen k potvrzenému check-inu; strážce ji uvidí pouze při aktivním incidentu jako poslední známou.</Text>
+              <Text className="font-body text-xs text-muted mt-2">Stav oprávnění: {permissionStatus === "granted" ? "povoleno" : permissionStatus === "denied" ? "zamítnuto" : "zatím nevybráno"}</Text>
+            </View>
+            <Switch
+              testID="checkin-location-toggle"
+              value={includeLocation}
+              onValueChange={setIncludeLocation}
+              trackColor={{ false: "#D7CBC4", true: COLORS.brand[500] }}
+              thumbColor="#FFFFFF"
+              accessibilityLabel="Přidat polohu k tomuto check-inu"
+              accessibilityHint="Poloha je volitelná a nepřenese se do offline fronty."
+            />
+          </View>
+        </View>
+
+        {!profile.is_paused && showPauseOptions ? (
+          <Animated.View
+            entering={reduceMotion ? undefined : FadeInDown.duration(220)}
+            className="py-7 border-b border-sand"
+          >
+            <Text className="font-display text-[26px] leading-8 text-charcoal">
+              Jak dlouho má pauza trvat?
+            </Text>
+            <Text className="font-body text-sm leading-5 text-muted mt-2 mb-4">
+              Pauza začne až po potvrzení serverem a neuzavře už aktivní incident. Naplánované
+              obnovení zpracuje server; místní notifikace může být systémem odložena.
+            </Text>
+            <View accessibilityRole="radiogroup">
+              {pauseDurationOptions.map((option) => {
+                const selected = pauseDuration === option.value;
+                return (
+                  <Pressable
+                    key={option.value}
+                    testID={`pause-duration-${option.value}`}
+                    onPress={() => setPauseDuration(option.value)}
+                    className="min-h-[68px] py-3 border-t border-sand flex-row items-start gap-3"
+                    accessibilityRole="radio"
+                    accessibilityState={{ checked: selected }}
+                    accessibilityLabel={option.label}
+                    accessibilityHint={option.detail}
+                  >
+                    <View
+                      className={`w-6 h-6 rounded-full border items-center justify-center mt-0.5 ${selected ? "bg-charcoal border-charcoal" : "border-muted"}`}
+                    >
+                      {selected ? <Check size={14} weight="bold" color="#FFFFFF" /> : null}
+                    </View>
+                    <View className="flex-1">
+                      <Text className="font-body-semibold text-base text-charcoal">
+                        {option.label}
+                      </Text>
+                      <Text className="font-body text-sm leading-5 text-muted mt-1">
+                        {option.detail}
+                      </Text>
+                    </View>
+                  </Pressable>
+                );
+              })}
+            </View>
+            {pauseDuration === "custom" ? (
+              <View testID="pause-custom-picker" className="mt-3 rounded-[22px] bg-white border border-sand p-4">
+                <Text className="font-body-semibold text-sm text-charcoal">Pauza skončí</Text>
+                <Text testID="pause-custom-summary" className="font-display text-[22px] leading-7 text-charcoal mt-2">
+                  {formatPauseEnd(customPauseUntil)}
+                </Text>
+                <Text className="font-body text-sm leading-5 text-muted mt-2">
+                  Časová zóna zařízení: {deviceTimeZone}. Rozhodující bude čas vrácený serverem po uložení.
+                </Text>
+                {Platform.OS === "ios" ? (
+                  <DateTimePicker
+                    testID="pause-custom-datetime-picker"
+                    value={customPauseUntil}
+                    mode="datetime"
+                    display="spinner"
+                    minimumDate={pickerMinimumDate}
+                    maximumDate={pickerMaximumDate}
+                    locale="cs-CZ"
+                    accessibilityLabel="Vlastní datum a čas konce pauzy"
+                    onChange={(event, date) => changeCustomPauseUntil(event, date)}
+                  />
+                ) : (
+                  <View className="gap-3 mt-4">
+                    <View>
+                      <ActionButton
+                        testID="pause-custom-date-open"
+                        label="Vybrat datum"
+                        variant="quiet"
+                        onPress={() => setAndroidPickerMode("date")}
+                      />
+                    </View>
+                    <View>
+                      <ActionButton
+                        testID="pause-custom-time-open"
+                        label="Vybrat čas"
+                        variant="quiet"
+                        onPress={() => setAndroidPickerMode("time")}
+                      />
+                    </View>
+                  </View>
+                )}
+                {Platform.OS === "android" && androidPickerMode ? (
+                  <DateTimePicker
+                    testID={`pause-custom-${androidPickerMode}-picker`}
+                    value={customPauseUntil}
+                    mode={androidPickerMode}
+                    display="default"
+                    minimumDate={androidPickerMode === "date" ? pickerMinimumDate : undefined}
+                    maximumDate={androidPickerMode === "date" ? pickerMaximumDate : undefined}
+                    accessibilityLabel={androidPickerMode === "date" ? "Datum konce pauzy" : "Čas konce pauzy"}
+                    onChange={(event, date) => changeCustomPauseUntil(event, date, androidPickerMode)}
+                  />
+                ) : null}
+              </View>
+            ) : null}
+            <View className="gap-3 mt-4">
+              <ActionButton
+                testID="pause-confirm"
+                label="Potvrdit pauzu serverem"
+                loading={isChangingPause}
+                onPress={() => void confirmPause()}
+              />
+              <ActionButton
+                testID="pause-options-cancel"
+                label="Zrušit"
+                variant="quiet"
+                disabled={isChangingPause}
+                onPress={() => setShowPauseOptions(false)}
+              />
+            </View>
+          </Animated.View>
+        ) : null}
+
+        <View className="flex-row gap-3 py-6">
+          <View className="flex-1"><ActionButton testID={profile.is_paused ? "profile-resume" : "profile-pause"} label={profile.is_paused ? "Obnovit profil" : "Pozastavit profil"} variant="quiet" loading={isChangingPause} disabled={store.isUsingCachedProfiles || !profile.enabled} onPress={togglePause} icon={profile.is_paused ? <Play size={19} color={COLORS.charcoal.default} /> : <Pause size={19} color={COLORS.charcoal.default} />} /></View>
+          <View className="flex-1"><ActionButton testID="profile-edit-open" label="Spravovat profil" variant="quiet" onPress={() => router.push("/(tabs)/profile-detail")} /></View>
+        </View>
+
+        <View className="flex-row gap-3 items-start py-5 border-t border-sand">
+          <ShieldWarning size={23} color={COLORS.error} />
+          <Text className="font-body text-sm leading-5 text-muted flex-1">Hlásím se není tísňová služba, nekontaktuje 112 ani 155 a doručení push upozornění nelze garantovat. V ohrožení volejte 112 nebo 155.</Text>
+        </View>
+      </ScrollView>
+      <Toast {...toast} onDismiss={() => setToast((value) => ({ ...value, visible: false }))} duration={4500} />
+      <SuccessOverlay visible={showSuccess} onDismiss={() => setShowSuccess(false)} intervalHours={profile.interval_hours} />
+    </SafeAreaView>
+  );
+}
