@@ -2,8 +2,9 @@ appId: ${APP_ID}
 name: Android creates second free safety profile after name injection
 tags: [android, profile]
 ---
+- assertVisible:
+    id: "profile-create-name-input"
 - assertVisible: "E2E Druhy profil"
-- hideKeyboard
 - scrollUntilVisible:
     element: "1 hodina"
     direction: DOWN
